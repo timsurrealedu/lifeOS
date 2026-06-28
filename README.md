@@ -3,15 +3,18 @@
 A mobile-first **superapp** for the *capture-once / process-in-batches* workflow. One app does
 the whole loop that used to be a skill + vault + cron glue:
 
-- **Capture** — type, 🎤 dictate, or 📷 photograph anything into one inbox. Instant, no organizing.
+- **Capture** — type, 🎤 dictate, 📸 take a photo (or 🖼️ attach one), or 🔴 record audio into one
+  inbox. Instant, no organizing. Items queue up; process the whole batch in one run.
 - **Process** — one tap runs `claude -p "process inbox"` live in your vault: it reads photos with
-  vision, files notes by area, pushes deadlines to **Google Calendar**, adds TODOs, `[[links]]`
-  and `#tags`, and maintains the **MOC hub graph**. Output streams to the screen as it works.
+  vision, **transcribes recordings**, files notes by area, pushes deadlines to **Google Calendar**,
+  adds TODOs, `[[links]]` and `#tags`, and maintains the **MOC hub graph**. Output streams as it works.
 - **Browse** — read your notes, see tasks grouped (Overdue / Today / Upcoming), and explore the
   interactive wikilink **graph** — all from your phone.
 
 It is a thin, friendly front-end over your Obsidian vault. The **vault stays the source of
-truth** (still opens in Obsidian, still syncs); lifeOS is a second way in.
+truth** (still opens in Obsidian, still syncs); lifeOS is a second way in. The processing brain —
+the `process-inbox` skill — is the **obsidianAutomation** engine, vendored here (kept in sync via
+that repo's `sync-skill.sh`); lifeOS is the capture/browse front-end over it.
 
 ## Run it
 
@@ -54,6 +57,21 @@ claude -p "<process-inbox prompt>" \
 No API key — it reuses your existing Claude login and Google Calendar connector. The run is
 tool-scoped on purpose: a captured photo could contain injected text, so it never gets blanket
 permissions.
+
+## Recordings & transcription
+
+🔴 **Record** captures audio (lecture/meeting) to `attachments/recordings/` and drops a
+`![[…]] #recording` line in the inbox. On the next **Process** run the engine transcribes it with
+a local speech-to-text CLI (tries `whisper-ctranslate2`, `whisper`, `whisper-cpp`,
+`faster-whisper`), then summarizes the transcript into a note and keeps the audio as the source.
+Fully local — no audio leaves the machine. If no transcriber is installed it degrades gracefully:
+the note embeds the audio and is tagged `#needs-transcription`.
+
+Install one (recommended, light, CPU-friendly):
+
+```bash
+pipx install whisper-ctranslate2
+```
 
 ## Hosting on the always-on machine (e.g. Windows)
 
