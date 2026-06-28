@@ -3,9 +3,10 @@ import multer from 'multer';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
 import {
-  ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem,
+  ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   listNotes, readNote, buildGraph, listTasks, readLog,
 } from './vault.js';
 import { runProcessInbox, isRunning } from './process.js';
@@ -33,6 +34,22 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
+// Audio recordings can be long (lectures/meetings) → bigger cap, own subfolder.
+const uploadAudio = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = join(vaultDir(loadConfig()), 'attachments', 'recordings');
+      mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      cb(null, `rec-${stamp}${extname(file.originalname) || '.webm'}`);
+    },
+  }),
+  limits: { fileSize: 200 * 1024 * 1024 },
+});
+
 const ok = (res, data) => res.json({ ok: true, ...data });
 const fail = (res, err, code = 400) => res.status(code).json({ ok: false, error: String(err.message || err) });
 
@@ -47,6 +64,13 @@ app.post('/api/capture/photo', upload.single('photo'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
     ok(res, { items: addPhotoItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/capture/audio', uploadAudio.single('audio'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    ok(res, { items: addAudioItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
   } catch (e) { fail(res, e); }
 });
 

@@ -38,10 +38,13 @@
           <textarea id="capture-text" placeholder="Type or dictate… one thing per line.
 e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" rows="4"></textarea>
           <div id="photo-preview" class="photo-preview hidden"></div>
+          <div id="audio-preview" class="photo-preview hidden"></div>
           <div class="capture-row">
             <button class="chip" id="btn-voice" type="button">🎤 <span>Voice</span></button>
-            <label class="chip" for="photo-input">📷 <span>Photo</span></label>
-            <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
+            <button class="chip" id="btn-record" type="button">🔴 <span>Record</span></button>
+            <button class="chip" id="btn-camera" type="button">📸 <span>Camera</span></button>
+            <label class="chip" for="photo-input">🖼️ <span>Photo</span></label>
+            <input id="photo-input" type="file" accept="image/*" hidden />
             <div class="spacer"></div>
             <button class="btn primary" id="btn-add">Add to inbox</button>
           </div>
@@ -59,6 +62,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <!-- INBOX -->
       <section class="view" data-view="inbox" hidden>
         <div class="view-head"><h2>Inbox</h2><span class="badge" id="inbox-badge">0</span></div>
+        <button class="btn primary" id="btn-process-inbox" style="width:100%;margin-bottom:12px" hidden>Process inbox (<span id="process-count">0</span>) →</button>
         <ul id="inbox-list" class="list"></ul>
         <div class="empty" id="inbox-empty" hidden>Inbox is clear. ✦</div>
       </section>
@@ -123,6 +127,16 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
     <div class="sheet-grab"></div>
     <div class="sheet-head"><h3>Run log</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
     <article id="log-body" class="markdown"></article>
+  </div>
+
+  <div class="sheet" id="sheet-camera" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Take a photo</h3><button class="icon-btn" data-action="close-camera">✕</button></div>
+    <div class="camera-wrap"><video id="cam-video" playsinline autoplay muted></video></div>
+    <div class="camera-actions">
+      <button class="btn" id="cam-switch" type="button">⟲ Flip</button>
+      <button class="btn primary" id="cam-shot" type="button">◉ Capture</button>
+    </div>
   </div>
 
   <div class="sheet" id="sheet-settings" hidden>

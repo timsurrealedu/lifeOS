@@ -30,9 +30,12 @@ Go line by line. An item is one of:
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
 
-**B) Photo embed** — a line with `![[something.jpg/png/...]]`.
-  → Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`.
-  → If the photo is a screenshot of a chat mentioning a date, treat the date like case A instead.
+**B) Media embed** — a line with `![[…]]` (photo or audio).
+  *Photo* (`.jpg/.png/…`): Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`. If it's a screenshot of a chat mentioning a date, treat that date like case A instead.
+  *Audio recording* (`.webm/.m4a/.mp3/.wav/.ogg`, usually tagged `#recording`, embedded from `attachments/recordings/`):
+    → **Transcribe it first** via Bash using whatever local speech-to-text CLI is installed (try in order: `whisper-ctranslate2`, `whisper`, `whisper-cpp`, `faster-whisper`) on the embedded file. These write a transcript file (e.g. `--output_format txt`); read that. Preserve the spoken language(s); never translate.
+    → Then summarize the transcript into a note like a lecture/meeting note (per-topic; apply area inference + the "Area keywords always win" rule; add MOC links). Keep the source: embed the audio with `![[…]]` under a **Recording** heading at the bottom of the note.
+    → **If no transcription tool is available**, do not discard it — create the note (or a `Captures/` entry) that embeds the audio, tag it `#needs-transcription`, and say so in the report. Never fail the whole run over one audio file.
 
   **Inferring which course/area a photo belongs to** (in order, stop at first confident match):
   1. **Explicit hint** — the same line or the line just above names/abbreviates an area. Trust it.

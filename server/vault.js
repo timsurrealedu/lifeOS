@@ -30,8 +30,8 @@ const IGNORE_FILES = new Set(['CLAUDE.md', 'inbox.md']);
 export function ensureVault(cfg = loadConfig()) {
   const root = vaultDir(cfg);
   mkdirSync(root, { recursive: true });
-  for (const d of ['Captures', '.inbox-archive', 'attachments', 'University', 'Personal',
-    'TODO', join('.claude', 'skills', 'process-inbox')]) {
+  for (const d of ['Captures', '.inbox-archive', 'attachments', join('attachments', 'recordings'),
+    'University', 'Personal', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
     mkdirSync(join(root, d), { recursive: true });
   }
 
@@ -122,6 +122,11 @@ export function removeInboxItem(index) {
 export function addPhotoItem(filename, hint) {
   const embed = `![[${filename}]]`;
   return addInboxItem(hint ? `${hint} ${embed}` : embed);
+}
+
+export function addAudioItem(filename, hint) {
+  const embed = `![[attachments/recordings/${filename}]]`;
+  return addInboxItem([hint, embed, '#recording'].filter(Boolean).join(' '));
 }
 
 // ---------- Notes ----------

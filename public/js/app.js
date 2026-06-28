@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, graph: null };
+const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingAudio: null, graph: null };
 
 /* ---------- Navigation ---------- */
 function show(view) {
@@ -34,6 +34,7 @@ function openSheet(id) {
   $('#' + id).hidden = false;
 }
 function closeSheets() {
+  stopCam();
   $('#backdrop').hidden = true;
   $$('.sheet').forEach((s) => (s.hidden = true));
 }
@@ -43,6 +44,7 @@ document.addEventListener('click', (e) => {
   if (!a) return;
   const act = a.dataset.action;
   if (act === 'close-sheet') closeSheets();
+  if (act === 'close-camera') closeCamera();
   if (act === 'open-log') openLog();
   if (act === 'open-settings') openSettings();
 });
@@ -50,9 +52,54 @@ document.addEventListener('click', (e) => {
 /* ---------- Capture ---------- */
 const textEl = $('#capture-text');
 
+// Preview helpers (shared by photo / camera / recording)
+function resetCapture() {
+  state.pendingPhoto = null; state.pendingAudio = null;
+  for (const id of ['#photo-preview', '#audio-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
+  $('#photo-input').value = '';
+  $('#btn-add').textContent = 'Add to inbox';
+}
+function discardBtn() {
+  const b = document.createElement('button');
+  b.className = 'preview-del'; b.type = 'button'; b.textContent = '✕ Discard';
+  b.addEventListener('click', resetCapture);
+  return b;
+}
+function showPhotoPreview(blob) {
+  state.pendingPhoto = blob;
+  const pv = $('#photo-preview'); pv.innerHTML = '';
+  const img = document.createElement('img'); img.src = URL.createObjectURL(blob); img.alt = 'preview';
+  pv.append(img, discardBtn());
+  pv.classList.remove('hidden');
+  $('#btn-add').textContent = 'Add photo to inbox';
+}
+// MediaRecorder webm/ogg blobs carry no duration → the seekbar is dead until we
+// force the browser to read to the end once to compute it.
+function fixAudioDuration(audio) {
+  audio.addEventListener('loadedmetadata', () => {
+    if (audio.duration === Infinity || Number.isNaN(audio.duration)) {
+      audio.currentTime = 1e101;
+      audio.addEventListener('timeupdate', function h() { audio.removeEventListener('timeupdate', h); audio.currentTime = 0; });
+    }
+  });
+}
+function showAudioPreview(blob, dur) {
+  state.pendingAudio = { blob, type: blob.type, dur };
+  const pv = $('#audio-preview'); pv.innerHTML = '';
+  const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'metadata';
+  audio.src = URL.createObjectURL(blob);
+  fixAudioDuration(audio);
+  const meta = document.createElement('div'); meta.className = 'hint';
+  meta.textContent = `Recording · ${fmtElapsed(dur)} — add a hint above (optional)`;
+  pv.append(audio, meta, discardBtn());
+  pv.classList.remove('hidden');
+  $('#btn-add').textContent = 'Add recording to inbox';
+}
+
 $('#btn-add').addEventListener('click', async () => {
   const text = textEl.value.trim();
   if (state.pendingPhoto) { await uploadPhoto(text); return; }
+  if (state.pendingAudio) { await uploadAudio(text); return; }
   if (!text) { toast('Nothing to add'); return; }
   try {
     const { items } = await api('/api/capture', {
@@ -64,32 +111,57 @@ $('#btn-add').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
-// Photo
+// Photo (pick existing file)
 $('#photo-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  state.pendingPhoto = file;
-  const url = URL.createObjectURL(file);
-  const pv = $('#photo-preview');
-  pv.innerHTML = `<img src="${url}" alt="preview" />`;
-  pv.classList.remove('hidden');
-  $('#btn-add').textContent = 'Add photo to inbox';
-  toast('Photo ready — add a course hint above (optional)');
+  showPhotoPreview(file);
+  toast('Photo ready — add a hint above (optional)');
 });
 
 async function uploadPhoto(hint) {
   const fd = new FormData();
-  fd.append('photo', state.pendingPhoto);
+  fd.append('photo', state.pendingPhoto, state.pendingPhoto.name || 'camera.jpg');
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/photo', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount();
-    state.pendingPhoto = null; textEl.value = '';
-    $('#photo-preview').classList.add('hidden'); $('#photo-preview').innerHTML = '';
-    $('#photo-input').value = ''; $('#btn-add').textContent = 'Add to inbox';
+    state.inbox = items; updateInboxCount(); textEl.value = '';
+    resetCapture();
     toast('Photo added to inbox');
   } catch (e) { toast(e.message); }
 }
+
+// In-app camera (take a photo, not pick one)
+let camStream = null, camFacing = 'environment';
+$('#btn-camera').addEventListener('click', async () => {
+  if (!navigator.mediaDevices?.getUserMedia) { toast('Camera not supported here'); return; }
+  openSheet('sheet-camera');
+  await startCam();
+});
+async function startCam() {
+  stopCam();
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing }, audio: false });
+    $('#cam-video').srcObject = camStream;
+  } catch { toast('Camera permission needed'); closeCamera(); }
+}
+function stopCam() { if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; } }
+function closeCamera() { stopCam(); $('#sheet-camera').hidden = true; $('#backdrop').hidden = true; }
+$('#cam-switch').addEventListener('click', async () => {
+  camFacing = camFacing === 'environment' ? 'user' : 'environment';
+  await startCam();
+});
+$('#cam-shot').addEventListener('click', () => {
+  const v = $('#cam-video');
+  if (!v.videoWidth) { toast('Camera not ready'); return; }
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  c.toBlob((blob) => {
+    if (!blob) { toast('Capture failed'); return; }
+    closeCamera(); showPhotoPreview(blob);
+    toast('Captured — add a hint (optional)');
+  }, 'image/jpeg', 0.9);
+});
 
 // Voice (Web Speech API)
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -115,8 +187,54 @@ if (SR) {
   voiceBtn.addEventListener('click', () => { textEl.focus(); toast('Tap your keyboard 🎤 to dictate'); });
 }
 
+// Live recording (MediaRecorder → audio file for later transcription)
+const recBtn = $('#btn-record');
+let mediaRec = null, recChunks = [], recTimer = null, recStart = 0;
+const recMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']
+  .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+const fmtElapsed = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+recBtn.addEventListener('click', async () => {
+  if (!window.MediaRecorder) { toast('Recording not supported here'); return; }
+  if (mediaRec && mediaRec.state === 'recording') { mediaRec.stop(); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { toast('Mic permission needed'); return; }
+  const mime = recMime();
+  recChunks = [];
+  mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  mediaRec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  mediaRec.onstop = () => {
+    clearInterval(recTimer); recTimer = null;
+    recBtn.classList.remove('live'); recBtn.innerHTML = '🔴 <span>Record</span>';
+    stream.getTracks().forEach((t) => t.stop());
+    const type = mediaRec.mimeType || mime || 'audio/webm';
+    showAudioPreview(new Blob(recChunks, { type }), Date.now() - recStart);
+    toast('Recording ready');
+  };
+  mediaRec.start();
+  recStart = Date.now();
+  recBtn.classList.add('live');
+  recTimer = setInterval(() => { recBtn.innerHTML = `⏹ <span>${fmtElapsed(Date.now() - recStart)}</span>`; }, 500);
+});
+
+async function uploadAudio(hint) {
+  const { blob, type } = state.pendingAudio;
+  const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+  const fd = new FormData();
+  fd.append('audio', blob, `recording.${ext}`);
+  if (hint) fd.append('hint', hint);
+  try {
+    const { items } = await api('/api/capture/audio', { method: 'POST', body: fd });
+    state.inbox = items; updateInboxCount(); textEl.value = '';
+    resetCapture();
+    toast('Recording added to inbox');
+  } catch (e) { toast(e.message); }
+}
+
 /* ---------- Process (SSE) ---------- */
 $('#btn-process').addEventListener('click', startProcess);
+$('#btn-process-inbox').addEventListener('click', startProcess);
 
 function startProcess() {
   const con = $('#process-console');
@@ -170,8 +288,11 @@ function updateInboxCount() {
   $('#inbox-count').textContent = n;
   $('#inbox-badge').textContent = n;
   $('#tab-inbox-dot').hidden = n === 0;
+  $('#process-count').textContent = n;
+  $('#btn-process-inbox').hidden = n === 0;
 }
 function emoji(item) {
+  if (/#recording|recordings\//.test(item)) return '🎙️';
   if (/!\[\[/.test(item)) return '📷';
   if (/\b(\d{1,2}[:.]\d{2}|\d{1,2}\s?(am|pm)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|exam|deadline|due|meeting|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(item)) return '📅';
   if (/\b(email|buy|call|send|book|pay|fix|ask)\b/i.test(item)) return '✅';
@@ -343,7 +464,15 @@ function mdToHtml(md) {
   const lines = md.replace(/\r/g, '').split('\n');
   let html = '', inList = false, inCode = false;
   const inline = (t) => esc(t)
-    .replace(/!\[\[([^\]]+?)\]\]/g, (_m, f) => `<img src="/vault-files/attachments/${encodeURIComponent(f.trim())}" alt="${f}" onerror="this.style.display='none'">`)
+    .replace(/!\[\[([^\]]+?)\]\]/g, (_m, f) => {
+      const ref = f.trim();
+      const src = '/vault-files/' + (ref.includes('/')
+        ? ref.split('/').map(encodeURIComponent).join('/')
+        : 'attachments/' + encodeURIComponent(ref));
+      return /\.(webm|m4a|mp3|wav|ogg)$/i.test(ref)
+        ? `<audio controls src="${src}"></audio>`
+        : `<img src="${src}" alt="${esc(ref)}" onerror="this.style.display='none'">`;
+    })
     .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${esc(name.trim())}">${esc(label || name)}</span>`)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
