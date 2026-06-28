@@ -1,0 +1,11 @@
+{
+  "vaultPath": "./vault",
+  "claudePath": "claude",
+  "port": 7777,
+  "host": "0.0.0.0",
+  "timezone": "Asia/Jakarta",
+  "languages": "English + Indonesian",
+  "todoPath": "TODO/{year}/{month}.md",
+  "todoFormat": "- [ ] DD Mon DESC",
+  "ownerName": "Tim"
+}

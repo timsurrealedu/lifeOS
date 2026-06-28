@@ -1,0 +1,384 @@
+'use strict';
+/* ============ lifeOS frontend ============ */
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
+  return j;
+};
+const toast = (msg) => {
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
+};
+
+const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, graph: null };
+
+/* ---------- Navigation ---------- */
+function show(view) {
+  state.view = view;
+  $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
+  $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
+  if (view === 'inbox') renderInbox();
+  if (view === 'notes') loadNotes();
+  if (view === 'plan') loadPlan();
+  if (view === 'graph') loadGraph();
+}
+$$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+
+/* ---------- Sheets ---------- */
+function openSheet(id) {
+  $('#backdrop').hidden = false;
+  $('#' + id).hidden = false;
+}
+function closeSheets() {
+  $('#backdrop').hidden = true;
+  $$('.sheet').forEach((s) => (s.hidden = true));
+}
+$('#backdrop').addEventListener('click', closeSheets);
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-action]');
+  if (!a) return;
+  const act = a.dataset.action;
+  if (act === 'close-sheet') closeSheets();
+  if (act === 'open-log') openLog();
+  if (act === 'open-settings') openSettings();
+});
+
+/* ---------- Capture ---------- */
+const textEl = $('#capture-text');
+
+$('#btn-add').addEventListener('click', async () => {
+  const text = textEl.value.trim();
+  if (state.pendingPhoto) { await uploadPhoto(text); return; }
+  if (!text) { toast('Nothing to add'); return; }
+  try {
+    const { items } = await api('/api/capture', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    state.inbox = items; textEl.value = ''; updateInboxCount();
+    toast('Added to inbox');
+  } catch (e) { toast(e.message); }
+});
+
+// Photo
+$('#photo-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.pendingPhoto = file;
+  const url = URL.createObjectURL(file);
+  const pv = $('#photo-preview');
+  pv.innerHTML = `<img src="${url}" alt="preview" />`;
+  pv.classList.remove('hidden');
+  $('#btn-add').textContent = 'Add photo to inbox';
+  toast('Photo ready — add a course hint above (optional)');
+});
+
+async function uploadPhoto(hint) {
+  const fd = new FormData();
+  fd.append('photo', state.pendingPhoto);
+  if (hint) fd.append('hint', hint);
+  try {
+    const { items } = await api('/api/capture/photo', { method: 'POST', body: fd });
+    state.inbox = items; updateInboxCount();
+    state.pendingPhoto = null; textEl.value = '';
+    $('#photo-preview').classList.add('hidden'); $('#photo-preview').innerHTML = '';
+    $('#photo-input').value = ''; $('#btn-add').textContent = 'Add to inbox';
+    toast('Photo added to inbox');
+  } catch (e) { toast(e.message); }
+}
+
+// Voice (Web Speech API)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const voiceBtn = $('#btn-voice');
+if (SR) {
+  let rec = null, listening = false;
+  voiceBtn.addEventListener('click', () => {
+    if (listening) { rec && rec.stop(); return; }
+    rec = new SR();
+    rec.continuous = true; rec.interimResults = true; rec.lang = navigator.language || 'en-US';
+    let base = textEl.value ? textEl.value + ' ' : '';
+    rec.onresult = (ev) => {
+      let txt = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
+      textEl.value = base + txt;
+    };
+    rec.onend = () => { listening = false; voiceBtn.classList.remove('live'); };
+    rec.onerror = () => { listening = false; voiceBtn.classList.remove('live'); toast('Mic error'); };
+    rec.start(); listening = true; voiceBtn.classList.add('live');
+  });
+} else {
+  voiceBtn.title = 'Use your keyboard mic';
+  voiceBtn.addEventListener('click', () => { textEl.focus(); toast('Tap your keyboard 🎤 to dictate'); });
+}
+
+/* ---------- Process (SSE) ---------- */
+$('#btn-process').addEventListener('click', startProcess);
+
+function startProcess() {
+  const con = $('#process-console');
+  con.innerHTML = '';
+  $('#process-status').textContent = 'Processing inbox…';
+  openSheet('sheet-process');
+  const append = (text, cls) => {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = text + '\n';
+    con.appendChild(span); con.scrollTop = con.scrollHeight;
+  };
+  append('▸ launching claude in the vault…');
+  const es = new EventSource('/api/process/stream');
+  es.addEventListener('status', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.state === 'starting') append('▸ claude started · ' + d.cwd);
+  });
+  es.addEventListener('log', (e) => {
+    const d = JSON.parse(e.data);
+    append(d.line, d.channel === 'err' ? 'err' : '');
+  });
+  es.addEventListener('done', (e) => {
+    const d = JSON.parse(e.data);
+    append(`\n✓ finished (exit ${d.code})`);
+    $('#process-status').textContent = d.code === 0 ? 'Done ✓' : `Exited (${d.code})`;
+    es.close(); afterProcess();
+  });
+  es.addEventListener('error', (e) => {
+    let msg = 'stream error';
+    try { msg = JSON.parse(e.data).message; } catch {}
+    append('✕ ' + msg, 'err');
+    $('#process-status').textContent = 'Error';
+    es.close();
+  });
+}
+
+async function afterProcess() {
+  await refreshInbox();
+  state.notes = []; // force reload next visit
+  toast('Inbox processed');
+}
+
+/* ---------- Inbox ---------- */
+async function refreshInbox() {
+  try { const { items } = await api('/api/inbox'); state.inbox = items; updateInboxCount(); if (state.view === 'inbox') renderInbox(); }
+  catch {}
+}
+function updateInboxCount() {
+  const n = state.inbox.length;
+  $('#inbox-count').textContent = n;
+  $('#inbox-badge').textContent = n;
+  $('#tab-inbox-dot').hidden = n === 0;
+}
+function emoji(item) {
+  if (/!\[\[/.test(item)) return '📷';
+  if (/\b(\d{1,2}[:.]\d{2}|\d{1,2}\s?(am|pm)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|exam|deadline|due|meeting|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(item)) return '📅';
+  if (/\b(email|buy|call|send|book|pay|fix|ask)\b/i.test(item)) return '✅';
+  return '💭';
+}
+function renderInbox() {
+  const ul = $('#inbox-list'); ul.innerHTML = '';
+  $('#inbox-empty').hidden = state.inbox.length > 0;
+  state.inbox.forEach((item, i) => {
+    const li = document.createElement('li');
+    li.className = 'list-item';
+    li.innerHTML = `<span class="li-emoji">${emoji(item)}</span>
+      <div class="li-main"><div class="li-title">${esc(item)}</div></div>
+      <button class="li-del" aria-label="delete">✕</button>`;
+    li.querySelector('.li-del').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try { const { items } = await api('/api/inbox/' + i, { method: 'DELETE' }); state.inbox = items; updateInboxCount(); renderInbox(); }
+      catch (err) { toast(err.message); }
+    });
+    ul.appendChild(li);
+  });
+}
+
+/* ---------- Notes ---------- */
+async function loadNotes(force) {
+  if (state.notes.length && !force) { renderNotes(); return; }
+  try { const { notes } = await api('/api/notes'); state.notes = notes; renderNotes(); }
+  catch (e) { toast(e.message); }
+}
+function renderNotes() {
+  const q = $('#notes-search').value.toLowerCase();
+  const ul = $('#notes-list'); ul.innerHTML = '';
+  const list = state.notes.filter((n) => !q || n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
+  $('#notes-empty').hidden = state.notes.length > 0;
+  list.forEach((n) => {
+    const li = document.createElement('li');
+    li.className = 'list-item';
+    const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
+    li.innerHTML = `<span class="li-emoji">📄</span>
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
+    li.addEventListener('click', () => openNote(n.path, n.name));
+    ul.appendChild(li);
+  });
+}
+$('#notes-search').addEventListener('input', renderNotes);
+
+async function openNote(path, name) {
+  try {
+    const { content } = await api('/api/note?path=' + encodeURIComponent(path));
+    $('#note-title').textContent = name;
+    $('#note-body').innerHTML = mdToHtml(content);
+    bindWikilinks($('#note-body'));
+    openSheet('sheet-note');
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- Plan ---------- */
+async function loadPlan() {
+  try {
+    const { tasks } = await api('/api/tasks');
+    const wrap = $('#plan-groups'); wrap.innerHTML = '';
+    $('#plan-empty').hidden = tasks.length > 0;
+    const today = new Date().toISOString().slice(0, 10);
+    const groups = { Overdue: [], Today: [], Upcoming: [], Undated: [], Done: [] };
+    for (const t of tasks) {
+      if (t.done) groups.Done.push(t);
+      else if (!t.date) groups.Undated.push(t);
+      else if (t.date < today) groups.Overdue.push(t);
+      else if (t.date === today) groups.Today.push(t);
+      else groups.Upcoming.push(t);
+    }
+    for (const [name, arr] of Object.entries(groups)) {
+      if (!arr.length) continue;
+      const g = document.createElement('div'); g.className = 'plan-group';
+      g.innerHTML = `<h3>${name} · ${arr.length}</h3>`;
+      for (const t of arr) {
+        const overdue = name === 'Overdue';
+        const el = document.createElement('div');
+        el.className = 'task' + (t.done ? ' done' : '') + (overdue ? ' overdue' : '');
+        el.innerHTML = `<div class="box">${t.done ? '✓' : ''}</div>
+          <div><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}</div>` : ''}</div>`;
+        g.appendChild(el);
+      }
+      wrap.appendChild(g);
+    }
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- Graph ---------- */
+async function loadGraph() {
+  try {
+    const data = await api('/api/graph');
+    $('#graph-stats').textContent = `${data.nodes.length} notes · ${data.links.length} links`;
+    state.graph = data;
+    window.LifeGraph.render($('#graph-canvas'), data, {
+      onSelect: (name, exists) => {
+        const lbl = $('#graph-label');
+        lbl.textContent = name + (exists ? '' : '  (no note yet)');
+        lbl.hidden = false;
+      },
+      onOpen: (name) => {
+        const note = state.notes.find((n) => n.name.toLowerCase() === name.toLowerCase())
+          || { path: findNotePath(name), name };
+        if (note.path) openNote(note.path, name); else toast('No note for "' + name + '" yet');
+      },
+    });
+  } catch (e) { toast(e.message); }
+}
+function findNotePath(name) {
+  const n = state.notes.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  return n ? n.path : null;
+}
+
+/* ---------- Log ---------- */
+async function openLog() {
+  try {
+    const { log } = await api('/api/log');
+    $('#log-body').innerHTML = log ? mdToHtml(log) : '<p class="hint">No runs logged yet.</p>';
+    openSheet('sheet-log');
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- Settings ---------- */
+async function openSettings() {
+  try {
+    const { config, vaultDir } = await api('/api/config');
+    $('#cfg-vaultPath').value = config.vaultPath;
+    $('#cfg-timezone').value = config.timezone;
+    $('#cfg-languages').value = config.languages;
+    $('#cfg-claudePath').value = config.claudePath;
+    $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
+    openSheet('sheet-settings');
+  } catch (e) { toast(e.message); }
+}
+$('#btn-save-cfg').addEventListener('click', async () => {
+  try {
+    const { vaultDir } = await api('/api/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vaultPath: $('#cfg-vaultPath').value.trim(),
+        timezone: $('#cfg-timezone').value.trim(),
+        languages: $('#cfg-languages').value.trim(),
+        claudePath: $('#cfg-claudePath').value.trim(),
+      }),
+    });
+    $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
+    state.notes = []; state.graph = null;
+    await refreshInbox();
+    toast('Saved · vault: ' + vaultDir);
+  } catch (e) { toast(e.message); }
+});
+
+/* ---------- Helpers ---------- */
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function timeAgo(ms) {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+function fmtDate(iso) {
+  const d = new Date(iso + 'T00:00');
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// Minimal markdown → HTML (headings, bold/italic, code, lists, links, wikilinks, tags, images)
+function mdToHtml(md) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  let html = '', inList = false, inCode = false;
+  const inline = (t) => esc(t)
+    .replace(/!\[\[([^\]]+?)\]\]/g, (_m, f) => `<img src="/vault-files/attachments/${encodeURIComponent(f.trim())}" alt="${f}" onerror="this.style.display='none'">`)
+    .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${esc(name.trim())}">${esc(label || name)}</span>`)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\s)\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/(^|\s)(#[A-Za-z][\w-]*)/g, '$1<span class="tag">$2</span>')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  for (const raw of lines) {
+    if (raw.trim().startsWith('```')) { if (inCode) { html += '</pre>'; inCode = false; } else { closeList(); html += '<pre>'; inCode = true; } continue; }
+    if (inCode) { html += esc(raw) + '\n'; continue; }
+    const line = raw;
+    if (/^#{1,6}\s/.test(line)) { closeList(); const lvl = line.match(/^#+/)[0].length; html += `<h${lvl}>${inline(line.replace(/^#+\s/, ''))}</h${lvl}>`; }
+    else if (/^\s*[-*]\s\[[ xX]\]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } const done = /\[[xX]\]/.test(line); html += `<li>${done ? '☑' : '☐'} ${inline(line.replace(/^\s*[-*]\s\[[ xX]\]\s/, ''))}</li>`; }
+    else if (/^\s*[-*]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(line.replace(/^\s*[-*]\s/, ''))}</li>`; }
+    else if (/^>\s?/.test(line)) { closeList(); html += `<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`; }
+    else if (line.trim() === '---') { closeList(); html += '<hr>'; }
+    else if (line.trim() === '') { closeList(); }
+    else { closeList(); html += `<p>${inline(line)}</p>`; }
+  }
+  closeList(); if (inCode) html += '</pre>';
+  return html;
+}
+function bindWikilinks(root) {
+  $$('.wikilink', root).forEach((el) => {
+    const name = el.dataset.link;
+    const path = findNotePath(name);
+    if (!path) el.classList.add('dangling');
+    el.addEventListener('click', () => { if (path) openNote(path, name); else toast('No note for "' + name + '" yet'); });
+  });
+}
+
+/* ---------- Boot ---------- */
+(async function boot() {
+  await refreshInbox();
+  await loadNotes(true);
+  show('capture');
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+})();

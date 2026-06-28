@@ -1,0 +1,18 @@
+{
+  "name": "lifeos",
+  "version": "1.0.0",
+  "description": "lifeOS — a mobile-first superapp for the capture-once / process-in-batches Obsidian workflow. Capture text, voice and photos into one inbox; a Claude run sorts them into notes, Google Calendar events, TODOs, links/tags and a wikilink graph.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.2.0"
+  }
+}

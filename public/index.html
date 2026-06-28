@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#0d0e12" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>lifeOS</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon.svg" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◇</span>
+        <span class="brand-name">life<b>OS</b></span>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
+        <button class="icon-btn" data-action="open-settings" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <!-- Views -->
+    <main id="views">
+      <!-- CAPTURE -->
+      <section class="view" data-view="capture">
+        <div class="hero">
+          <h1 class="hero-title">What's on your mind?</h1>
+          <p class="hero-sub">Dump it. lifeOS sorts it later.</p>
+        </div>
+        <div class="card capture-card">
+          <textarea id="capture-text" placeholder="Type or dictate… one thing per line.
+e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" rows="4"></textarea>
+          <div id="photo-preview" class="photo-preview hidden"></div>
+          <div class="capture-row">
+            <button class="chip" id="btn-voice" type="button">🎤 <span>Voice</span></button>
+            <label class="chip" for="photo-input">📷 <span>Photo</span></label>
+            <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
+            <div class="spacer"></div>
+            <button class="btn primary" id="btn-add">Add to inbox</button>
+          </div>
+        </div>
+
+        <button class="process-card" id="btn-process">
+          <div class="process-left">
+            <div class="process-title">Process inbox</div>
+            <div class="process-sub"><span id="inbox-count">0</span> waiting · sort → notes, calendar, graph</div>
+          </div>
+          <div class="process-icon">▶</div>
+        </button>
+      </section>
+
+      <!-- INBOX -->
+      <section class="view" data-view="inbox" hidden>
+        <div class="view-head"><h2>Inbox</h2><span class="badge" id="inbox-badge">0</span></div>
+        <ul id="inbox-list" class="list"></ul>
+        <div class="empty" id="inbox-empty" hidden>Inbox is clear. ✦</div>
+      </section>
+
+      <!-- NOTES -->
+      <section class="view" data-view="notes" hidden>
+        <div class="view-head"><h2>Notes</h2></div>
+        <input id="notes-search" class="search" type="search" placeholder="Search notes…" />
+        <ul id="notes-list" class="list"></ul>
+        <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
+      </section>
+
+      <!-- PLAN (tasks/calendar) -->
+      <section class="view" data-view="plan" hidden>
+        <div class="view-head"><h2>Plan</h2></div>
+        <div id="plan-groups"></div>
+        <div class="empty" id="plan-empty" hidden>No tasks yet. Capture a deadline and process it.</div>
+      </section>
+
+      <!-- GRAPH -->
+      <section class="view" data-view="graph" hidden>
+        <div class="view-head"><h2>Graph</h2><span class="muted-sm" id="graph-stats"></span></div>
+        <div class="graph-wrap">
+          <canvas id="graph-canvas"></canvas>
+          <div class="graph-label" id="graph-label" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom nav -->
+    <nav class="tabbar">
+      <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span></button>
+      <button class="tab" data-tab="inbox"><span class="ti">📥</span><span>Inbox</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
+      <button class="tab" data-tab="notes"><span class="ti">📄</span><span>Notes</span></button>
+      <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
+      <button class="tab" data-tab="graph"><span class="ti">⌘</span><span>Graph</span></button>
+    </nav>
+  </div>
+
+  <!-- Sheets / overlays -->
+  <div class="sheet-backdrop" id="backdrop" hidden></div>
+
+  <div class="sheet" id="sheet-process" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <h3 id="process-status">Processing inbox…</h3>
+      <button class="icon-btn" data-action="close-sheet">✕</button>
+    </div>
+    <pre id="process-console" class="console"></pre>
+  </div>
+
+  <div class="sheet" id="sheet-note" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <h3 id="note-title">Note</h3>
+      <button class="icon-btn" data-action="close-sheet">✕</button>
+    </div>
+    <article id="note-body" class="markdown"></article>
+  </div>
+
+  <div class="sheet" id="sheet-log" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Run log</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <article id="log-body" class="markdown"></article>
+  </div>
+
+  <div class="sheet" id="sheet-settings" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Settings</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <div class="settings">
+      <label>Vault path<input id="cfg-vaultPath" /></label>
+      <p class="hint">Point at your real Obsidian vault to go live (e.g. <code>/home/you/Documents/Obsidian Vault</code>).</p>
+      <label>Timezone<input id="cfg-timezone" /></label>
+      <label>Languages<input id="cfg-languages" /></label>
+      <label>claude binary<input id="cfg-claudePath" /></label>
+      <div class="settings-actions">
+        <button class="btn primary" id="btn-save-cfg">Save</button>
+        <span id="cfg-vaultdir" class="hint"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/js/graph.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
