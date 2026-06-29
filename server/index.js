@@ -7,11 +7,13 @@ import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  addHandwritingItem, listNotes, readNote, createNote, updateNote, listFolders, buildGraph,
-  listTasks, toggleTask, readLog, listIdeas, listNeedsFiling,
+  addHandwritingItem, listNotes, readNote, createNote, updateNote, deleteNote, deleteFolder,
+  moveEntry, listFolders, createFolder, searchNotes, buildGraph, listTasks, toggleTask, readLog,
+  listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan,
 } from './vault.js';
 import {
-  runProcessInbox, runResearch, runFind, runWeeklyReview, runRefreshHome, isRunning,
+  runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
+  isRunning,
 } from './process.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -131,7 +133,18 @@ function sseRun(req, res, start) {
   req.on('close', () => kill());
 }
 
-app.get('/api/process/stream', (req, res) => sseRun(req, res, runProcessInbox));
+app.get('/api/process/stream', (req, res) => {
+  // Don't even spawn claude when there's nothing to do — the inbox is empty AND no #draft notes
+  // need optimizing. Saves a whole run's context-load tokens (matters on nightly schedules).
+  if (readInboxItems().length === 0 && !hasDrafts()) {
+    return sseRun(req, res, (on) => {
+      on('status', { state: 'skipped', message: 'Nothing to process — inbox empty, no drafts.' });
+      on('done', { code: 0, skipped: true });
+      return () => {};
+    });
+  }
+  sseRun(req, res, runProcessInbox);
+});
 
 app.get('/api/research/stream', (req, res) => {
   const idea = String(req.query.idea || '').trim();
@@ -139,14 +152,25 @@ app.get('/api/research/stream', (req, res) => {
   sseRun(req, res, (on) => runResearch(idea, on));
 });
 
-app.get('/api/find/stream', (req, res) => {
-  const q = String(req.query.q || '').trim();
-  if (!q) return sseRun(req, res, (on) => { on('error', { message: 'No question given.' }); return () => {}; });
-  sseRun(req, res, (on) => runFind(q, on));
-});
-
 app.get('/api/review/stream', (req, res) => sseRun(req, res, runWeeklyReview));
 app.get('/api/home/stream', (req, res) => sseRun(req, res, runRefreshHome));
+app.get('/api/calsync/stream', (req, res) => sseRun(req, res, runCalSync));
+app.get('/api/autosort/stream', (req, res) => sseRun(req, res, runAutosort));
+
+// ---- AI Chat (read-only advisor over the vault) ----
+// Plain-text streaming (not SSE) so the client can POST the conversation transcript.
+app.post('/api/chat', (req, res) => {
+  const messages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+  if (!messages.length) return fail(res, new Error('no messages'));
+  res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.flushHeaders?.();
+  const kill = runChat(messages, (type, data) => {
+    if (type === 'log' && data.channel === 'out') res.write(data.line + '\n');
+    else if (type === 'error') { res.write('\n[error] ' + data.message); res.end(); }
+    else if (type === 'done') res.end();
+  });
+  req.on('close', () => kill());
+});
 
 // ---- Notes ----
 app.get('/api/notes', (_req, res) => ok(res, { notes: listNotes() }));
@@ -155,6 +179,14 @@ app.get('/api/note', (req, res) => {
   catch (e) { fail(res, e, 404); }
 });
 app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders() }));
+// Create a folder (supports nested subfolders via `Parent/Child`).
+app.post('/api/folders', (req, res) => {
+  try { ok(res, { path: createFolder(req.body && req.body.path) }); } catch (e) { fail(res, e); }
+});
+// Plain-text vault search (no AI) — powers the Find tool.
+app.get('/api/search', (req, res) => {
+  try { ok(res, { results: searchNotes(String(req.query.q || '')) }); } catch (e) { fail(res, e); }
+});
 // Write your own note (in-app editor). Tagged #draft so process-inbox optimizes it later.
 app.post('/api/notes', (req, res) => {
   try { ok(res, { path: createNote(req.body || {}) }); } catch (e) { fail(res, e); }
@@ -163,6 +195,29 @@ app.post('/api/notes', (req, res) => {
 app.post('/api/note/save', (req, res) => {
   try { ok(res, { path: updateNote(req.body.path, req.body.content) }); } catch (e) { fail(res, e); }
 });
+// Delete a note / a folder (path-guarded; protected system files & infra dirs are refused).
+app.delete('/api/note', (req, res) => {
+  try { ok(res, { path: deleteNote(String(req.query.path || '')) }); } catch (e) { fail(res, e); }
+});
+app.delete('/api/folder', (req, res) => {
+  try { ok(res, { path: deleteFolder(String(req.query.path || '')) }); } catch (e) { fail(res, e); }
+});
+// Move a note/folder into another folder (drag-to-move). dest '' = vault root.
+app.post('/api/move', (req, res) => {
+  try { ok(res, { path: moveEntry(req.body && req.body.src, (req.body && req.body.dest) || '') }); }
+  catch (e) { fail(res, e); }
+});
+// Apply a batch of moves (the auto-sort plan). Returns per-item result; never aborts the whole batch.
+app.post('/api/move/batch', (req, res) => {
+  const moves = Array.isArray(req.body && req.body.moves) ? req.body.moves : [];
+  const results = moves.map((m) => {
+    try { return { src: m.src, ok: true, path: moveEntry(m.src, m.dest || '') }; }
+    catch (e) { return { src: m.src, ok: false, error: String(e.message || e) }; }
+  });
+  ok(res, { results, moved: results.filter((r) => r.ok).length });
+});
+// Auto-sort: AI proposes a tidy-up plan (SSE), then read it back to preview before applying.
+app.get('/api/autosort/plan', (_req, res) => ok(res, { moves: readAutosortPlan() }));
 
 // ---- Discover (idea bank / needs filing) ----
 app.get('/api/ideas', (_req, res) => ok(res, { items: listIdeas() }));
@@ -176,6 +231,8 @@ app.post('/api/tasks/toggle', (req, res) => {
   catch (e) { fail(res, e); }
 });
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));
+// Calendar events synced from Google Calendar by the `calsync` run (may be empty until first sync).
+app.get('/api/calendar', (_req, res) => ok(res, { events: readCalendarCache() }));
 
 // ---- Config ----
 app.get('/api/config', (_req, res) => {
@@ -196,7 +253,9 @@ app.get('*', (req, res, next) => {
   res.sendFile(join(PROJECT_ROOT, 'public', 'index.html'));
 });
 
-const { port, host } = cfg;
+// Env overrides win over config (handy for running a second instance / tests on another port).
+const port = Number(process.env.PORT) || cfg.port;
+const host = process.env.HOST || cfg.host;
 app.listen(port, host, () => {
   const lan = Object.values(networkInterfaces())
     .flat()

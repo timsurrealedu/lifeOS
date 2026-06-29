@@ -13,12 +13,21 @@ the whole loop that used to be a skill + vault + cron glue:
   Markdown/KaTeX preview, `[[wikilinks]]`, and an **✍️ ink canvas you can embed mid-note** (math by
   hand, practice problems). Edit any existing note in place. New notes are tagged `#draft` and get
   **auto-polished on the next Process run** — without ever deleting what you wrote.
-- **Browse** — read your notes, see tasks grouped (Overdue / Today / Upcoming), and explore the
-  interactive wikilink **graph** — all from your phone.
-- **Discover** — a second deck of `claude -p` tools over the vault: **Research an idea** (web-searches
-  demand/competition/feasibility and writes a full note to `Ideas/`), **Find** (read-only vault Q&A),
-  the **Idea bank** (`Ideas/`), a **Needs filing** list (`#needs-filing`), plus **Weekly review** and
-  **Refresh Home note**.
+- **Browse** — read your notes, create/delete folders and notes, and explore the interactive wikilink
+  **graph** — all from your phone. The graph also **auto-links every note to its folder's MOC hub**
+  (the note named after the folder), so a note shows up under its course/area even if its own text has
+  no `[[links]]` yet — nothing floats disconnected.
+- **Plan** — your tasks two ways: a **List** (grouped Overdue / Today / Upcoming, soonest deadline
+  first) and a friendly **Calendar** month view built from your dated tasks. A **🔄 Sync** button pulls
+  your real Google Calendar events in on demand; the connector that *creates* events during Process
+  stays as-is.
+- **Chat** — a read-only AI advisor with your whole vault (+ calendar) as context: "what should I
+  focus on today?", "review today's diary", "how should I approach this assignment given the
+  lecturer?". It reads and cites your notes but never changes them.
+- **Discover** — a deck of tools over the vault: **Research an idea** (`claude -p` web-searches
+  demand/competition/feasibility and writes a full note to `Ideas/`), **Find** (instant plain-text
+  search across your notes — no AI, no tokens), the **Idea bank** (`Ideas/`), a **Needs filing** list
+  (`#needs-filing`), plus **Weekly review** and **Refresh Home note**.
 
 It is a thin, friendly front-end over your Obsidian vault. The **vault stays the source of
 truth** (still opens in Obsidian, still syncs); lifeOS is a second way in. The processing brain —
@@ -81,8 +90,28 @@ summaries, math practice. In the **Notes** tab tap **✎ New note**:
   hand-drawn working in one note.
 
 **Editing** — open any note and tap **✎ Edit** in the reader; saving overwrites that file in place
-(never renames or moves it). Synthetic views like a *Find* answer have no source file, so they show
-no Edit button.
+(never renames or moves it).
+
+**Folders** — the Notes tab has a **📁 Folder** button to create folders and subfolders (type
+`Parent/Child` to nest); empty folders show in the tree. The editor's folder picker also accepts a
+nested path, so saving a note can create its folder on the fly.
+
+**Deleting** — hover/tap the **✕** on any folder or note row in the Notes tree, or the **🗑** in the
+reader, to delete it (with a confirm; folder delete is recursive). The files that keep the system
+running are **refused server-side** and never get a delete button: `CLAUDE.md`, `inbox.md`, locks, and
+the infra dirs `.claude/ .git/ .obsidian/ .inbox-archive/ .cache/ attachments/`.
+
+**Moving (drag & drop)** — **long-press** a note or folder in the Notes tree to pick it up, then drag
+it onto another folder (or drop on empty space = vault root) to move it. Works with touch and mouse.
+Moves never break `[[wikilinks]]` (links resolve by title), and the graph's folder-hub links recompute
+to the new home. Infra dirs are refused. Endpoint: `POST /api/move {src,dest}`.
+
+**Auto-sort** — the **✨ Auto-sort** button runs a small AI pass that *proposes* tidying loose
+top-level folders into their domain (e.g. `TODO/`, `stateofmymind/` → `Personal/`, matching the MOC),
+writing the plan to `.cache/autosort.json`. You get a **preview**; **Apply** performs the moves
+server-side (instant, no tokens, reversible by dragging back). lifeOS reads (`TODO`, `Ideas`,
+`Captures`) are **location-independent**, so a reorg never breaks Plan/Calendar or spawns duplicates.
+Endpoints: `GET /api/autosort/stream` (propose), `GET /api/autosort/plan`, `POST /api/move/batch` (apply).
 
 **Auto-polish (`#draft`).** New notes are saved tagged `#draft`. On the next **Process** run the
 engine optimizes each draft *in place* — formatting, LaTeX, `[[links]]`, `#tags`, MOC-hub wiring,
@@ -91,7 +120,11 @@ content**, then drops the `#draft` tag. This step runs even when the inbox is em
 "write a note → Process" is a complete loop. Delete the `#draft` tag to opt a note out.
 
 Endpoints behind this: `POST /api/notes` (create), `POST /api/note/save` (edit),
-`GET /api/folders` (picker), `POST /api/upload/handwriting` (embed a drawing, no inbox item).
+`DELETE /api/note` / `DELETE /api/folder` (delete, guarded), `GET /api/folders` (picker) /
+`POST /api/folders` (create folder), `GET /api/search` (plain-text Find),
+`POST /api/upload/handwriting` (embed a drawing, no inbox item). Chat: `POST /api/chat` (streams a
+read-only answer). Calendar: `GET /api/calendar` (cached events) / `GET /api/calsync/stream` (pull from
+Google Calendar into `.cache/calendar.json`).
 
 ## Recordings & transcription
 
@@ -154,6 +187,38 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 | `claudePath` | path to the `claude` binary (default: `claude` on `PATH`) |
 | `port` / `host` | server bind (default `7777` / `0.0.0.0` = LAN-reachable) |
 | `timezone`, `languages`, `todoPath`, `todoFormat`, `ownerName` | written into the vault's `CLAUDE.md` house rules |
+| `models` | per-task model so cheap runs don't burn a premium one: `{ "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku" }`. Omit a key → CLI default. |
+| `maxTurns` | cap on agent turns per run (runaway-loop guard, default `40`; `0` = no cap) |
+| `fallback` | `{ baseUrl, apiKey, model }` — a provider used **only** when the primary run hits a usage/rate limit. Empty `apiKey` = disabled. |
+
+### Token efficiency
+
+The app keeps `claude -p` token spend down several ways:
+- **Find is AI-free** — plain server-side text search (`/api/search`), no run at all.
+- **Skip-when-idle** — pressing *Process* with an empty inbox and no `#draft` notes returns instantly
+  without spawning a run (saves a whole run on idle nightly schedules).
+- **Per-task models** — Weekly Review / Refresh Home default to Haiku, Process / Research to Sonnet
+  (see `models` above).
+- **Photo downscale** — captures are resized to ~1568px before upload, cutting vision tokens.
+- **`maxTurns`** caps worst-case loops; the `process-inbox` skill is told to grep before reading,
+  avoid re-reads, and keep summaries short.
+
+### Fallback provider (DeepSeek / GLM)
+
+Both DeepSeek and GLM expose **Anthropic-compatible** endpoints, so the same `claude` CLI and vault
+skills keep working — only the backend changes. Set it in **⚙ Settings → Fallback AI** (or in
+`config.json`). When a primary run dies with a usage/rate-limit error, lifeOS automatically retries
+the same prompt once on the fallback and notes it in the run log.
+
+```jsonc
+// DeepSeek (V4 native ids: deepseek-v4-pro = strongest, deepseek-v4-flash = cheap/fast)
+"fallback": { "baseUrl": "https://api.deepseek.com/anthropic", "apiKey": "sk-…", "model": "deepseek-v4-pro" }
+// GLM (Z.ai)
+"fallback": { "baseUrl": "https://api.z.ai/api/anthropic",     "apiKey": "…",    "model": "glm-4.6" }
+```
+
+`config.json` is gitignored, so the key stays local. Tool-use quality on these providers is below
+Claude — treat the fallback as a safety net, not the default path.
 
 ## Layout
 
@@ -161,7 +226,7 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 server/
   index.js     Express API + SSE + static host
   vault.js     scaffold + inbox/notes/graph/tasks logic
-  process.js   spawns & streams claude runs (process / research / find / review / home)
+  process.js   spawns & streams claude runs (process / research / review / home / chat / calsync / autosort)
   config.js    config load/save
   templates/   CLAUDE.md + process-inbox SKILL.md seeded into new vaults
 public/        mobile-first PWA (vanilla JS, no build step)

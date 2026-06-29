@@ -7,5 +7,15 @@
   "languages": "English + Indonesian",
   "todoPath": "TODO/{year}/{month}.md",
   "todoFormat": "- [ ] DD Mon DESC",
-  "ownerName": "Tim"
+  "ownerName": "Tim",
+  "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku" },
+  "maxTurns": 40,
+  "fallback": {
+    "_comment": "Used only when the primary run hits a usage/rate limit. DeepSeek/GLM expose Anthropic-compatible endpoints. Leave apiKey empty to disable.",
+    "_deepseek_example": { "baseUrl": "https://api.deepseek.com/anthropic", "model": "deepseek-v4-pro (or deepseek-v4-flash)" },
+    "_glm_example": { "baseUrl": "https://api.z.ai/api/anthropic", "model": "glm-4.6" },
+    "baseUrl": "",
+    "apiKey": "",
+    "model": ""
+  }
 }

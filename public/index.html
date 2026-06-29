@@ -31,6 +31,16 @@
     <main id="views">
       <!-- CAPTURE -->
       <section class="view" data-view="capture">
+        <div class="cap-toggle">
+          <div class="seg" id="capture-seg">
+            <button class="seg-btn active" data-cap="capture">✎ Capture</button>
+            <button class="seg-btn" data-cap="chat">💬 Chat</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="chip" id="chat-clear" hidden>Clear chat</button>
+        </div>
+
+        <div id="capture-main">
         <div class="hero">
           <h1 class="hero-title">What's on your mind?</h1>
           <p class="hero-sub">Dump it. lifeOS sorts it later.</p>
@@ -64,6 +74,26 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         <div class="view-head sub"><h3>Inbox</h3><span class="badge" id="inbox-badge">0</span></div>
         <ul id="inbox-list" class="list"></ul>
         <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
+        </div><!-- /capture-main -->
+
+        <!-- Chat (read-only advisor over the vault) — lives on the Capture page -->
+        <div id="capture-chat" class="chat-view" hidden>
+          <div class="chat-thread" id="chat-thread">
+            <div class="chat-intro" id="chat-intro">
+              <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
+              <div class="chat-chips">
+                <button class="suggest">What should I focus on today?</button>
+                <button class="suggest">Review today's diary</button>
+                <button class="suggest">What's open or overdue?</button>
+                <button class="suggest">How should I approach my next assignment?</button>
+              </div>
+            </div>
+          </div>
+          <form class="chat-bar" id="chat-bar">
+            <input id="chat-input" class="chat-input" placeholder="Ask about your day, notes, tasks…" autocomplete="off" />
+            <button class="btn primary" id="chat-send" type="submit">Send</button>
+          </form>
+        </div>
       </section>
 
       <!-- DISCOVER -->
@@ -79,9 +109,10 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
         <div class="card tool-card">
           <h3 class="tool-title">🔍 Find</h3>
-          <p class="tool-desc">Ask a question; Claude searches the vault and answers (read-only).</p>
-          <input id="find-input" class="tool-input" placeholder="where did I write about graph theory?" />
+          <p class="tool-desc">Instant text search across your notes — no AI, no tokens. Type a word or phrase.</p>
+          <input id="find-input" class="tool-input" placeholder="graph theory" />
           <button class="btn primary tool-btn" id="btn-find">Search vault →</button>
+          <ul id="find-results" class="list find-results"></ul>
         </div>
 
         <div class="view-head sub"><h3>Needs filing</h3><span class="badge" id="needs-badge">0</span></div>
@@ -101,17 +132,45 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
       <!-- NOTES -->
       <section class="view" data-view="notes" hidden>
-        <div class="view-head"><h2>Notes</h2><div class="spacer"></div><button class="btn primary sm" id="btn-new-note">✎ New note</button></div>
+        <div class="view-head"><h2>Notes</h2><div class="spacer"></div><button class="btn sm" id="btn-autosort">✨ Auto-sort</button><button class="btn sm" id="btn-new-folder">📁 Folder</button><button class="btn primary sm" id="btn-new-note">✎ New note</button></div>
         <input id="notes-search" class="search" type="search" placeholder="Search notes…" />
         <ul id="notes-list" class="list"></ul>
         <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
       </section>
 
-      <!-- PLAN (tasks/calendar) -->
+      <!-- PLAN (tasks list + calendar) -->
       <section class="view" data-view="plan" hidden>
-        <div class="view-head"><h2>Plan</h2></div>
-        <div id="plan-groups"></div>
-        <div class="empty" id="plan-empty" hidden>No tasks yet. Capture a deadline and process it.</div>
+        <div class="view-head">
+          <h2>Plan</h2>
+          <div class="spacer"></div>
+          <div class="seg" id="plan-seg">
+            <button class="seg-btn active" data-plan-view="list">List</button>
+            <button class="seg-btn" data-plan-view="calendar">Calendar</button>
+          </div>
+        </div>
+
+        <!-- List mode -->
+        <div id="plan-list">
+          <div id="plan-groups"></div>
+          <div class="empty" id="plan-empty" hidden>No tasks yet. Capture a deadline and process it.</div>
+        </div>
+
+        <!-- Calendar mode -->
+        <div id="plan-calendar" hidden>
+          <div class="cal-head">
+            <button class="icon-btn" id="cal-prev" aria-label="Previous month">‹</button>
+            <h3 id="cal-title">—</h3>
+            <button class="icon-btn" id="cal-next" aria-label="Next month">›</button>
+            <div class="spacer"></div>
+            <button class="chip" id="cal-today">Today</button>
+            <button class="chip" id="cal-sync" title="Pull events from Google Calendar">🔄 Sync</button>
+          </div>
+          <div class="cal-grid-head">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <div class="cal-agenda" id="cal-agenda"></div>
+        </div>
       </section>
 
       <!-- GRAPH -->
@@ -171,9 +230,30 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>Timezone<input id="cfg-timezone" /></label>
       <label>Languages<input id="cfg-languages" /></label>
       <label>claude binary<input id="cfg-claudePath" /></label>
+
+      <h4 class="settings-sub">Fallback AI</h4>
+      <p class="hint">Used only when a run hits its usage/rate limit. DeepSeek and GLM expose Anthropic-compatible endpoints, so the same workflow keeps running. Leave the key empty to disable.</p>
+      <label>Base URL<input id="cfg-fb-baseUrl" placeholder="https://api.deepseek.com/anthropic" autocomplete="off" /></label>
+      <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
+      <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
+
       <div class="settings-actions">
         <button class="btn primary" id="btn-save-cfg">Save</button>
         <span id="cfg-vaultdir" class="hint"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auto-sort preview sheet -->
+  <div class="sheet" id="sheet-autosort" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Auto-sort preview</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <div class="autosort-body">
+      <p class="hint" id="autosort-intro">Proposed moves to tidy loose folders into their domain. Nothing moves until you Apply.</p>
+      <ul id="autosort-list" class="list"></ul>
+      <div class="settings-actions">
+        <button class="btn primary" id="btn-autosort-apply">Apply all</button>
+        <button class="btn sm" data-action="close-sheet">Cancel</button>
       </div>
     </div>
   </div>
@@ -251,6 +331,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     <header class="reader-head">
       <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
       <h2 id="reader-title">Note</h2>
+      <button class="icon-btn" id="reader-del" title="Delete note" aria-label="Delete note" hidden>🗑</button>
       <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
     </header>
     <article id="reader-body" class="markdown reader-body"></article>

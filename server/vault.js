@@ -1,5 +1,6 @@
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, copyFileSync,
+  unlinkSync, rmSync, renameSync,
 } from 'node:fs';
 import { join, dirname, relative, sep, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,18 +23,61 @@ When processed, lines are moved out and this list is cleared.
 -
 `;
 
-const IGNORE_DIRS = new Set(['.claude', '.inbox-archive', '.git', '.obsidian', 'node_modules']);
+const IGNORE_DIRS = new Set(['.claude', '.inbox-archive', '.git', '.obsidian', 'node_modules', '.cache']);
 // Infrastructure markdown that isn't a "note" (excluded from the notes list + graph).
 const IGNORE_FILES = new Set(['CLAUDE.md', 'inbox.md']);
+
+// Things the in-app delete must NEVER remove — they keep the system working.
+const PROTECTED_FILES = new Set(['CLAUDE.md', 'inbox.md', 'inbox.lock']);
+const RESERVED_DIRS = new Set([
+  '.claude', '.git', '.obsidian', '.inbox-archive', 'node_modules', '.cache', 'attachments',
+]);
+
+/**
+ * First folder with this basename **anywhere** under the vault (slash-joined relative path), or null.
+ * Lets reads stay correct after the user moves a folder (e.g. `TODO/` → `Personal/TODO/`).
+ */
+function findDir(name, dir = vaultDir(), root = vaultDir()) {
+  let entries;
+  try { entries = readdirSync(dir); } catch { return null; }
+  for (const n of entries) {
+    if (IGNORE_DIRS.has(n) || n === 'attachments') continue;
+    const full = join(dir, n);
+    let st; try { st = statSync(full); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    if (n === name) return relative(root, full).split(sep).join('/');
+    const sub = findDir(name, full, root);
+    if (sub) return sub;
+  }
+  return null;
+}
+
+/** Absolute path to a vault folder wherever it lives (falls back to the root location). */
+function dirPath(name) {
+  const rel = findDir(name);
+  return rel ? join(vaultDir(), rel) : join(vaultDir(), name);
+}
+
+/** True if a note with this basename exists anywhere (so we don't re-scaffold a moved hub note). */
+function noteExists(name) {
+  const root = vaultDir();
+  if (!existsSync(root)) return false;
+  return walk(root, root, []).some((n) => n.name.toLowerCase() === name.toLowerCase());
+}
 
 /** Create the vault scaffold on first run (idempotent — never clobbers existing files). */
 export function ensureVault(cfg = loadConfig()) {
   const root = vaultDir(cfg);
   mkdirSync(root, { recursive: true });
-  for (const d of ['Captures', '.inbox-archive', 'attachments', join('attachments', 'recordings'),
-    join('attachments', 'handwriting'),
-    'University', 'Personal', 'Ideas', 'Drafts', 'Reviews', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
+  // Infra dirs always live at the vault root (never moved).
+  for (const d of ['.inbox-archive', 'attachments', join('attachments', 'recordings'),
+    join('attachments', 'handwriting'), join('.claude', 'skills', 'process-inbox')]) {
     mkdirSync(join(root, d), { recursive: true });
+  }
+  // Content/domain folders: only scaffold at root if they don't already exist *somewhere* — the user
+  // may have moved them under a domain (e.g. Personal/TODO), and we must not duplicate them.
+  for (const d of ['Captures', 'University', 'Personal', 'Ideas', 'Drafts', 'Reviews', 'TODO']) {
+    if (!findDir(d, root, root)) mkdirSync(join(root, d), { recursive: true });
   }
 
   writeIfMissing(join(root, 'inbox.md'), INBOX_EMPTY);
@@ -50,19 +94,15 @@ export function ensureVault(cfg = loadConfig()) {
     copyFileSync(skillSrc, skillDst);
   }
 
-  // Starter MOC hubs so the graph isn't empty and the skill has anchors to link into.
-  writeIfMissing(join(root, 'University.md'),
-    '# University\n\nTop-level hub for courses and study material.\n\n## Areas\n\n');
-  writeIfMissing(join(root, 'Personal.md'),
-    '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n- [[TODO]]\n- [[Ideas]]\n');
-  writeIfMissing(join(root, 'TODO.md'),
-    '# TODO\n\nHub for monthly checklists.\n\n→ [[Personal]]\n\n## Months\n\n');
-  writeIfMissing(join(root, 'Ideas.md'),
-    '# Ideas\n\nHub for researched ideas. The **Research an idea** tool writes full notes here.\n\n→ [[Personal]]\n\n## Bank\n\n');
-  writeIfMissing(join(root, 'Home.md'),
-    '# Home\n\nDashboard MOC. Use **Refresh Home note** to regenerate this from the current vault.\n\n## Hubs\n\n- [[University]]\n- [[Personal]]\n- [[TODO]]\n- [[Ideas]]\n');
-  writeIfMissing(join(root, 'Welcome.md'),
-    '# Welcome to lifeOS\n\nCapture anything into the inbox; press **Process** and a Claude run files it into notes, '
+  // Starter MOC hubs so the graph isn't empty and the skill has anchors to link into. Only create a
+  // hub if a note of that name doesn't already exist anywhere (it may have been moved into a folder).
+  const hub = (name, body) => { if (!noteExists(name)) writeIfMissing(join(root, `${name}.md`), body); };
+  hub('University', '# University\n\nTop-level hub for courses and study material.\n\n## Areas\n\n');
+  hub('Personal', '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n- [[TODO]]\n- [[Ideas]]\n');
+  hub('TODO', '# TODO\n\nHub for monthly checklists.\n\n→ [[Personal]]\n\n## Months\n\n');
+  hub('Ideas', '# Ideas\n\nHub for researched ideas. The **Research an idea** tool writes full notes here.\n\n→ [[Personal]]\n\n## Bank\n\n');
+  hub('Home', '# Home\n\nDashboard MOC. Use **Refresh Home note** to regenerate this from the current vault.\n\n## Hubs\n\n- [[University]]\n- [[Personal]]\n- [[TODO]]\n- [[Ideas]]\n');
+  hub('Welcome', '# Welcome to lifeOS\n\nCapture anything into the inbox; press **Process** and a Claude run files it into notes, '
     + 'Google Calendar, TODOs and the graph.\n\n#meta → [[Personal]]\n');
   return root;
 }
@@ -175,9 +215,17 @@ export function listNotes() {
 /** Notes living under the Ideas/ folder, newest first (the "Idea Bank"). */
 export function listIdeas() {
   const root = vaultDir();
-  const dir = join(root, 'Ideas');
+  const dir = dirPath('Ideas'); // wherever the Ideas/ folder lives
   if (!existsSync(dir)) return [];
   return walk(dir, root, []).sort((a, b) => b.mtime - a.mtime);
+}
+
+/** True if any note still carries a #draft tag (work for process-inbox to optimize). */
+export function hasDrafts() {
+  const root = vaultDir();
+  if (!existsSync(root)) return false;
+  return walk(root, root, [])
+    .some((n) => /(^|\s)#draft\b/.test(readFileSync(join(root, n.path), 'utf8')));
 }
 
 /** Notes tagged #needs-filing — captures the process run parked without a home. */
@@ -195,6 +243,70 @@ export function readNote(relPath) {
   // path-traversal guard
   if (!full.startsWith(root) || !existsSync(full)) throw new Error('not found');
   return readFileSync(full, 'utf8');
+}
+
+/**
+ * Create an (empty) folder, with subfolders via `/` (e.g.
+ * `University/Scientific Computing/UAS`). Path-guarded and idempotent (mkdir recursive),
+ * so it doubles as "ensure this nested path exists". Strips characters illegal in
+ * filenames per segment. Returns the cleaned relative path.
+ */
+export function createFolder(relPath) {
+  const root = vaultDir();
+  const clean = String(relPath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((s) => s.replace(/[<>:"|?*]/g, '').trim())
+    .filter(Boolean)
+    .join('/');
+  if (!clean) throw new Error('folder name required');
+  const dir = join(root, clean);
+  if (!dir.startsWith(root)) throw new Error('bad folder'); // path-traversal guard
+  mkdirSync(dir, { recursive: true });
+  return clean;
+}
+
+/**
+ * Plain-text search across the vault's notes — **no AI, no tokens.** Splits the query
+ * into terms, ranks each note by how many terms hit (title matches weighted heavily),
+ * and returns a snippet around the first body match. Powers the in-app "Find" tool.
+ */
+export function searchNotes(query, limit = 40) {
+  const root = vaultDir();
+  if (!existsSync(root)) return [];
+  const terms = String(query || '').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [];
+  if (!terms.length) return [];
+  const out = [];
+  for (const n of walk(root, root, [])) {
+    const text = readFileSync(join(root, n.path), 'utf8');
+    const hay = text.toLowerCase();
+    const nameHay = n.name.toLowerCase();
+    let score = 0, hits = 0;
+    for (const t of terms) {
+      if (nameHay.includes(t)) score += 5;
+      const c = hay.split(t).length - 1;
+      if (c > 0) { hits++; score += Math.min(c, 5); } // diminishing returns per term
+    }
+    if (score === 0) continue;
+    score += hits * 2; // reward notes that match more distinct terms
+    out.push({ ...n, score, snippet: makeSnippet(text, terms) });
+  }
+  out.sort((a, b) => b.score - a.score || b.mtime - a.mtime);
+  return out.slice(0, limit);
+}
+
+/** A ~180-char excerpt around the earliest matching term, for search result previews. */
+function makeSnippet(text, terms) {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const low = flat.toLowerCase();
+  let at = -1;
+  for (const t of terms) {
+    const i = low.indexOf(t);
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  if (at < 0) return flat.slice(0, 160);
+  const start = Math.max(0, at - 60);
+  return (start > 0 ? '…' : '') + flat.slice(start, start + 180).trim() + '…';
 }
 
 /** Every folder in the vault (relative, slash-joined) for the editor's folder picker. */
@@ -257,6 +369,85 @@ export function updateNote(relPath, content) {
   return relative(root, full).split(sep).join('/');
 }
 
+/** First path segment (e.g. ".claude" from ".claude/skills/x.md"), for the reserved-dir guard. */
+function topSegment(relPath) {
+  return String(relPath || '').replace(/\\/g, '/').split('/').filter(Boolean)[0] || '';
+}
+
+/**
+ * Delete a single note. Refuses anything that keeps the system running — the protected files
+ * (`CLAUDE.md`, `inbox.md`, locks) and anything inside a reserved infra dir (`.claude`, attachments…).
+ */
+export function deleteNote(relPath) {
+  const root = vaultDir();
+  const full = join(root, String(relPath || ''));
+  if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
+  if (PROTECTED_FILES.has(basename(full)) || RESERVED_DIRS.has(topSegment(relPath))) {
+    throw new Error('that file is protected');
+  }
+  unlinkSync(full);
+  return relative(root, full).split(sep).join('/');
+}
+
+/**
+ * Delete a folder and everything under it. Refuses the vault root, reserved infra dirs, and (as a
+ * safety net) any folder that still contains a protected file somewhere inside it.
+ */
+export function deleteFolder(relPath) {
+  const root = vaultDir();
+  const clean = String(relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!clean) throw new Error('bad folder');
+  const dir = join(root, clean);
+  if (!dir.startsWith(root) || dir === root) throw new Error('bad folder');
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new Error('not found');
+  if (RESERVED_DIRS.has(topSegment(clean))) throw new Error('that folder is protected');
+  // Don't let a delete take out a protected file that somehow lives under here.
+  for (const n of walk(dir, root, [])) {
+    if (PROTECTED_FILES.has(basename(n.path))) throw new Error('folder contains a protected file');
+  }
+  rmSync(dir, { recursive: true, force: true });
+  return clean;
+}
+
+/**
+ * Move a note or folder into `destFolder` (`''` = vault root). Used by drag-to-move and the auto-sort
+ * apply step. Refuses protected files / reserved infra dirs (as src or dest), and won't drop a folder
+ * into itself or a descendant. Collisions auto-suffix the basename so nothing is clobbered. Links are
+ * by title, so a move never breaks `[[wikilinks]]`. Returns the new relative path.
+ */
+export function moveEntry(src, destFolder) {
+  const root = vaultDir();
+  const srcRel = String(src || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const destRel = String(destFolder || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!srcRel) throw new Error('bad source');
+  const srcAbs = join(root, srcRel);
+  if (!srcAbs.startsWith(root) || srcAbs === root || !existsSync(srcAbs)) throw new Error('source not found');
+
+  const name = basename(srcAbs);
+  const isDir = statSync(srcAbs).isDirectory();
+  // Guard the source: protected files, and reserved infra dirs (by their top segment).
+  if (!isDir && PROTECTED_FILES.has(name)) throw new Error('that file is protected');
+  if (RESERVED_DIRS.has(topSegment(srcRel))) throw new Error('that item is protected');
+
+  const destAbs = destRel ? join(root, destRel) : root;
+  if (!destAbs.startsWith(root)) throw new Error('bad destination');
+  if (destRel && RESERVED_DIRS.has(topSegment(destRel))) throw new Error('destination is protected');
+  // Can't move a folder into itself or one of its own descendants.
+  if (isDir && (destAbs === srcAbs || (destAbs + sep).startsWith(srcAbs + sep))) {
+    throw new Error("can't move a folder into itself");
+  }
+  if (join(srcAbs, '..') === destAbs) return srcRel; // already there → no-op
+
+  mkdirSync(destAbs, { recursive: true });
+  // Auto-suffix on collision so we never clobber an existing note/folder.
+  const ext = isDir ? '' : extname(name);
+  const base = isDir ? name : basename(name, ext);
+  let target = join(destAbs, name), i = 2;
+  while (existsSync(target)) { target = join(destAbs, `${base} ${i++}${ext}`); }
+  renameSync(srcAbs, target);
+  return relative(root, target).split(sep).join('/');
+}
+
 // ---------- Graph (wikilinks) ----------
 
 export function buildGraph() {
@@ -266,20 +457,44 @@ export function buildGraph() {
   const idByName = new Map();
   for (const n of notes) idByName.set(n.name.toLowerCase(), n.name);
 
+  // A folder's "hub" is the note sitting directly inside it whose name matches the folder name,
+  // ignoring spaces/case/punctuation — so `…/ComputerNetwork/Computer Network.md` is the hub of the
+  // `ComputerNetwork` folder, and `…/SEM2/SEM 2.md` is the hub of `SEM2`. Subfolders without such a
+  // note (e.g. `Kelas/`, `UAS/`) simply have no hub and are skipped.
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hubByFolder = new Map();
+  for (const n of notes) {
+    const parts = n.path.split('/');
+    if (parts.length < 2) continue;
+    const folder = parts.slice(0, -1).join('/');
+    const folderName = parts[parts.length - 2];
+    if (norm(n.name) === norm(folderName)) hubByFolder.set(folder, n.name);
+  }
+
   const degree = new Map();
   const links = [];
   const seen = new Set();
+  const addLink = (source, target, implicit = false) => {
+    const key = source.toLowerCase() + '→' + target.toLowerCase();
+    if (source.toLowerCase() === target.toLowerCase() || seen.has(key)) return;
+    seen.add(key);
+    links.push(implicit ? { source, target, implicit: true } : { source, target });
+    degree.set(source, (degree.get(source) || 0) + 1);
+    degree.set(target, (degree.get(target) || 0) + 1);
+  };
+
   for (const n of notes) {
     const text = readFileSync(join(root, n.path), 'utf8');
-    const matches = text.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g);
-    for (const m of matches) {
-      const target = m[1].trim();
-      const key = n.name.toLowerCase() + '→' + target.toLowerCase();
-      if (target.toLowerCase() === n.name.toLowerCase() || seen.has(key)) continue;
-      seen.add(key);
-      links.push({ source: n.name, target });
-      degree.set(n.name, (degree.get(n.name) || 0) + 1);
-      degree.set(target, (degree.get(target) || 0) + 1);
+    for (const m of text.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) addLink(n.name, m[1].trim());
+
+    // Implicit MOC link: connect every note to the hub of its **nearest ancestor folder that has
+    // one** — so a note appears under its course/area in the graph even when its own text has no
+    // wikilinks (garbage content) or it was never listed in the hub. E.g. a note in
+    // `BINUS/SEM2/ComputerNetwork/Kelas/Session 2.md` links to the `Computer Network` hub.
+    const parts = n.path.split('/');
+    for (let i = parts.length - 2; i >= 0; i--) {
+      const hub = hubByFolder.get(parts.slice(0, i + 1).join('/'));
+      if (hub && hub.toLowerCase() !== n.name.toLowerCase()) { addLink(n.name, hub, true); break; }
     }
   }
   // include link targets that have no file yet (dangling)
@@ -301,7 +516,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** Parse all checkbox lines from TODO/ files into structured tasks. */
 export function listTasks() {
   const root = vaultDir();
-  const todoDir = join(root, 'TODO');
+  const todoDir = dirPath('TODO'); // wherever the TODO/ folder lives (e.g. Personal/TODO)
   const out = [];
   if (!existsSync(todoDir)) return out;
   const files = walk(todoDir, root, []);
@@ -347,6 +562,33 @@ export function toggleTask(relPath, line) {
 // ---------- Log ----------
 
 export function readLog() {
-  const path = join(vaultDir(), 'Captures', 'Inbox Log.md');
+  const path = join(dirPath('Captures'), 'Inbox Log.md'); // wherever Captures/ lives
   return existsSync(path) ? readFileSync(path, 'utf8') : '';
+}
+
+// ---------- Calendar cache ----------
+
+/** Events pulled from Google Calendar by the `calsync` run (written to `.cache/calendar.json`). */
+export function readCalendarCache() {
+  const path = join(vaultDir(), '.cache', 'calendar.json');
+  if (!existsSync(path)) return [];
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    return Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : []);
+  } catch { return []; }
+}
+
+/** Move proposal written by the `autosort` run (`.cache/autosort.json`). Validated: src must exist. */
+export function readAutosortPlan() {
+  const root = vaultDir();
+  const path = join(root, '.cache', 'autosort.json');
+  if (!existsSync(path)) return [];
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    const arr = Array.isArray(data) ? data : (Array.isArray(data.moves) ? data.moves : []);
+    return arr
+      .filter((m) => m && typeof m.src === 'string' && typeof m.dest === 'string')
+      .map((m) => ({ src: m.src.replace(/^\/+|\/+$/g, ''), dest: m.dest.replace(/^\/+|\/+$/g, ''), reason: m.reason || '' }))
+      .filter((m) => m.src && existsSync(join(root, m.src)));
+  } catch { return []; }
 }

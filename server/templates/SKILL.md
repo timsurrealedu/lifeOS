@@ -2,7 +2,10 @@
 name: process-inbox
 description: Sort everything dumped into the vault's inbox.md — photos, dictated/typed notes, dates, and fleeting thoughts — into proper Obsidian notes, push deadlines/events to Google Calendar, add links/tags, then clear the inbox. Use when the user says "process inbox", "sort my inbox", "process my notes", or on a scheduled nightly run.
 ---
-<!-- GENERATED COPY — do not edit here. Edit obsidianAutomation/skills/process-inbox/SKILL.md, then run sync-skill.sh. -->
+<!-- MANAGED FILE — this is the source of truth at server/templates/SKILL.md. ensureVault() copies
+     it into each vault's .claude/skills/process-inbox/SKILL.md on server start (re-syncing when it
+     differs), so edits here reach existing vaults. Don't hand-edit the copy inside a vault. -->
+<!-- (Find is a plain local text search now — it does not run this or any skill.) -->
 
 # Process Inbox
 
@@ -10,6 +13,18 @@ Turn the raw dump in `inbox.md` into an organized vault + up-to-date calendar.
 Read `CLAUDE.md` in the vault root first — it defines this user's timezone, language(s),
 folder structure, TODO format, and any **current term / active period** that new material
 defaults into. Follow those, not any examples baked in here.
+
+## Token economy (this run costs the user money — be lean)
+Do the job fully, but don't waste reads/turns:
+- **Search before you read.** Use `Grep` with specific terms (and scope to the relevant area folder)
+  to find the few notes you need — don't `Read` whole folders or files you don't need.
+- **Resolve the area with the cheapest signal first:** an explicit hint in the inbox line, then the
+  filename, then a quick targeted grep — only skim note contents if those don't settle it.
+- **Don't re-read** a file you already read this run; remember what you saw.
+- **Read each image once.** Extract everything you need from a photo/handwriting in one pass.
+- **Touch only what you must** — open a hub to add a link, don't re-read the whole vault to "check".
+- Keep the **final summary to a few lines** (item count, calendar, notes created + their hubs,
+  anything `#needs-filing`). No essays.
 
 ## 0. Lock (prevent double-processing across machines)
 1. Check for `inbox.lock` in the vault root. If it exists and is newer than ~30 min, **stop** and tell the user another run may be in progress.
@@ -36,7 +51,7 @@ Go line by line. An item is one of:
 
 **A) Event / deadline / date** — contains a date, time, or scheduling words (exam, deadline, due, meeting, a day name, etc., in any of the user's languages).
   → Create a **Google Calendar** event using the timezone from `CLAUDE.md`. Use the stated time, or an all-day event if only a date is given. Title = the short description; extra detail → event description.
-  → **Also** add a checkbox to the user's TODO file (path + format defined in `CLAUDE.md`). If the period/month file doesn't exist, create it, add `→ [[TODO]]` at the bottom, and list it under the `[[TODO]]` hub.
+  → **Also** add a checkbox to the user's TODO file (format defined in `CLAUDE.md`). **Find the existing `TODO/` folder wherever it lives** (it may have been moved under a domain, e.g. `Personal/TODO/`) and write into that one — **never create a second `TODO/` at the root.** If the period/month file doesn't exist, create it inside the existing `TODO/`, add `→ [[TODO]]` at the bottom, and list it under the `[[TODO]]` hub.
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
 
@@ -65,6 +80,9 @@ Go line by line. An item is one of:
 
   **Note filing convention — ONE NOTE PER TOPIC:**
   - Split by **topic, not by photo or whole session.** Two topics in one class → two notes.
+  - **Subfolders are allowed and encouraged** to group related material — e.g. an exam's notes go in
+    `University/<Course>/UAS/` (or `/UTS/`, `/Labs/`). Create the subfolder by just writing the note
+    at that path. The subfolder is storage only; linking still happens in the **course** hub (§3).
   - **If a note for this topic already exists** in the area, **append** to it (dated sub-heading) — don't duplicate.
   - **Filename:** `Session <N> — <Topic>.md` when the session/sequence number is clearly determinable; if ambiguous, **date-stamp instead**: `Session <YYYY-MM-DD> — <Topic>.md`. Never ask about the number — fall back to the date.
   - Inside: an H1 of the topic, summary in the vault style, footer `→ [[Area]]`. Add the note as a `[[link]]` in the area's MOC.
@@ -100,16 +118,64 @@ If a captured item mentions a **known area** (the areas defined in `CLAUDE.md`, 
 ### Maintain the MOC (Map of Content) hub hierarchy
 Each area has a hub note **named exactly after the area** (so `[[Area Name]]` resolves to it) that
 drives the graph view. Hubs can nest into a tree (see the structure described in `CLAUDE.md`),
-e.g. `note → course hub → semester/parent hub → top-level hub`. Whenever you create/update a note:
-1. Add a `[[link]]` to it under the right section of its hub. Append, don't reorder.
-2. Make the note link **back** to its hub (footer `→ [[Area Name]]`) so the graph clusters.
-3. **Keep the chain intact going up:** if a hub at any level doesn't exist, create it (named after
-   that level), link it down to its children and up to its parent (`→ [[Parent]]`), and list it
-   under the parent hub. Top-level areas have no parent.
-- Always link to hub *names*, never file paths, so links resolve to the hubs.
+e.g. `note → course hub → semester/parent hub → top-level hub`.
+
+**Linking is not optional and not "for later" — do it for every note the moment you write it.**
+The #1 failure on past runs was creating notes (e.g. a `Kisi-kisi`/overview note and per-topic
+notes like *Turunan Numerik*) but leaving them **orphaned** — not listed in their hub. Do not let
+that happen. For **each** note you create or update:
+
+1. **Edit the hub note and add a `[[Note Name]]` bullet** under the right section. Append to the list;
+   don't reorder existing entries. If the right section doesn't exist, add a `## ` heading.
+   - **🚨 NEVER put a folder/path inside `[[ ]]`.** Links resolve by the note's **title only**; a `/`
+     inside the brackets makes the link dangle (grey, orphaned). This is the most common bug — the part
+     before any `|` MUST be the exact note filename without `.md` and without any folder prefix:
+     ✅ `[[Session 2]]`, `[[Kisi-kisi UAS]]`, `[[19 des 2025|19 Des 2025]]` (alias OK) —
+     ❌ `[[Kelas/Session 2|Session 2]]`, ❌ `[[UAS/Kisi-kisi UAS]]`, ❌ `[[RAJUM/19 des 2025]]`.
+2. **Add a back-link footer** to the note itself: `→ [[Area Name]]` on its own last line.
+3. **Repair the chain going up:** if a hub at any level is missing, create it (named exactly after
+   that level), list its children in it, give it its own `→ [[Parent]]` footer, and add it under the
+   parent hub. Top-level domain hubs have no parent.
+4. A **subfolder does not change linking.** If you file topic notes under
+   `University/<Course>/UAS/`, they are still listed in the **course** hub `[[<Course>]]` (the hub
+   lives at the course level, not per-folder) — the folder is just storage, the hub is the graph.
+
+**Worked example** — overview + per-topic notes for one course's exam:
+```
+University/Scientific Computing.md          ← the hub, named exactly "Scientific Computing"
+  # Scientific Computing
+  ## UAS
+  - [[Kisi-kisi UAS]]
+  - [[Turunan Numerik & Richardson]]
+  - [[Integral Simpson]]
+  - [[PDB Euler (RK1)]]
+  → [[University]]
+
+University/Scientific Computing/UAS/Turunan Numerik & Richardson.md
+  # Turunan Numerik & Richardson
+  …content…
+  → [[Scientific Computing]]
+```
+Every per-topic note appears **both** as a `[[link]]` in the hub **and** carries a `→ [[hub]]`
+footer. An overview/`Kisi-kisi` note is linked the same way — it is never left unlinked.
+
+## 3b. Link audit (do this before clearing the inbox)
+Before you log or clear anything, **verify every note you touched this run is wired into the graph** —
+this is what was getting skipped:
+1. Make a list of every note you created or updated.
+2. For each, confirm **both**: (a) it has a `→ [[Hub]]` footer, and (b) its **exact title appears as a
+   `[[link]]` in that hub note** (grep the hub for the title). If either is missing, fix it now.
+3. **Grep every note you touched (and the hubs) for `[[` containing a `/`** — e.g. `grep -n "\[\[[^]]*/" <file>`.
+   A slash inside a wikilink is always a bug: strip everything up to and including the last `/` so the
+   target is the bare note title (keep any `|alias`). `[[Kelas/Session 2|Session 2]]` → `[[Session 2]]`.
+4. Confirm each hub you linked into actually **exists as a file** (or you created it this run) so the
+   links aren't dangling, and that every hub chains up to its top-level domain.
+Only once every new note resolves up to a top-level hub — with no `/` inside any `[[link]]` — do you move on.
 
 ## 4. Log + clear
 - Append a one-line summary per item to `Captures/Inbox Log.md` under a `## <YYYY-MM-DD>` heading.
+  Each line should name the note(s) created **and the hub they were linked under**, so the log is
+  auditable (e.g. `Turunan Numerik & Richardson → linked under [[Scientific Computing]] › UAS`).
 - Reset `inbox.md` to its empty template (header + an empty `- ` under `## Unprocessed`).
 
 ## 5. Release lock + report

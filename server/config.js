@@ -16,12 +16,28 @@ const DEFAULTS = {
   todoPath: 'TODO/{year}/{month}.md',
   todoFormat: '- [ ] DD Mon DESC',
   ownerName: 'Tim',
+  // Per-task model so cheap runs don't burn a premium model. Empty/absent → CLI default.
+  // (chat = the read-only advisor; bump to 'sonnet' for deeper advice at higher token cost.)
+  models: { process: 'sonnet', research: 'sonnet', review: 'haiku', home: 'haiku', chat: 'haiku', calsync: 'haiku', autosort: 'haiku' },
+  // Runaway-loop guard: cap agent turns per run. 0/absent → no cap.
+  maxTurns: 40,
+  // Fallback provider used only when the primary run hits a usage/rate limit. Both DeepSeek and
+  // GLM expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep working.
+  // Empty apiKey → disabled. Examples:
+  //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
+  //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
+  fallback: { baseUrl: '', apiKey: '', model: '' },
 };
 
 export function loadConfig() {
   let cfg = { ...DEFAULTS };
   try {
-    cfg = { ...cfg, ...JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) };
+    const saved = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+    cfg = { ...cfg, ...saved };
+    // Deep-merge the known nested objects so a partial override (e.g. just fallback.apiKey)
+    // doesn't drop the other defaults.
+    cfg.models = { ...DEFAULTS.models, ...(saved.models || {}) };
+    cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
   } catch {
     /* first run: defaults */
   }
@@ -29,7 +45,11 @@ export function loadConfig() {
 }
 
 export function saveConfig(patch) {
-  const cfg = { ...loadConfig(), ...patch };
+  const prev = loadConfig();
+  const cfg = { ...prev, ...patch };
+  // Merge nested objects rather than letting a partial patch clobber them.
+  if (patch.models) cfg.models = { ...prev.models, ...patch.models };
+  if (patch.fallback) cfg.fallback = { ...prev.fallback, ...patch.fallback };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
   return cfg;
 }
