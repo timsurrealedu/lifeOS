@@ -57,14 +57,44 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
           </div>
           <div class="process-icon">▶</div>
         </button>
+
+        <!-- Inbox queue (lives on the same page as capture) -->
+        <div class="view-head sub"><h3>Inbox</h3><span class="badge" id="inbox-badge">0</span></div>
+        <ul id="inbox-list" class="list"></ul>
+        <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
       </section>
 
-      <!-- INBOX -->
-      <section class="view" data-view="inbox" hidden>
-        <div class="view-head"><h2>Inbox</h2><span class="badge" id="inbox-badge">0</span></div>
-        <button class="btn primary" id="btn-process-inbox" style="width:100%;margin-bottom:12px" hidden>Process inbox (<span id="process-count">0</span>) →</button>
-        <ul id="inbox-list" class="list"></ul>
-        <div class="empty" id="inbox-empty" hidden>Inbox is clear. ✦</div>
+      <!-- DISCOVER -->
+      <section class="view" data-view="discover" hidden>
+        <div class="view-head"><h2>Discover</h2></div>
+
+        <div class="card tool-card">
+          <h3 class="tool-title">💡 Research an idea</h3>
+          <p class="tool-desc">Captures it + searches the web (taken? demand? feasible?) and writes a full note to <code>Ideas/</code>.</p>
+          <textarea id="research-input" class="tool-input" rows="2" placeholder="an app that reminds you to drink water"></textarea>
+          <button class="btn primary tool-btn" id="btn-research">Research idea →</button>
+        </div>
+
+        <div class="card tool-card">
+          <h3 class="tool-title">🔍 Find</h3>
+          <p class="tool-desc">Ask a question; Claude searches the vault and answers (read-only).</p>
+          <input id="find-input" class="tool-input" placeholder="where did I write about graph theory?" />
+          <button class="btn primary tool-btn" id="btn-find">Search vault →</button>
+        </div>
+
+        <div class="view-head sub"><h3>Needs filing</h3><span class="badge" id="needs-badge">0</span></div>
+        <ul id="needs-list" class="list"></ul>
+        <div class="empty small" id="needs-empty" hidden>Nothing waiting to be filed. ✦</div>
+
+        <div class="view-head sub"><h3>Idea bank</h3><span class="badge" id="ideas-badge">0</span></div>
+        <ul id="ideas-list" class="list"></ul>
+        <div class="empty small" id="ideas-empty" hidden>No ideas yet — research one above.</div>
+
+        <div class="view-head sub"><h3>More</h3></div>
+        <div class="more-actions">
+          <button class="btn more-btn" id="btn-weekly">🗓 Weekly review</button>
+          <button class="btn more-btn" id="btn-home">🏠 Refresh Home note</button>
+        </div>
       </section>
 
       <!-- NOTES -->
@@ -94,8 +124,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
     <!-- Bottom nav -->
     <nav class="tabbar">
-      <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span></button>
-      <button class="tab" data-tab="inbox"><span class="ti">📥</span><span>Inbox</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
+      <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
+      <button class="tab" data-tab="discover"><span class="ti">💡</span><span>Discover</span></button>
       <button class="tab" data-tab="notes"><span class="ti">📄</span><span>Notes</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="graph"><span class="ti">⌘</span><span>Graph</span></button>
@@ -112,15 +142,6 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <button class="icon-btn" data-action="close-sheet">✕</button>
     </div>
     <pre id="process-console" class="console"></pre>
-  </div>
-
-  <div class="sheet" id="sheet-note" hidden>
-    <div class="sheet-grab"></div>
-    <div class="sheet-head">
-      <h3 id="note-title">Note</h3>
-      <button class="icon-btn" data-action="close-sheet">✕</button>
-    </div>
-    <article id="note-body" class="markdown"></article>
   </div>
 
   <div class="sheet" id="sheet-log" hidden>
@@ -153,6 +174,15 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         <span id="cfg-vaultdir" class="hint"></span>
       </div>
     </div>
+  </div>
+
+  <!-- Full-page note reader -->
+  <div class="reader" id="reader" hidden>
+    <header class="reader-head">
+      <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
+      <h2 id="reader-title">Note</h2>
+    </header>
+    <article id="reader-body" class="markdown reader-body"></article>
   </div>
 
   <div id="toast" class="toast" hidden></div>

@@ -31,7 +31,7 @@ export function ensureVault(cfg = loadConfig()) {
   const root = vaultDir(cfg);
   mkdirSync(root, { recursive: true });
   for (const d of ['Captures', '.inbox-archive', 'attachments', join('attachments', 'recordings'),
-    'University', 'Personal', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
+    'University', 'Personal', 'Ideas', 'Reviews', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
     mkdirSync(join(root, d), { recursive: true });
   }
 
@@ -48,9 +48,13 @@ export function ensureVault(cfg = loadConfig()) {
   writeIfMissing(join(root, 'University.md'),
     '# University\n\nTop-level hub for courses and study material.\n\n## Areas\n\n');
   writeIfMissing(join(root, 'Personal.md'),
-    '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n- [[TODO]]\n');
+    '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n- [[TODO]]\n- [[Ideas]]\n');
   writeIfMissing(join(root, 'TODO.md'),
     '# TODO\n\nHub for monthly checklists.\n\n→ [[Personal]]\n\n## Months\n\n');
+  writeIfMissing(join(root, 'Ideas.md'),
+    '# Ideas\n\nHub for researched ideas. The **Research an idea** tool writes full notes here.\n\n→ [[Personal]]\n\n## Bank\n\n');
+  writeIfMissing(join(root, 'Home.md'),
+    '# Home\n\nDashboard MOC. Use **Refresh Home note** to regenerate this from the current vault.\n\n## Hubs\n\n- [[University]]\n- [[Personal]]\n- [[TODO]]\n- [[Ideas]]\n');
   writeIfMissing(join(root, 'Welcome.md'),
     '# Welcome to lifeOS\n\nCapture anything into the inbox; press **Process** and a Claude run files it into notes, '
     + 'Google Calendar, TODOs and the graph.\n\n#meta → [[Personal]]\n');
@@ -157,6 +161,23 @@ export function listNotes() {
   return walk(root, root, []).sort((a, b) => b.mtime - a.mtime);
 }
 
+/** Notes living under the Ideas/ folder, newest first (the "Idea Bank"). */
+export function listIdeas() {
+  const root = vaultDir();
+  const dir = join(root, 'Ideas');
+  if (!existsSync(dir)) return [];
+  return walk(dir, root, []).sort((a, b) => b.mtime - a.mtime);
+}
+
+/** Notes tagged #needs-filing — captures the process run parked without a home. */
+export function listNeedsFiling() {
+  const root = vaultDir();
+  if (!existsSync(root)) return [];
+  return walk(root, root, [])
+    .filter((n) => /(^|\s)#needs-filing\b/.test(readFileSync(join(root, n.path), 'utf8')))
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
 export function readNote(relPath) {
   const root = vaultDir();
   const full = join(root, relPath);
@@ -214,9 +235,9 @@ export function listTasks() {
   if (!existsSync(todoDir)) return out;
   const files = walk(todoDir, root, []);
   for (const f of files) {
-    const text = readFileSync(join(root, f.path), 'utf8');
-    for (const line of text.split('\n')) {
-      const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)$/);
+    const lines = readFileSync(join(root, f.path), 'utf8').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*-\s*\[([ xX])\]\s*(.+)$/);
       if (!m) continue;
       const done = m[1].toLowerCase() === 'x';
       let desc = m[2].trim();
@@ -230,11 +251,26 @@ export function listTasks() {
           date = `${year}-${String(mon + 1).padStart(2, '0')}-${String(+dm[1]).padStart(2, '0')}`;
         }
       }
-      out.push({ done, desc, date, file: f.path });
+      // `line` lets the UI toggle the exact checkbox in its source file.
+      out.push({ done, desc, date, file: f.path, line: i });
     }
   }
   out.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
   return out;
+}
+
+/** Flip a single checkbox `[ ]`↔`[x]` at file:line and write it back. */
+export function toggleTask(relPath, line) {
+  const root = vaultDir();
+  const full = join(root, relPath);
+  if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
+  const lines = readFileSync(full, 'utf8').split('\n');
+  if (!Number.isInteger(line) || line < 0 || line >= lines.length) throw new Error('bad line');
+  const m = lines[line].match(/^(\s*-\s*\[)([ xX])(\].*)$/);
+  if (!m) throw new Error('not a task line');
+  lines[line] = m[1] + (m[2].toLowerCase() === 'x' ? ' ' : 'x') + m[3];
+  writeFileSync(full, lines.join('\n'));
+  return listTasks();
 }
 
 // ---------- Log ----------

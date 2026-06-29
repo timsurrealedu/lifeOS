@@ -19,6 +19,10 @@ window.LifeGraph = (function () {
 
     const view = { scale: 1, ox: 0, oy: 0 };
     let selected = null;
+    // Declared up here (not with the other interaction vars below) because tick()
+    // reads dragNode and loop() runs synchronously before that block — a `let` there
+    // would put dragNode in the temporal dead zone and throw on the first frame.
+    let dragNode = null;
 
     function resize() {
       const rect = canvas.getBoundingClientRect();
@@ -69,7 +73,7 @@ window.LifeGraph = (function () {
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 1 * dpr;
-      ctx.strokeStyle = 'rgba(139,125,255,0.18)';
+      ctx.strokeStyle = 'rgba(226,145,79,0.20)';
       for (const l of links) {
         ctx.beginPath();
         ctx.moveTo(tx(l.s.x), ty(l.s.y));
@@ -81,14 +85,14 @@ window.LifeGraph = (function () {
         const isSel = n === selected;
         ctx.beginPath(); ctx.arc(X, Y, R, 0, Math.PI * 2);
         ctx.fillStyle = n.exists
-          ? (n.degree > 4 ? '#8b7dff' : '#6f5cff')
-          : '#3a3c48';
-        if (isSel) ctx.fillStyle = '#46e0c0';
+          ? (n.degree > 4 ? '#e2914f' : '#c97f44')
+          : '#4a3d30';
+        if (isSel) ctx.fillStyle = '#9bb273';
         ctx.fill();
-        if (isSel) { ctx.strokeStyle = '#46e0c0'; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
+        if (isSel) { ctx.strokeStyle = '#9bb273'; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
         // labels for big nodes / selected
         if (n.degree >= 3 || isSel || view.scale > 1.4) {
-          ctx.fillStyle = isSel ? '#eafff8' : 'rgba(236,237,243,0.72)';
+          ctx.fillStyle = isSel ? '#eafce0' : 'rgba(243,235,223,0.72)';
           ctx.font = `${11 * dpr}px -apple-system, system-ui, sans-serif`;
           ctx.textAlign = 'center';
           ctx.fillText(n.id, X, Y + R + 12 * dpr);
@@ -100,7 +104,7 @@ window.LifeGraph = (function () {
     loop();
 
     // ---- interaction ----
-    let dragNode = null, dragging = false, last = null, pinchDist = null;
+    let dragging = false, last = null, pinchDist = null;
     const toLocal = (cx, cy) => {
       const rect = canvas.getBoundingClientRect();
       const px = (cx - rect.left) * dpr, py = (cy - rect.top) * dpr;

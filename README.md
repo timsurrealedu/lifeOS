@@ -10,6 +10,10 @@ the whole loop that used to be a skill + vault + cron glue:
   adds TODOs, `[[links]]` and `#tags`, and maintains the **MOC hub graph**. Output streams as it works.
 - **Browse** — read your notes, see tasks grouped (Overdue / Today / Upcoming), and explore the
   interactive wikilink **graph** — all from your phone.
+- **Discover** — a second deck of `claude -p` tools over the vault: **Research an idea** (web-searches
+  demand/competition/feasibility and writes a full note to `Ideas/`), **Find** (read-only vault Q&A),
+  the **Idea bank** (`Ideas/`), a **Needs filing** list (`#needs-filing`), plus **Weekly review** and
+  **Refresh Home note**.
 
 It is a thin, friendly front-end over your Obsidian vault. The **vault stays the source of
 truth** (still opens in Obsidian, still syncs); lifeOS is a second way in. The processing brain —
@@ -99,7 +103,7 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 server/
   index.js     Express API + SSE + static host
   vault.js     scaffold + inbox/notes/graph/tasks logic
-  process.js   spawns & streams the claude run
+  process.js   spawns & streams claude runs (process / research / find / review / home)
   config.js    config load/save
   templates/   CLAUDE.md + process-inbox SKILL.md seeded into new vaults
 public/        mobile-first PWA (vanilla JS, no build step)

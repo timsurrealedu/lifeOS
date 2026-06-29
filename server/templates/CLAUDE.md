@@ -20,6 +20,8 @@ launched by the lifeOS app), follow these rules.
 ## Vault structure
 - `University/` — courses and study material, organized by `<Course>/` with class notes, labs, exams.
 - `Personal/` — journal, ideas, life admin.
+- `Ideas/` — researched ideas (one note each), written by the **Research an idea** tool; tag `#idea`, link [[Ideas]].
+- `Reviews/` — weekly review notes, written by the **Weekly review** tool.
 - `Captures/` — landing spot for items with no obvious home; tag `#needs-filing`.
 - `TODO/` — monthly checklist files under the `[[TODO]]` hub.
 - `attachments/` — captured images embedded as `![[name.jpg]]`.

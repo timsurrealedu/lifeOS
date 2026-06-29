@@ -14,14 +14,15 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingAudio: null, graph: null };
+const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingAudio: null, graph: null, expandedFolders: new Set() };
 
 /* ---------- Navigation ---------- */
 function show(view) {
   state.view = view;
   $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
-  if (view === 'inbox') renderInbox();
+  if (view === 'capture') renderInbox();
+  if (view === 'discover') loadDiscover();
   if (view === 'notes') loadNotes();
   if (view === 'plan') loadPlan();
   if (view === 'graph') loadGraph();
@@ -232,15 +233,16 @@ async function uploadAudio(hint) {
   } catch (e) { toast(e.message); }
 }
 
-/* ---------- Process (SSE) ---------- */
+/* ---------- Claude runs (SSE) ---------- */
 $('#btn-process').addEventListener('click', startProcess);
-$('#btn-process-inbox').addEventListener('click', startProcess);
 
-function startProcess() {
+// Generic streaming-run sheet. Collects stdout and hands it to onDone(text, exitCode).
+function startStream(url, { title = 'Working…', onDone } = {}) {
   const con = $('#process-console');
   con.innerHTML = '';
-  $('#process-status').textContent = 'Processing inbox…';
+  $('#process-status').textContent = title;
   openSheet('sheet-process');
+  let out = '';
   const append = (text, cls) => {
     const span = document.createElement('span');
     if (cls) span.className = cls;
@@ -248,20 +250,22 @@ function startProcess() {
     con.appendChild(span); con.scrollTop = con.scrollHeight;
   };
   append('▸ launching claude in the vault…');
-  const es = new EventSource('/api/process/stream');
+  const es = new EventSource(url);
   es.addEventListener('status', (e) => {
     const d = JSON.parse(e.data);
     if (d.state === 'starting') append('▸ claude started · ' + d.cwd);
   });
   es.addEventListener('log', (e) => {
     const d = JSON.parse(e.data);
+    if (d.channel !== 'err') out += d.line + '\n';
     append(d.line, d.channel === 'err' ? 'err' : '');
   });
   es.addEventListener('done', (e) => {
     const d = JSON.parse(e.data);
     append(`\n✓ finished (exit ${d.code})`);
     $('#process-status').textContent = d.code === 0 ? 'Done ✓' : `Exited (${d.code})`;
-    es.close(); afterProcess();
+    es.close();
+    onDone && onDone(out.trim(), d.code);
   });
   es.addEventListener('error', (e) => {
     let msg = 'stream error';
@@ -270,17 +274,76 @@ function startProcess() {
     $('#process-status').textContent = 'Error';
     es.close();
   });
+  return es;
+}
+
+function startProcess() {
+  startStream('/api/process/stream', { title: 'Processing inbox…', onDone: () => afterProcess() });
 }
 
 async function afterProcess() {
   await refreshInbox();
   state.notes = []; // force reload next visit
+  if (state.view === 'discover') loadDiscover();
   toast('Inbox processed');
+}
+
+/* ---------- Discover (research / find / lists / more) ---------- */
+$('#btn-research').addEventListener('click', () => {
+  const idea = $('#research-input').value.trim();
+  if (!idea) { toast('Type an idea first'); return; }
+  startStream('/api/research/stream?idea=' + encodeURIComponent(idea), {
+    title: 'Researching idea…',
+    onDone: (_out, code) => {
+      if (code === 0) { $('#research-input').value = ''; state.notes = []; loadDiscover(); }
+    },
+  });
+});
+
+$('#btn-find').addEventListener('click', () => {
+  const q = $('#find-input').value.trim();
+  if (!q) { toast('Ask a question first'); return; }
+  startStream('/api/find/stream?q=' + encodeURIComponent(q), {
+    title: 'Searching vault…',
+    onDone: (out, code) => {
+      if (code === 0 && out) {
+        closeSheets();
+        showReader('Answer', mdToHtml(out));
+      }
+    },
+  });
+});
+
+$('#btn-weekly').addEventListener('click', () =>
+  startStream('/api/review/stream', { title: 'Weekly review…', onDone: () => { state.notes = []; } }));
+$('#btn-home').addEventListener('click', () =>
+  startStream('/api/home/stream', { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
+
+async function loadDiscover() {
+  try {
+    const [needs, ideas] = await Promise.all([api('/api/needs-filing'), api('/api/ideas')]);
+    renderDiscoverList('#needs-list', '#needs-empty', '#needs-badge', needs.items, '🗂️');
+    renderDiscoverList('#ideas-list', '#ideas-empty', '#ideas-badge', ideas.items, '💡');
+  } catch (e) { toast(e.message); }
+}
+function renderDiscoverList(listSel, emptySel, badgeSel, items, emo) {
+  const ul = $(listSel); ul.innerHTML = '';
+  $(badgeSel).textContent = items.length;
+  $(emptySel).hidden = items.length > 0;
+  for (const n of items) {
+    const li = document.createElement('li');
+    li.className = 'list-item';
+    const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
+    li.innerHTML = `<span class="li-emoji">${emo}</span>
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
+    li.addEventListener('click', () => openNote(n.path, n.name));
+    ul.appendChild(li);
+  }
 }
 
 /* ---------- Inbox ---------- */
 async function refreshInbox() {
-  try { const { items } = await api('/api/inbox'); state.inbox = items; updateInboxCount(); if (state.view === 'inbox') renderInbox(); }
+  try { const { items } = await api('/api/inbox'); state.inbox = items; updateInboxCount(); if (state.view === 'capture') renderInbox(); }
   catch {}
 }
 function updateInboxCount() {
@@ -288,8 +351,6 @@ function updateInboxCount() {
   $('#inbox-count').textContent = n;
   $('#inbox-badge').textContent = n;
   $('#tab-inbox-dot').hidden = n === 0;
-  $('#process-count').textContent = n;
-  $('#btn-process-inbox').hidden = n === 0;
 }
 function emoji(item) {
   if (/#recording|recordings\//.test(item)) return '🎙️';
@@ -323,29 +384,110 @@ async function loadNotes(force) {
   catch (e) { toast(e.message); }
 }
 function renderNotes() {
-  const q = $('#notes-search').value.toLowerCase();
+  const q = $('#notes-search').value.toLowerCase().trim();
   const ul = $('#notes-list'); ul.innerHTML = '';
-  const list = state.notes.filter((n) => !q || n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
   $('#notes-empty').hidden = state.notes.length > 0;
-  list.forEach((n) => {
+
+  // Searching → flat, filtered list (with the folder path so cross-folder hits make sense).
+  if (q) {
+    ul.className = 'list';
+    const list = state.notes.filter((n) => n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
+    for (const n of list) {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
+      li.innerHTML = `<span class="li-emoji">📄</span>
+        <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
+      li.addEventListener('click', () => openNote(n.path, n.name));
+      ul.appendChild(li);
+    }
+    return;
+  }
+
+  // Default → collapsible folder tree, so courses/areas stay grouped.
+  ul.className = 'tree';
+  renderTreeInto(buildTree(state.notes), 0, ul);
+}
+
+function buildTree(notes) {
+  const root = { dirs: new Map(), files: [] };
+  for (const n of notes) {
+    const parts = n.path.split('/');
+    parts.pop(); // filename
+    let cur = root, acc = '';
+    for (const p of parts) {
+      acc = acc ? acc + '/' + p : p;
+      if (!cur.dirs.has(p)) cur.dirs.set(p, { name: p, path: acc, dirs: new Map(), files: [] });
+      cur = cur.dirs.get(p);
+    }
+    cur.files.push(n);
+  }
+  return root;
+}
+function countFiles(node) {
+  let c = node.files.length;
+  for (const d of node.dirs.values()) c += countFiles(d);
+  return c;
+}
+function renderTreeInto(node, depth, ul) {
+  const pad = depth * 16 + 12;
+  const dirs = [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of dirs) {
+    const open = state.expandedFolders.has(d.path);
     const li = document.createElement('li');
-    li.className = 'list-item';
-    const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
-    li.innerHTML = `<span class="li-emoji">📄</span>
-      <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
+    li.className = 'tree-row tree-folder';
+    li.style.paddingLeft = pad + 'px';
+    li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
+      <span class="li-emoji">${open ? '📂' : '📁'}</span>
+      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>
+      <span class="tw-count">${countFiles(d)}</span>`;
+    li.addEventListener('click', () => {
+      if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
+      renderNotes();
+    });
+    ul.appendChild(li);
+    if (open) renderTreeInto(d, depth + 1, ul);
+  }
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+  for (const n of files) {
+    const li = document.createElement('li');
+    li.className = 'tree-row tree-note';
+    li.style.paddingLeft = pad + 'px';
+    li.innerHTML = `<span class="tw-caret"></span>
+      <span class="li-emoji">📄</span>
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${timeAgo(n.mtime)}</div></div>`;
     li.addEventListener('click', () => openNote(n.path, n.name));
     ul.appendChild(li);
-  });
+  }
 }
 $('#notes-search').addEventListener('input', renderNotes);
+
+/* ---------- Full-page reader ---------- */
+let readerOpen = false;
+function showReader(title, html) {
+  $('#reader-title').textContent = title;
+  const body = $('#reader-body');
+  body.innerHTML = html;
+  bindWikilinks(body);
+  if (!readerOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
+  $('#reader').hidden = false;
+  body.scrollTop = 0;
+}
+function closeReader() {
+  if (!readerOpen) return;
+  $('#reader').hidden = true;
+  readerOpen = false;
+  if (history.state && history.state.reader) history.back(); // drop the pushed entry
+}
+$('#reader-back').addEventListener('click', closeReader);
+window.addEventListener('popstate', () => {
+  if (readerOpen) { readerOpen = false; $('#reader').hidden = true; }
+});
 
 async function openNote(path, name) {
   try {
     const { content } = await api('/api/note?path=' + encodeURIComponent(path));
-    $('#note-title').textContent = name;
-    $('#note-body').innerHTML = mdToHtml(content);
-    bindWikilinks($('#note-body'));
-    openSheet('sheet-note');
+    showReader(name, mdToHtml(content));
   } catch (e) { toast(e.message); }
 }
 
@@ -374,6 +516,16 @@ async function loadPlan() {
         el.className = 'task' + (t.done ? ' done' : '') + (overdue ? ' overdue' : '');
         el.innerHTML = `<div class="box">${t.done ? '✓' : ''}</div>
           <div><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}</div>` : ''}</div>`;
+        el.addEventListener('click', async () => {
+          el.classList.add('busy');
+          try {
+            await api('/api/tasks/toggle', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ file: t.file, line: t.line }),
+            });
+            await loadPlan();
+          } catch (err) { el.classList.remove('busy'); toast(err.message); }
+        });
         g.appendChild(el);
       }
       wrap.appendChild(g);

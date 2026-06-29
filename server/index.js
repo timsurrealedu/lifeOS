@@ -7,9 +7,11 @@ import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  listNotes, readNote, buildGraph, listTasks, readLog,
+  listNotes, readNote, buildGraph, listTasks, toggleTask, readLog, listIdeas, listNeedsFiling,
 } from './vault.js';
-import { runProcessInbox, isRunning } from './process.js';
+import {
+  runProcessInbox, runResearch, runFind, runWeeklyReview, runRefreshHome, isRunning,
+} from './process.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -78,10 +80,11 @@ app.delete('/api/inbox/:index', (req, res) => {
   try { ok(res, { items: removeInboxItem(Number(req.params.index)) }); } catch (e) { fail(res, e); }
 });
 
-// ---- Process (SSE stream) ----
+// ---- Claude runs (SSE streams) ----
 app.get('/api/process/status', (_req, res) => ok(res, { running: isRunning() }));
 
-app.get('/api/process/stream', (req, res) => {
+// Open an SSE channel and pipe a claude run (`start(onEvent)` → kill fn) into it.
+function sseRun(req, res, start) {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -89,12 +92,29 @@ app.get('/api/process/stream', (req, res) => {
   });
   res.flushHeaders?.();
   const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
-  const kill = runProcessInbox((type, data) => {
+  const kill = start((type, data) => {
     send(type, data);
     if (type === 'done' || type === 'error') res.end();
   });
   req.on('close', () => kill());
+}
+
+app.get('/api/process/stream', (req, res) => sseRun(req, res, runProcessInbox));
+
+app.get('/api/research/stream', (req, res) => {
+  const idea = String(req.query.idea || '').trim();
+  if (!idea) return sseRun(req, res, (on) => { on('error', { message: 'No idea given.' }); return () => {}; });
+  sseRun(req, res, (on) => runResearch(idea, on));
 });
+
+app.get('/api/find/stream', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return sseRun(req, res, (on) => { on('error', { message: 'No question given.' }); return () => {}; });
+  sseRun(req, res, (on) => runFind(q, on));
+});
+
+app.get('/api/review/stream', (req, res) => sseRun(req, res, runWeeklyReview));
+app.get('/api/home/stream', (req, res) => sseRun(req, res, runRefreshHome));
 
 // ---- Notes ----
 app.get('/api/notes', (_req, res) => ok(res, { notes: listNotes() }));
@@ -103,9 +123,17 @@ app.get('/api/note', (req, res) => {
   catch (e) { fail(res, e, 404); }
 });
 
+// ---- Discover (idea bank / needs filing) ----
+app.get('/api/ideas', (_req, res) => ok(res, { items: listIdeas() }));
+app.get('/api/needs-filing', (_req, res) => ok(res, { items: listNeedsFiling() }));
+
 // ---- Graph / Calendar / Log ----
 app.get('/api/graph', (_req, res) => ok(res, buildGraph()));
 app.get('/api/tasks', (_req, res) => ok(res, { tasks: listTasks() }));
+app.post('/api/tasks/toggle', (req, res) => {
+  try { ok(res, { tasks: toggleTask(String(req.body.file), Number(req.body.line)) }); }
+  catch (e) { fail(res, e); }
+});
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));
 
 // ---- Config ----
