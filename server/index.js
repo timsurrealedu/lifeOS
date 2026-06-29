@@ -7,7 +7,8 @@ import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  listNotes, readNote, buildGraph, listTasks, toggleTask, readLog, listIdeas, listNeedsFiling,
+  addHandwritingItem, listNotes, readNote, buildGraph, listTasks, toggleTask, readLog,
+  listIdeas, listNeedsFiling,
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runFind, runWeeklyReview, runRefreshHome, isRunning,
@@ -31,6 +32,22 @@ const upload = multer({
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       cb(null, `${stamp}-${safe}`);
+    },
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+// Handwritten pages (PNG from the in-app ink canvas) → own subfolder.
+const uploadHandwriting = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = join(vaultDir(loadConfig()), 'attachments', 'handwriting');
+      mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      cb(null, `hw-${stamp}${extname(file.originalname) || '.png'}`);
     },
   }),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -66,6 +83,13 @@ app.post('/api/capture/photo', upload.single('photo'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
     ok(res, { items: addPhotoItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/capture/handwriting', uploadHandwriting.single('photo'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    ok(res, { items: addHandwritingItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
   } catch (e) { fail(res, e); }
 });
 

@@ -10,6 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/icon.svg" />
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
@@ -43,6 +44,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             <button class="chip" id="btn-voice" type="button">🎤 <span>Voice</span></button>
             <button class="chip" id="btn-record" type="button">🔴 <span>Record</span></button>
             <button class="chip" id="btn-camera" type="button">📸 <span>Camera</span></button>
+            <button class="chip" id="btn-handwrite" type="button">✍️ <span>Write</span></button>
             <label class="chip" for="photo-input">🖼️ <span>Photo</span></label>
             <input id="photo-input" type="file" accept="image/*" hidden />
             <div class="spacer"></div>
@@ -176,6 +178,39 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
     </div>
   </div>
 
+  <!-- Full-screen infinite ink canvas (handwriting / drawing) -->
+  <div class="inkpad" id="inkpad" hidden>
+    <canvas id="ink-canvas"></canvas>
+    <div class="ink-top">
+      <button class="icon-btn" id="ink-close" aria-label="Close">✕</button>
+      <span class="ink-zoom" id="ink-zoom">100%</span>
+      <button class="btn primary" id="ink-done" type="button">Done</button>
+    </div>
+    <div class="ink-tools">
+      <div class="ink-group" id="ink-toolset">
+        <button class="ink-t" data-tool="pen" title="Pen">✒️</button>
+        <button class="ink-t" data-tool="eraser" title="Eraser">⌫</button>
+        <button class="ink-t" data-tool="ruler" title="Ruler — straight line">📏</button>
+        <button class="ink-t" data-tool="rect" title="Rectangle">▭</button>
+        <button class="ink-t" data-tool="ellipse" title="Ellipse">◯</button>
+        <button class="ink-t" data-tool="arrow" title="Arrow">↗</button>
+        <button class="ink-t" data-tool="pan" title="Pan / move">✋</button>
+      </div>
+      <div class="ink-group" id="ink-colors"></div>
+      <div class="ink-group" id="ink-sizes">
+        <button class="ink-s" data-size="2.5" title="Fine">▪</button>
+        <button class="ink-s" data-size="5" title="Medium">●</button>
+        <button class="ink-s" data-size="9" title="Thick">⬤</button>
+      </div>
+      <div class="ink-group">
+        <button class="ink-a" id="ink-undo" title="Undo">↶</button>
+        <button class="ink-a" id="ink-redo" title="Redo">↷</button>
+        <button class="ink-a" id="ink-fit" title="Fit to content">⊡</button>
+        <button class="ink-a" id="ink-clear" title="Clear all">🗑</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Full-page note reader -->
   <div class="reader" id="reader" hidden>
     <header class="reader-head">
@@ -187,7 +222,9 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
   <div id="toast" class="toast" hidden></div>
 
+  <script defer src="/vendor/katex/katex.min.js"></script>
   <script src="/js/graph.js"></script>
+  <script src="/js/inkpad.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

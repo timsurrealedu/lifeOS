@@ -30,8 +30,13 @@ Go line by line. An item is one of:
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
 
-**B) Media embed** — a line with `![[…]]` (photo or audio).
+**B) Media embed** — a line with `![[…]]` (photo, handwriting, or audio).
   *Photo* (`.jpg/.png/…`): Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`. If it's a screenshot of a chat mentioning a date, treat that date like case A instead.
+  *Handwriting* (image embedded from `attachments/handwriting/`, tagged `#handwriting` — written in the app's ink canvas):
+    → **Read the handwriting and transcribe it into a clean typed note**, following the vault's writing style. This is the user's own notes, not a slide to summarize — keep their content and structure; tidy spelling/legibility, don't editorialize. Preserve the original language(s); never translate.
+    → **Format any math as LaTeX so it renders** (see "Math formatting" below): inline `$…$`, display `$$…$$`. e.g. a hand-drawn integral becomes `$\int_0^1 x^2\,dx$`.
+    → Infer the course/area exactly as for photos (rules below); file per-topic the same way.
+    → **Keep the source:** embed the original image with `![[…]]` under a **Handwritten source** heading at the bottom of the note, so the ink page is preserved next to its transcription.
   *Audio recording* (`.webm/.m4a/.mp3/.wav/.ogg`, usually tagged `#recording`, embedded from `attachments/recordings/`):
     → **Transcribe it first** via Bash using whatever local speech-to-text CLI is installed (try in order: `whisper-ctranslate2`, `whisper`, `whisper-cpp`, `faster-whisper`) on the embedded file. These write a transcript file (e.g. `--output_format txt`); read that. Preserve the spoken language(s); never translate.
     → Then summarize the transcript into a note like a lecture/meeting note (per-topic; apply area inference + the "Area keywords always win" rule; add MOC links). Keep the source: embed the audio with `![[…]]` under a **Recording** heading at the bottom of the note.
@@ -71,6 +76,13 @@ When genuinely unsure where something goes:
 
 ## 3. Enrich
 - Add `[[wikilinks]]` to related notes and `#tags`. Link liberally; a link to a not-yet-existing note is fine.
+
+### Math formatting
+Whenever a note has mathematical content — from handwriting, a whiteboard/slide photo, dictation, or typed text — write it as **LaTeX** so the app renders real symbols (it uses KaTeX):
+- **Inline** maths in a sentence: wrap in single `$…$`, e.g. `the limit $\lim_{x\to0}\frac{\sin x}{x}=1$`.
+- **Display** equations on their own line: wrap in `$$…$$`.
+- Use proper commands: `\int`, `\sum`, `\frac{}{}`, `\sqrt{}`, `\alpha`, `x^2`, `x_i`, `\vec{v}`, `\to`, `\leq`, etc. Don't leave maths as plain ASCII like `integral of x dx` or `x^2` outside math delimiters.
+- Keep non-maths prose as normal Markdown.
 
 ### Area keywords always win
 If a captured item mentions a **known area** (the areas defined in `CLAUDE.md`, e.g. a club/org and its divisions, or a course), that is an **explicit hint** (highest priority) — always file/link it under that area regardless of item type (event, photo, or note): a note in the area's folder **and** a `[[link]]` under the area's hub. **Never** send an area-tagged item to `Captures/`.

@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingAudio: null, graph: null, expandedFolders: new Set() };
+const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, graph: null, expandedFolders: new Set() };
 
 /* ---------- Navigation ---------- */
 function show(view) {
@@ -53,9 +53,14 @@ document.addEventListener('click', (e) => {
 /* ---------- Capture ---------- */
 const textEl = $('#capture-text');
 
+// Grow the dump box to fit its content (new lines push it taller, up to the CSS max-height).
+// `input` covers typing/paste; programmatic changes (voice, clearing) call it directly.
+function autoGrow() { textEl.style.height = 'auto'; textEl.style.height = textEl.scrollHeight + 'px'; }
+textEl.addEventListener('input', autoGrow);
+
 // Preview helpers (shared by photo / camera / recording)
 function resetCapture() {
-  state.pendingPhoto = null; state.pendingAudio = null;
+  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingAudio = null;
   for (const id of ['#photo-preview', '#audio-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
   $('#photo-input').value = '';
   $('#btn-add').textContent = 'Add to inbox';
@@ -107,7 +112,7 @@ $('#btn-add').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    state.inbox = items; textEl.value = ''; updateInboxCount();
+    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount();
     toast('Added to inbox');
   } catch (e) { toast(e.message); }
 });
@@ -121,14 +126,17 @@ $('#photo-input').addEventListener('change', (e) => {
 });
 
 async function uploadPhoto(hint) {
+  const handwriting = state.pendingPhotoKind === 'handwriting';
+  const url = handwriting ? '/api/capture/handwriting' : '/api/capture/photo';
+  const fname = handwriting ? 'handwriting.png' : (state.pendingPhoto.name || 'camera.jpg');
   const fd = new FormData();
-  fd.append('photo', state.pendingPhoto, state.pendingPhoto.name || 'camera.jpg');
+  fd.append('photo', state.pendingPhoto, fname);
   if (hint) fd.append('hint', hint);
   try {
-    const { items } = await api('/api/capture/photo', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = '';
+    const { items } = await api(url, { method: 'POST', body: fd });
+    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
     resetCapture();
-    toast('Photo added to inbox');
+    toast(handwriting ? 'Handwritten note added' : 'Photo added to inbox');
   } catch (e) { toast(e.message); }
 }
 
@@ -164,6 +172,18 @@ $('#cam-shot').addEventListener('click', () => {
   }, 'image/jpeg', 0.9);
 });
 
+/* ---------- Handwriting (infinite ink canvas → InkPad module) ---------- */
+// Opens the full-screen vector canvas. On Done it hands back a cropped PNG of the drawing,
+// which rides the normal photo plumbing into the inbox, tagged so the skill transcribes it.
+$('#btn-handwrite').addEventListener('click', () => {
+  window.InkPad.open((blob) => {
+    showPhotoPreview(blob);
+    state.pendingPhotoKind = 'handwriting';
+    $('#btn-add').textContent = 'Add note to inbox';
+    toast('Handwriting ready — add a hint (optional)');
+  });
+});
+
 // Voice (Web Speech API)
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const voiceBtn = $('#btn-voice');
@@ -177,7 +197,7 @@ if (SR) {
     rec.onresult = (ev) => {
       let txt = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
-      textEl.value = base + txt;
+      textEl.value = base + txt; autoGrow();
     };
     rec.onend = () => { listening = false; voiceBtn.classList.remove('live'); };
     rec.onerror = () => { listening = false; voiceBtn.classList.remove('live'); toast('Mic error'); };
@@ -227,7 +247,7 @@ async function uploadAudio(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/audio', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = '';
+    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
     resetCapture();
     toast('Recording added to inbox');
   } catch (e) { toast(e.message); }
@@ -354,6 +374,7 @@ function updateInboxCount() {
 }
 function emoji(item) {
   if (/#recording|recordings\//.test(item)) return '🎙️';
+  if (/#handwriting|handwriting\//.test(item)) return '✍️';
   if (/!\[\[/.test(item)) return '📷';
   if (/\b(\d{1,2}[:.]\d{2}|\d{1,2}\s?(am|pm)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|exam|deadline|due|meeting|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(item)) return '📅';
   if (/\b(email|buy|call|send|book|pay|fix|ask)\b/i.test(item)) return '✅';
@@ -611,10 +632,34 @@ function fmtDate(iso) {
   return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-// Minimal markdown → HTML (headings, bold/italic, code, lists, links, wikilinks, tags, images)
+// Render one LaTeX span with KaTeX; degrade to the raw source if KaTeX missing/invalid.
+function renderTeX(tex, display) {
+  if (window.katex) {
+    try { return window.katex.renderToString(tex, { displayMode: display, throwOnError: false }); }
+    catch { /* fall through to literal */ }
+  }
+  const d = display ? '$$' : '$';
+  return `<code>${esc(d + tex + d)}</code>`;
+}
+
+// Minimal markdown → HTML (headings, bold/italic, code, lists, links, wikilinks, tags, images, math).
+// Code and LaTeX math are pulled out into placeholders first so the markdown regexes below can't
+// mangle them (a `$x_i$` or `$a*b$` would otherwise trip the italic/bold rules), then restored last.
 function mdToHtml(md) {
-  const lines = md.replace(/\r/g, '').split('\n');
-  let html = '', inList = false, inCode = false;
+  md = md.replace(/\r/g, '');
+  const slots = [];
+  // `@@n@@` token: survives esc() and every markdown regex below, and won't occur in real note text.
+  const stash = (html) => `@@${slots.push(html) - 1}@@`;
+
+  // 1) fenced code blocks  2) block math $$…$$ (may span lines)
+  md = md.replace(/```[^\n]*\n([\s\S]*?)```/g, (_m, body) => stash('<pre>' + esc(body.replace(/\n$/, '')) + '</pre>'));
+  md = md.replace(/\$\$([\s\S]+?)\$\$/g, (_m, tex) => stash(renderTeX(tex.trim(), true)));
+  // 3) inline code  4) inline math $…$ — heuristics avoid eating currency ($5 … $10)
+  md = md.replace(/`([^`]+)`/g, (_m, c) => stash('<code>' + esc(c) + '</code>'));
+  md = md.replace(/\$(?!\s)((?:[^$\n\\]|\\.)+?)(?<!\s)\$(?!\d)/g, (_m, tex) => stash(renderTeX(tex.trim(), false)));
+
+  const lines = md.split('\n');
+  let html = '', inList = false;
   const inline = (t) => esc(t)
     .replace(/!\[\[([^\]]+?)\]\]/g, (_m, f) => {
       const ref = f.trim();
@@ -626,16 +671,12 @@ function mdToHtml(md) {
         : `<img src="${src}" alt="${esc(ref)}" onerror="this.style.display='none'">`;
     })
     .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${esc(name.trim())}">${esc(label || name)}</span>`)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|\s)\*([^*]+)\*/g, '$1<em>$2</em>')
     .replace(/(^|\s)(#[A-Za-z][\w-]*)/g, '$1<span class="tag">$2</span>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
-  for (const raw of lines) {
-    if (raw.trim().startsWith('```')) { if (inCode) { html += '</pre>'; inCode = false; } else { closeList(); html += '<pre>'; inCode = true; } continue; }
-    if (inCode) { html += esc(raw) + '\n'; continue; }
-    const line = raw;
+  for (const line of lines) {
     if (/^#{1,6}\s/.test(line)) { closeList(); const lvl = line.match(/^#+/)[0].length; html += `<h${lvl}>${inline(line.replace(/^#+\s/, ''))}</h${lvl}>`; }
     else if (/^\s*[-*]\s\[[ xX]\]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } const done = /\[[xX]\]/.test(line); html += `<li>${done ? '☑' : '☐'} ${inline(line.replace(/^\s*[-*]\s\[[ xX]\]\s/, ''))}</li>`; }
     else if (/^\s*[-*]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(line.replace(/^\s*[-*]\s/, ''))}</li>`; }
@@ -644,8 +685,8 @@ function mdToHtml(md) {
     else if (line.trim() === '') { closeList(); }
     else { closeList(); html += `<p>${inline(line)}</p>`; }
   }
-  closeList(); if (inCode) html += '</pre>';
-  return html;
+  closeList();
+  return html.replace(/@@(\d+)@@/g, (_m, n) => slots[+n]);
 }
 function bindWikilinks(root) {
   $$('.wikilink', root).forEach((el) => {

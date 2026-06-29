@@ -31,6 +31,7 @@ export function ensureVault(cfg = loadConfig()) {
   const root = vaultDir(cfg);
   mkdirSync(root, { recursive: true });
   for (const d of ['Captures', '.inbox-archive', 'attachments', join('attachments', 'recordings'),
+    join('attachments', 'handwriting'),
     'University', 'Personal', 'Ideas', 'Reviews', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
     mkdirSync(join(root, d), { recursive: true });
   }
@@ -40,9 +41,14 @@ export function ensureVault(cfg = loadConfig()) {
     join(root, 'CLAUDE.md'),
     fill(readFileSync(join(TEMPLATES, 'CLAUDE.md'), 'utf8'), cfg),
   );
-  // The skill the headless `claude -p` run will load.
+  // The skill the headless `claude -p` run will load. Re-sync it whenever the bundled copy
+  // differs — it's a generated/managed file (not a user note), so engine updates (e.g. new
+  // handwriting/math handling) reach existing vaults instead of being stuck at first-copy.
   const skillDst = join(root, '.claude', 'skills', 'process-inbox', 'SKILL.md');
-  if (!existsSync(skillDst)) copyFileSync(join(TEMPLATES, 'SKILL.md'), skillDst);
+  const skillSrc = join(TEMPLATES, 'SKILL.md');
+  if (!existsSync(skillDst) || readFileSync(skillDst, 'utf8') !== readFileSync(skillSrc, 'utf8')) {
+    copyFileSync(skillSrc, skillDst);
+  }
 
   // Starter MOC hubs so the graph isn't empty and the skill has anchors to link into.
   writeIfMissing(join(root, 'University.md'),
@@ -131,6 +137,11 @@ export function addPhotoItem(filename, hint) {
 export function addAudioItem(filename, hint) {
   const embed = `![[attachments/recordings/${filename}]]`;
   return addInboxItem([hint, embed, '#recording'].filter(Boolean).join(' '));
+}
+
+export function addHandwritingItem(filename, hint) {
+  const embed = `![[attachments/handwriting/${filename}]]`;
+  return addInboxItem([hint, embed, '#handwriting'].filter(Boolean).join(' '));
 }
 
 // ---------- Notes ----------

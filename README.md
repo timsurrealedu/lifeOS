@@ -3,8 +3,9 @@
 A mobile-first **superapp** for the *capture-once / process-in-batches* workflow. One app does
 the whole loop that used to be a skill + vault + cron glue:
 
-- **Capture** — type, 🎤 dictate, 📸 take a photo (or 🖼️ attach one), or 🔴 record audio into one
-  inbox. Instant, no organizing. Items queue up; process the whole batch in one run.
+- **Capture** — type, 🎤 dictate, 📸 take a photo (or 🖼️ attach one), ✍️ handwrite on an ink canvas,
+  or 🔴 record audio into one inbox. Instant, no organizing. Items queue up; process the whole batch
+  in one run.
 - **Process** — one tap runs `claude -p "process inbox"` live in your vault: it reads photos with
   vision, **transcribes recordings**, files notes by area, pushes deadlines to **Google Calendar**,
   adds TODOs, `[[links]]` and `#tags`, and maintains the **MOC hub graph**. Output streams as it works.
@@ -76,6 +77,27 @@ Install one (recommended, light, CPU-friendly):
 ```bash
 pipx install whisper-ctranslate2
 ```
+
+## Handwriting & math
+
+✍️ **Write** opens a full-screen **infinite canvas** for handwriting and sketching — pan & zoom
+(pinch / wheel / hand tool), pen in several **colours and sizes**, an **object eraser**, a **ruler**
+(straight lines that snap to clean horizontals / verticals / 45°), **shapes** (rectangle, ellipse,
+arrow), and undo / redo. It's vector under the hood, so strokes stay crisp at any zoom. On **Done**
+the drawn area is cropped and rasterised to a PNG in `attachments/handwriting/` and dropped in the
+inbox tagged `#handwriting`. On the next **Process** run the engine *reads the handwriting with
+vision and transcribes it into a clean typed note* (your spelling tidied, never translated), keeping
+the original ink page embedded under a **Handwritten source** heading.
+
+Any math — from handwriting, a whiteboard/slide photo, or typed/dictated text — is written as
+**LaTeX** (`$…$` inline, `$$…$$` display), so notes render real symbols: integrals, fractions,
+`x_i`, Greek letters, etc. The reader renders it with **KaTeX**, vendored offline under
+`public/vendor/katex/` (no CDN, no new npm dependency). A hand-drawn `∫₀¹ x² dx` comes back as
+$\int_0^1 x^2\,dx$.
+
+The `process-inbox` skill is the brain for both. It's a managed file: lifeOS now re-syncs it into
+your vault's `.claude/` whenever the bundled copy changes, so engine updates like this reach
+existing vaults automatically (it only overwrites that one generated skill file — never your notes).
 
 ## Hosting on the always-on machine (e.g. Windows)
 

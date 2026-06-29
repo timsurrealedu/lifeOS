@@ -1,7 +1,9 @@
 /* lifeOS service worker — cache the app shell so capture works offline-ish.
    Network-first for API; cache-first for static shell. */
-const CACHE = 'lifeos-v9';
-const SHELL = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/graph.js', '/icons/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'lifeos-v12';
+const SHELL = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/graph.js', '/js/inkpad.js',
+  '/icons/icon.svg', '/manifest.webmanifest',
+  '/vendor/katex/katex.min.css', '/vendor/katex/katex.min.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

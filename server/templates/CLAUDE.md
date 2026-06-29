@@ -47,6 +47,7 @@ Rules:
 ## Writing style
 - Casual and concise; **bold** the key points; use bulleted lists.
 - Add `[[wikilinks]]` to related notes and `#tags`. Link liberally.
+- **Math:** write maths as LaTeX so it renders (the app uses KaTeX) — inline `$…$`, display `$$…$$`. e.g. `$\int_0^1 x^2\,dx = \tfrac13$`. Never leave equations as plain ASCII.
 
 ## Connectors available (tied to the user's account, work from any machine)
 - **Google Calendar** — events/deadlines.
