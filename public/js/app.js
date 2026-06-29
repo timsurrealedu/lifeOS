@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, graph: null, expandedFolders: new Set() };
+const state = { inbox: [], notes: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, graph: null, expandedFolders: new Set(), readerPath: null };
 
 /* ---------- Navigation ---------- */
 function show(view) {
@@ -485,8 +485,11 @@ $('#notes-search').addEventListener('input', renderNotes);
 
 /* ---------- Full-page reader ---------- */
 let readerOpen = false;
-function showReader(title, html) {
+// `path` is the editable source note (null for synthetic content like Find answers → no Edit button).
+function showReader(title, html, path = null) {
   $('#reader-title').textContent = title;
+  state.readerPath = path;
+  $('#reader-edit').hidden = !path;
   const body = $('#reader-body');
   body.innerHTML = html;
   bindWikilinks(body);
@@ -501,16 +504,181 @@ function closeReader() {
   if (history.state && history.state.reader) history.back(); // drop the pushed entry
 }
 $('#reader-back').addEventListener('click', closeReader);
+$('#reader-edit').addEventListener('click', () => {
+  if (state.readerPath) openEditorFor(state.readerPath, $('#reader-title').textContent);
+});
+// One handler closes only the topmost overlay (editor sits above reader).
 window.addEventListener('popstate', () => {
-  if (readerOpen) { readerOpen = false; $('#reader').hidden = true; }
+  if (editorOpen) { editorOpen = false; $('#editor').hidden = true; }
+  else if (readerOpen) { readerOpen = false; $('#reader').hidden = true; }
 });
 
 async function openNote(path, name) {
   try {
     const { content } = await api('/api/note?path=' + encodeURIComponent(path));
-    showReader(name, mdToHtml(content));
+    showReader(name, mdToHtml(content), path);
   } catch (e) { toast(e.message); }
 }
+
+/* ---------- Note editor (write your own note) ---------- */
+const edTitle = $('#editor-title');
+const edBody = $('#editor-body');
+let editorOpen = false, edPreviewing = false;
+let edMode = 'create', edPath = null; // 'create' → POST new note; 'edit' → overwrite edPath
+
+// Toolbar primitives operating on the textarea selection.
+function edSurround(before, after = before, placeholder = '') {
+  const v = edBody.value, s = edBody.selectionStart, e = edBody.selectionEnd;
+  const sel = v.slice(s, e) || placeholder;
+  edBody.value = v.slice(0, s) + before + sel + after + v.slice(e);
+  const pos = s + before.length;
+  edBody.focus(); edBody.setSelectionRange(pos, pos + sel.length);
+}
+function edLinePrefix(prefix) {
+  const v = edBody.value, s = edBody.selectionStart, e = edBody.selectionEnd;
+  const start = v.lastIndexOf('\n', s - 1) + 1;
+  let end = v.indexOf('\n', e); if (end === -1) end = v.length;
+  const block = v.slice(start, end).split('\n').map((l) => prefix + l).join('\n');
+  edBody.value = v.slice(0, start) + block + v.slice(end);
+  edBody.focus(); edBody.setSelectionRange(start + prefix.length, start + block.length);
+}
+const edFmt = {
+  h1: () => edLinePrefix('# '),
+  h2: () => edLinePrefix('## '),
+  bold: () => edSurround('**', '**', 'bold'),
+  italic: () => edSurround('*', '*', 'italic'),
+  bullet: () => edLinePrefix('- '),
+  check: () => edLinePrefix('- [ ] '),
+  quote: () => edLinePrefix('> '),
+  code: () => edSurround('`', '`', 'code'),
+  link: () => edSurround('[[', ']]', 'Note'),
+  math: () => edSurround('$', '$', 'x^2'),
+  highlight: () => edSurround('==', '==', 'highlight'),
+};
+// Insert text at the caret (or replacing the selection) — used by the handwriting embed.
+function edInsertAtCursor(text) {
+  const v = edBody.value, s = edBody.selectionStart, e = edBody.selectionEnd;
+  edBody.value = v.slice(0, s) + text + v.slice(e);
+  const pos = s + text.length;
+  edBody.focus(); edBody.setSelectionRange(pos, pos);
+}
+// Open the ink canvas (math / practice handwriting); on Done, store the PNG in the vault and
+// embed it at the caret. history:false so the InkPad back-handling leaves the editor overlay alone.
+function edInsertHandwriting() {
+  window.InkPad.open(async (blob) => {
+    try {
+      const fd = new FormData();
+      fd.append('photo', blob, 'handwriting.png');
+      const { ref } = await api('/api/upload/handwriting', { method: 'POST', body: fd });
+      edInsertAtCursor(`\n\n![[${ref}]]\n\n`);
+      toast('Handwriting added');
+    } catch (e) { toast(e.message); }
+  }, { history: false });
+}
+
+// mousedown-preventDefault keeps the textarea selection alive when a toolbar button is tapped.
+$('#editor-toolbar').addEventListener('mousedown', (e) => { if (e.target.closest('.fmt')) e.preventDefault(); });
+$('#editor-toolbar').addEventListener('click', (e) => {
+  const b = e.target.closest('.fmt'); if (!b) return;
+  if (b.dataset.fmt === 'ink') { edInsertHandwriting(); return; }
+  (edFmt[b.dataset.fmt] || (() => {}))();
+});
+
+// What gets previewed/saved. In edit mode the body is the full note (H1 included), so use it
+// verbatim; in create mode the title becomes the H1 when the body has no heading yet.
+function editorMarkdown() {
+  const body = edBody.value;
+  if (edMode === 'edit') return body;
+  const title = edTitle.value.trim();
+  return (title && !/^#\s/.test(body.trim())) ? `# ${title}\n\n${body}` : body;
+}
+function showEditorSource() {
+  edPreviewing = false;
+  edBody.hidden = false; $('#editor-preview').hidden = true; $('#editor-toolbar').hidden = false;
+  $('#editor-preview-toggle').querySelector('span').textContent = 'Preview';
+}
+function showEditorPreview() {
+  edPreviewing = true;
+  $('#editor-preview').innerHTML = mdToHtml(editorMarkdown());
+  $('#editor-preview').hidden = false; edBody.hidden = true; $('#editor-toolbar').hidden = true;
+  $('#editor-preview-toggle').querySelector('span').textContent = 'Edit';
+}
+$('#editor-preview-toggle').addEventListener('click', () => (edPreviewing ? showEditorSource() : showEditorPreview()));
+
+// Edit mode hides the folder picker (path is fixed) and locks the title (the H1 lives in the body).
+function setEditorMode(mode) {
+  edMode = mode;
+  const editing = mode === 'edit';
+  edTitle.readOnly = editing;
+  $('.editor-folder-label').hidden = editing;
+}
+function showEditor() {
+  showEditorSource();
+  if (!editorOpen) { history.pushState({ editor: true }, ''); editorOpen = true; }
+  $('#editor').hidden = false;
+}
+
+// New note (create mode).
+async function openEditor() {
+  setEditorMode('create'); edPath = null;
+  edTitle.value = ''; edBody.value = ''; $('#editor-folder').value = 'Drafts';
+  try {
+    const { folders } = await api('/api/folders');
+    $('#editor-folders').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
+  } catch {}
+  showEditor();
+  edTitle.focus();
+}
+
+// Edit an existing note in place (edit mode).
+async function openEditorFor(path, name) {
+  try {
+    const { content } = await api('/api/note?path=' + encodeURIComponent(path));
+    setEditorMode('edit'); edPath = path;
+    edTitle.value = name || path.split('/').pop().replace(/\.md$/, '');
+    edBody.value = content.replace(/\r/g, '');
+    showEditor();
+    edBody.focus();
+  } catch (e) { toast(e.message); }
+}
+
+function closeEditor() {
+  if (!editorOpen) return;
+  // Delegate to the shared popstate handler (closes the topmost overlay only) so cancelling an
+  // edit returns to the reader underneath instead of tearing both overlays down.
+  if (history.state && history.state.editor) history.back();
+  else { editorOpen = false; $('#editor').hidden = true; }
+}
+$('#btn-new-note').addEventListener('click', openEditor);
+$('#editor-cancel').addEventListener('click', closeEditor);
+
+$('#editor-save').addEventListener('click', async () => {
+  if (!edBody.value.trim()) { toast('Write something first'); return; }
+  try {
+    let path, name;
+    if (edMode === 'edit') {
+      ({ path } = await api('/api/note/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: edPath, content: edBody.value }),
+      }));
+      name = edTitle.value.trim() || path.split('/').pop().replace(/\.md$/, '');
+    } else {
+      const title = edTitle.value.trim();
+      if (!title) { toast('Add a title'); edTitle.focus(); return; }
+      ({ path } = await api('/api/notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, folder: $('#editor-folder').value.trim() || 'Drafts', content: edBody.value }),
+      }));
+      name = title;
+    }
+    // Hide without history.back() — we're about to (re)open the reader; a deferred popstate would
+    // otherwise race its pushState. (Any stray history entry is harmless.)
+    $('#editor').hidden = true; editorOpen = false;
+    state.notes = []; await loadNotes(true);
+    toast(edMode === 'edit' ? 'Note updated' : 'Note saved');
+    openNote(path, name);
+  } catch (e) { toast(e.message); }
+});
 
 /* ---------- Plan ---------- */
 async function loadPlan() {
@@ -672,6 +840,7 @@ function mdToHtml(md) {
     })
     .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${esc(name.trim())}">${esc(label || name)}</span>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/==([^=]+)==/g, '<mark>$1</mark>')
     .replace(/(^|\s)\*([^*]+)\*/g, '$1<em>$2</em>')
     .replace(/(^|\s)(#[A-Za-z][\w-]*)/g, '$1<span class="tag">$2</span>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');

@@ -9,6 +9,10 @@ the whole loop that used to be a skill + vault + cron glue:
 - **Process** — one tap runs `claude -p "process inbox"` live in your vault: it reads photos with
   vision, **transcribes recordings**, files notes by area, pushes deadlines to **Google Calendar**,
   adds TODOs, `[[links]]` and `#tags`, and maintains the **MOC hub graph**. Output streams as it works.
+- **Write** — author notes directly in an Obsidian-style editor: formatting toolbar, live
+  Markdown/KaTeX preview, `[[wikilinks]]`, and an **✍️ ink canvas you can embed mid-note** (math by
+  hand, practice problems). Edit any existing note in place. New notes are tagged `#draft` and get
+  **auto-polished on the next Process run** — without ever deleting what you wrote.
 - **Browse** — read your notes, see tasks grouped (Overdue / Today / Upcoming), and explore the
   interactive wikilink **graph** — all from your phone.
 - **Discover** — a second deck of `claude -p` tools over the vault: **Research an idea** (web-searches
@@ -63,6 +67,32 @@ No API key — it reuses your existing Claude login and Google Calendar connecto
 tool-scoped on purpose: a captured photo could contain injected text, so it never gets blanket
 permissions.
 
+## Write & edit notes
+
+Capture is for fast dumps; the **note editor** is for sitting down and writing — class notes,
+summaries, math practice. In the **Notes** tab tap **✎ New note**:
+
+- **Title** + **folder** picker (autocompletes existing vault folders; defaults to `Drafts/`).
+- A **formatting toolbar** (H1/H2, bold, italic, bullet/checkbox lists, quote, code, `[[wikilink]]`,
+  math `$…$`, `==highlight==`) that wraps the current selection.
+- **👁 Preview** toggle — renders Markdown + KaTeX exactly like the reader.
+- **✍️ Handwrite** — opens the ink canvas *inside the editor*; on **Done** the drawing is stored in
+  `attachments/handwriting/` and embedded at the cursor as `![[…]]`. Mix typed text, LaTeX and
+  hand-drawn working in one note.
+
+**Editing** — open any note and tap **✎ Edit** in the reader; saving overwrites that file in place
+(never renames or moves it). Synthetic views like a *Find* answer have no source file, so they show
+no Edit button.
+
+**Auto-polish (`#draft`).** New notes are saved tagged `#draft`. On the next **Process** run the
+engine optimizes each draft *in place* — formatting, LaTeX, `[[links]]`, `#tags`, MOC-hub wiring,
+and an optional move into the right folder — but it **only adds/restructures and never removes your
+content**, then drops the `#draft` tag. This step runs even when the inbox is empty, so
+"write a note → Process" is a complete loop. Delete the `#draft` tag to opt a note out.
+
+Endpoints behind this: `POST /api/notes` (create), `POST /api/note/save` (edit),
+`GET /api/folders` (picker), `POST /api/upload/handwriting` (embed a drawing, no inbox item).
+
 ## Recordings & transcription
 
 🔴 **Record** captures audio (lecture/meeting) to `attachments/recordings/` and drops a
@@ -83,11 +113,17 @@ pipx install whisper-ctranslate2
 ✍️ **Write** opens a full-screen **infinite canvas** for handwriting and sketching — pan & zoom
 (pinch / wheel / hand tool), pen in several **colours and sizes**, an **object eraser**, a **ruler**
 (straight lines that snap to clean horizontals / verticals / 45°), **shapes** (rectangle, ellipse,
-arrow), and undo / redo. It's vector under the hood, so strokes stay crisp at any zoom. On **Done**
-the drawn area is cropped and rasterised to a PNG in `attachments/handwriting/` and dropped in the
-inbox tagged `#handwriting`. On the next **Process** run the engine *reads the handwriting with
-vision and transcribes it into a clean typed note* (your spelling tidied, never translated), keeping
-the original ink page embedded under a **Handwritten source** heading.
+arrow), and undo / redo. It's vector under the hood, so strokes stay crisp at any zoom.
+
+The same canvas is reachable two ways:
+- **Capture tab → ✍️ Write:** on **Done** the drawing is cropped to a PNG in
+  `attachments/handwriting/` and dropped in the inbox tagged `#handwriting`. On the next **Process**
+  run the engine *reads the handwriting with vision and transcribes it into a clean typed note*
+  (your spelling tidied, never translated), keeping the original ink page embedded under a
+  **Handwritten source** heading.
+- **Note editor → ✍️ button:** the drawing is embedded directly into the note you're writing as
+  `![[…]]` (no inbox round-trip, no auto-transcription) — for keeping math working or practice
+  problems as ink alongside typed text.
 
 Any math — from handwriting, a whiteboard/slide photo, or typed/dictated text — is written as
 **LaTeX** (`$…$` inline, `$$…$$` display), so notes render real symbols: integrals, fractions,

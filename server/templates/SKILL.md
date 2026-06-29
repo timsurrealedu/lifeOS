@@ -18,8 +18,18 @@ defaults into. Follow those, not any examples baked in here.
 
 ## 1. Read the inbox
 - Read `inbox.md`. The capturable items are the bullet lines under `## Unprocessed`.
-- If there's nothing but the empty `- ` placeholder, report "inbox empty, nothing to do" and stop (after releasing the lock).
+- If there's nothing but the empty `- ` placeholder, the inbox is empty — **skip §2–§4's item handling but still run §1b** to optimize any user-written drafts. If there are also no `#draft` notes, report "nothing to do" and stop (after releasing the lock).
 - Copy the raw unprocessed text into `.inbox-archive/<YYYY-MM-DD>.md` (append if it exists) **before** changing anything — this is the safety net.
+
+## 1b. Optimize user-written drafts (`#draft`)
+Notes the user wrote in the app's own editor are saved tagged **`#draft`** (usually under `Drafts/`). On **every** run, find them (e.g. grep the vault for `#draft`) and polish each one **in place**:
+- **Never remove or rewrite away the user's content.** This is *their* writing, not a slide to summarize. Keep every fact, sentence, list item, and their original language(s) — never translate, never delete, never editorialize. You may only **add** and **restructure**.
+- Improve **formatting** toward the vault's writing style: clear headings, **bold** the key points, tidy bullet lists, fix obvious typos/spacing. Don't change meaning.
+- Convert any **math to LaTeX** so it renders — inline `$…$`, display `$$…$$` (see "Math formatting").
+- Add `[[wikilinks]]` to related notes and `#tags`, link it under the correct **MOC hub**, and add a `→ [[Hub]]` footer (see §3).
+- If the note clearly belongs to a known area, you **may** move it out of `Drafts/` into that area's folder and update its links (per the filing rules); if unsure, leave it in place.
+- When finished with a note, **remove its `#draft` tag** so it isn't re-optimized on the next run. List each optimized note in the report.
+- If there are no `#draft` notes, skip this step.
 
 ## 2. Classify each item
 Go line by line. An item is one of:

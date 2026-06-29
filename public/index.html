@@ -101,7 +101,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
       <!-- NOTES -->
       <section class="view" data-view="notes" hidden>
-        <div class="view-head"><h2>Notes</h2></div>
+        <div class="view-head"><h2>Notes</h2><div class="spacer"></div><button class="btn primary sm" id="btn-new-note">✎ New note</button></div>
         <input id="notes-search" class="search" type="search" placeholder="Search notes…" />
         <ul id="notes-list" class="list"></ul>
         <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
@@ -211,11 +211,47 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
     </div>
   </div>
 
+  <!-- Full-screen note editor (write your own note, Obsidian-style) -->
+  <div class="editor" id="editor" hidden>
+    <header class="reader-head editor-head">
+      <button class="icon-btn" id="editor-cancel" aria-label="Cancel">←</button>
+      <input id="editor-title" class="editor-title" placeholder="Note title" />
+      <button class="btn primary sm" id="editor-save" type="button">Save</button>
+    </header>
+    <div class="editor-meta">
+      <label class="editor-folder-label">📁
+        <input id="editor-folder" list="editor-folders" placeholder="Drafts" />
+      </label>
+      <datalist id="editor-folders"></datalist>
+      <div class="spacer"></div>
+      <button class="chip" id="editor-preview-toggle" type="button">👁 <span>Preview</span></button>
+    </div>
+    <div class="editor-toolbar" id="editor-toolbar">
+      <button class="fmt" data-fmt="h1" type="button" title="Heading 1">H1</button>
+      <button class="fmt" data-fmt="h2" type="button" title="Heading 2">H2</button>
+      <button class="fmt" data-fmt="bold" type="button" title="Bold"><b>B</b></button>
+      <button class="fmt" data-fmt="italic" type="button" title="Italic"><i>I</i></button>
+      <button class="fmt" data-fmt="bullet" type="button" title="Bullet list">•—</button>
+      <button class="fmt" data-fmt="check" type="button" title="Checkbox">☐</button>
+      <button class="fmt" data-fmt="quote" type="button" title="Quote">❝</button>
+      <button class="fmt" data-fmt="code" type="button" title="Code">‹›</button>
+      <button class="fmt" data-fmt="link" type="button" title="Wikilink">[[ ]]</button>
+      <button class="fmt" data-fmt="math" type="button" title="Math (LaTeX)">∑</button>
+      <button class="fmt" data-fmt="highlight" type="button" title="Highlight">▤</button>
+      <span class="fmt-sep"></span>
+      <button class="fmt fmt-ink" data-fmt="ink" type="button" title="Handwrite / draw (math, practice)">✍️</button>
+    </div>
+    <textarea id="editor-body" class="editor-body" placeholder="Write your note in Markdown…
+On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX — without deleting anything you wrote."></textarea>
+    <article id="editor-preview" class="markdown editor-preview" hidden></article>
+  </div>
+
   <!-- Full-page note reader -->
   <div class="reader" id="reader" hidden>
     <header class="reader-head">
       <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
       <h2 id="reader-title">Note</h2>
+      <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
     </header>
     <article id="reader-body" class="markdown reader-body"></article>
   </div>

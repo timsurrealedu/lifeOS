@@ -21,6 +21,7 @@ launched by the lifeOS app), follow these rules.
 - `University/` — courses and study material, organized by `<Course>/` with class notes, labs, exams.
 - `Personal/` — journal, ideas, life admin.
 - `Ideas/` — researched ideas (one note each), written by the **Research an idea** tool; tag `#idea`, link [[Ideas]].
+- `Drafts/` — notes the user wrote in the app's editor, tagged `#draft`; the next process run optimizes them in place (formatting/links/LaTeX) **without removing their content**, then drops the tag.
 - `Reviews/` — weekly review notes, written by the **Weekly review** tool.
 - `Captures/` — landing spot for items with no obvious home; tag `#needs-filing`.
 - `TODO/` — monthly checklist files under the `[[TODO]]` hub.

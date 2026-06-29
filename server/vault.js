@@ -32,7 +32,7 @@ export function ensureVault(cfg = loadConfig()) {
   mkdirSync(root, { recursive: true });
   for (const d of ['Captures', '.inbox-archive', 'attachments', join('attachments', 'recordings'),
     join('attachments', 'handwriting'),
-    'University', 'Personal', 'Ideas', 'Reviews', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
+    'University', 'Personal', 'Ideas', 'Drafts', 'Reviews', 'TODO', join('.claude', 'skills', 'process-inbox')]) {
     mkdirSync(join(root, d), { recursive: true });
   }
 
@@ -195,6 +195,66 @@ export function readNote(relPath) {
   // path-traversal guard
   if (!full.startsWith(root) || !existsSync(full)) throw new Error('not found');
   return readFileSync(full, 'utf8');
+}
+
+/** Every folder in the vault (relative, slash-joined) for the editor's folder picker. */
+export function listFolders() {
+  const root = vaultDir();
+  if (!existsSync(root)) return [];
+  const out = new Set();
+  const recurse = (dir) => {
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith('.') || IGNORE_DIRS.has(name) || name === 'attachments') continue;
+      const full = join(dir, name);
+      if (!statSync(full).isDirectory()) continue;
+      out.add(relative(root, full).split(sep).join('/'));
+      recurse(full);
+    }
+  };
+  recurse(root);
+  return [...out].sort();
+}
+
+/**
+ * Write a user-authored note into the vault (the in-app "write your own note" editor).
+ * Saved into `folder` (default `Drafts/`), tagged `#draft` so the next process-inbox run
+ * optimizes it in place. Never overwrites — auto-suffixes the filename if it's taken.
+ */
+export function createNote({ title, folder, content } = {}) {
+  const root = vaultDir();
+  const cleanTitle = String(title || '').trim();
+  if (!cleanTitle) throw new Error('title required');
+
+  const relFolder = String(folder || 'Drafts').trim().replace(/^[/\\]+|[/\\]+$/g, '') || 'Drafts';
+  const dir = join(root, relFolder);
+  if (!dir.startsWith(root)) throw new Error('bad folder'); // path-traversal guard
+  mkdirSync(dir, { recursive: true });
+
+  // Safe filename from the title; auto-suffix so we never clobber an existing note.
+  const base = cleanTitle.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim() || 'Untitled';
+  let name = base, full = join(dir, `${name}.md`), i = 2;
+  while (existsSync(full)) { name = `${base} ${i++}`; full = join(dir, `${name}.md`); }
+
+  let body = String(content || '').replace(/\r/g, '').trim();
+  if (!/^#\s/.test(body)) body = `# ${cleanTitle}\n\n${body}`;       // ensure an H1
+  if (!/(^|\s)#draft\b/.test(body)) body += '\n\n#draft';            // optimize-me marker
+  writeFileSync(full, `${body}\n`);
+
+  return relative(root, full).split(sep).join('/');
+}
+
+/**
+ * Overwrite an existing note with edited content (the in-app editor's "edit" mode).
+ * Path-guarded and limited to existing `.md` files — this is a deliberate user save,
+ * so overwriting the same file is the intent.
+ */
+export function updateNote(relPath, content) {
+  const root = vaultDir();
+  const full = join(root, String(relPath || ''));
+  if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
+  const body = String(content).replace(/\r/g, '').replace(/\s*$/, '') + '\n';
+  writeFileSync(full, body);
+  return relative(root, full).split(sep).join('/');
 }
 
 // ---------- Graph (wikilinks) ----------

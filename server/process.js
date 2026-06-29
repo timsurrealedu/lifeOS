@@ -88,7 +88,14 @@ function spawnClaude({ kind, prompt }, onEvent) {
 
   let child;
   try {
-    child = spawn(cfg.claudePath, args, { cwd, env: process.env, windowsHide: true });
+    // stdin: 'ignore' so claude doesn't wait ~3s for piped stdin that never comes
+    // (the prompt is passed via args, not stdin). stdout/stderr stay piped for pump().
+    child = spawn(cfg.claudePath, args, {
+      cwd,
+      env: process.env,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch (err) {
     release();
     onEvent('error', { message: `Failed to launch claude: ${err.message}` });

@@ -106,6 +106,7 @@ body {
 }
 .btn:active { transform: scale(.96); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border: none; box-shadow: 0 6px 16px -8px var(--accent); }
+.btn.sm { padding: 8px 14px; font-size: 14px; flex: none; }
 .btn:disabled { opacity: .5; pointer-events: none; }
 
 .photo-preview { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
@@ -324,6 +325,7 @@ body {
 .markdown img { max-width: 100%; border-radius: 10px; }
 .markdown audio { width: 100%; margin: 8px 0; }
 .markdown blockquote { border-left: 2px solid var(--accent); margin: 8px 0; padding: 2px 14px; color: var(--muted); }
+.markdown mark { background: var(--accent-soft); color: var(--text); padding: 0 3px; border-radius: 4px; }
 
 /* settings */
 .settings { padding: 14px 18px 28px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
@@ -348,13 +350,55 @@ body {
   border-bottom: 1px solid var(--border-soft);
 }
 .reader-head h2 {
-  margin: 0; font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em;
+  margin: 0; flex: 1; font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .reader-body {
   flex: 1; overflow: auto; width: 100%; max-width: var(--max); margin: 0 auto;
   padding: 14px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
+
+/* ---- Note editor ---- */
+.editor {
+  position: fixed; inset: 0; z-index: 56; display: flex; flex-direction: column;
+  background: var(--bg); background-image: var(--bg-tint);
+  animation: readerin .22s cubic-bezier(.2,.9,.25,1);
+}
+.editor-head { gap: 10px; }
+.editor-title {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text);
+  font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em;
+}
+.editor-title::placeholder { color: var(--faint); }
+.editor-meta { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }
+.editor-folder-label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); }
+.editor-folder-label input {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 6px 10px; color: var(--text); font: inherit; font-size: 13px; outline: none; max-width: 200px;
+}
+.editor-folder-label input:focus { border-color: var(--accent); }
+.editor-toolbar {
+  display: flex; gap: 4px; padding: 8px 12px; overflow-x: auto;
+  border-bottom: 1px solid var(--border-soft); scrollbar-width: none;
+}
+.editor-toolbar::-webkit-scrollbar { display: none; }
+.fmt {
+  flex: none; min-width: 36px; height: 34px; padding: 0 9px; border-radius: 9px;
+  border: 1px solid var(--border-soft); background: var(--surface-2); color: var(--text);
+  font-size: 14px; cursor: pointer; transition: background .12s, border-color .12s, transform .1s;
+}
+.fmt:hover { border-color: var(--border); }
+.fmt:active { transform: scale(.92); background: var(--surface-3); }
+.fmt-sep { flex: none; width: 1px; align-self: stretch; margin: 4px 3px; background: var(--border-soft); }
+.fmt-ink { border-color: var(--accent-soft); }
+.fmt-ink:hover { border-color: var(--accent); }
+.editor-body {
+  flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; resize: none; border: none; outline: none;
+  background: transparent; color: var(--text); font-family: var(--mono); font-size: 15px; line-height: 1.65;
+  padding: 16px 20px calc(env(safe-area-inset-bottom) + 48px);
+}
+.editor-body::placeholder { color: var(--faint); }
+.editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
 
 /* toast */
 .toast {

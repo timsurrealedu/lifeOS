@@ -21,26 +21,29 @@ window.InkPad = (function () {
   let eraseSnapshot = null;        // strokes before an erase drag (for a single undo entry)
   const pointers = new Map();      // active pointers for multi-touch
   let pinch = null;
-  let raf = null, built = false, pushedState = false;
+  let raf = null, built = false, pushedState = false, manageHistory = true;
 
   const el = (id) => document.getElementById(id);
 
   /* ---------- lifecycle ---------- */
-  function open(cb) {
+  // opts.history:false → caller owns the history stack (e.g. opened over the note editor, whose
+  // own overlay entry must not be disturbed). Default true keeps the capture-tab behavior.
+  function open(cb, opts = {}) {
     onDone = cb;
+    manageHistory = opts.history !== false;
     canvas = el('ink-canvas'); ctx = canvas.getContext('2d');
     if (!built) { build(); built = true; }
     // Fresh page each time Write is tapped (last note was already exported on Done).
     strokes = []; undoStack = []; redoStack = []; live = null; pinch = null; panning = false; pointers.clear();
     el('inkpad').hidden = false;
-    if (!pushedState) { history.pushState({ inkpad: true }, ''); pushedState = true; }
+    if (manageHistory && !pushedState) { history.pushState({ inkpad: true }, ''); pushedState = true; }
     resize();
     view = { scale: 1, x: cssW / 2, y: cssH / 2 }; // (0,0) world at mid-screen
     render(); updateUI();
   }
   function hide() {
     el('inkpad').hidden = true;
-    if (pushedState && history.state && history.state.inkpad) history.back();
+    if (manageHistory && pushedState && history.state && history.state.inkpad) history.back();
     pushedState = false;
   }
   function done() {

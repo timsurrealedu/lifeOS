@@ -7,8 +7,8 @@ import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  addHandwritingItem, listNotes, readNote, buildGraph, listTasks, toggleTask, readLog,
-  listIdeas, listNeedsFiling,
+  addHandwritingItem, listNotes, readNote, createNote, updateNote, listFolders, buildGraph,
+  listTasks, toggleTask, readLog, listIdeas, listNeedsFiling,
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runFind, runWeeklyReview, runRefreshHome, isRunning,
@@ -93,6 +93,14 @@ app.post('/api/capture/handwriting', uploadHandwriting.single('photo'), (req, re
   } catch (e) { fail(res, e); }
 });
 
+// Store a drawing for embedding straight into a note (editor "Write" tool) — no inbox item.
+app.post('/api/upload/handwriting', uploadHandwriting.single('photo'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    ok(res, { ref: `attachments/handwriting/${req.file.filename}`, filename: req.file.filename });
+  } catch (e) { fail(res, e); }
+});
+
 app.post('/api/capture/audio', uploadAudio.single('audio'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
@@ -145,6 +153,15 @@ app.get('/api/notes', (_req, res) => ok(res, { notes: listNotes() }));
 app.get('/api/note', (req, res) => {
   try { ok(res, { path: req.query.path, content: readNote(String(req.query.path)) }); }
   catch (e) { fail(res, e, 404); }
+});
+app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders() }));
+// Write your own note (in-app editor). Tagged #draft so process-inbox optimizes it later.
+app.post('/api/notes', (req, res) => {
+  try { ok(res, { path: createNote(req.body || {}) }); } catch (e) { fail(res, e); }
+});
+// Save edits to an existing note (in-app editor, edit mode).
+app.post('/api/note/save', (req, res) => {
+  try { ok(res, { path: updateNote(req.body.path, req.body.content) }); } catch (e) { fail(res, e); }
 });
 
 // ---- Discover (idea bank / needs filing) ----
