@@ -110,4 +110,5 @@ public/        mobile-first PWA (vanilla JS, no build step)
 vault/         the test vault (created on first run)
 ```
 
-No build step, two dependencies (`express`, `multer`). Everything else is the standard library.
+No build step, three small dependencies (`express`, `multer`, `cross-spawn` — the last only so the
+`claude` CLI launches correctly on Windows). Everything else is the standard library.

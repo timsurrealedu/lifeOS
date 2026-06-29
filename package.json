@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "express": "^4.21.2",
     "multer": "^2.2.0"
   }

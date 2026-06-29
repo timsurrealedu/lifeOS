@@ -1,4 +1,6 @@
-import { spawn } from 'node:child_process';
+// cross-spawn (not node:child_process) so the `claude` CLI launches on Windows too,
+// where it's a `claude.cmd` shim that bare spawn() can't resolve / refuses to run.
+import spawn from 'cross-spawn';
 import { loadConfig, vaultDir } from './config.js';
 
 // Only one *writing* claude run at a time (process / research / review / home all
@@ -86,7 +88,7 @@ function spawnClaude({ kind, prompt }, onEvent) {
 
   let child;
   try {
-    child = spawn(cfg.claudePath, args, { cwd, env: process.env });
+    child = spawn(cfg.claudePath, args, { cwd, env: process.env, windowsHide: true });
   } catch (err) {
     release();
     onEvent('error', { message: `Failed to launch claude: ${err.message}` });
