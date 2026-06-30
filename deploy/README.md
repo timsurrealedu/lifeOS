@@ -120,9 +120,40 @@ consistent everywhere — PC, Android, Arch, and this VM are all just Syncthing 
 
 ## 8. (Optional) Re-auth the Google Calendar MCP
 
-The `calsync` / chat runs use the Google Calendar MCP. Set it up on the box the same way you did on
-Windows (`claude mcp ...`), then re-run an auth flow if it prompts. Until then, calendar features sit
-idle but nothing else is affected.
+The `calsync` / chat runs use the Google Calendar MCP. It's a **Claude.ai account connector**, so once
+you've logged `claude` in with the same subscription it appears automatically — usually already
+connected (`claude mcp list`). If it shows `! Needs authentication`, run `claude`, type `/mcp`, pick
+Google Calendar, and authenticate via the printed URL. Until then, calendar features sit idle but
+nothing else is affected.
+
+## 9. Updating later — `git pull`, no re-setup
+
+The environment (Node, the `claude` login, Tailscale, Syncthing, pm2) and your `config.json` all live
+**outside git** (or are gitignored), so pulling new code never disturbs them. Once `~/lifeOS` is a git
+checkout, every future change is just:
+
+```bash
+cd ~/lifeOS
+git pull
+npm install            # only if package.json changed
+pm2 restart lifeOS     # also re-syncs the bundled process-inbox SKILL into the vault
+```
+
+`config.json` (your box paths) and the vault are gitignored, so they're preserved on every pull. You
+**never** redo Tailscale / Syncthing / the claude login again.
+
+**One-time conversion** (the box was deployed from a tarball, so it isn't a git repo yet):
+```bash
+cd ~/lifeOS
+git init
+git remote add origin git@github.com:timsurrealedu/lifeOS.git
+git fetch origin
+git reset --hard origin/main   # config.json, vault, node_modules are gitignored → untouched
+npm install
+pm2 restart lifeOS
+```
+This needs **GitHub auth on the box** for the private repo — either an SSH key on the box added to
+GitHub (Settings → SSH keys, or a repo deploy key), or an HTTPS personal-access-token in the remote URL.
 
 ---
 
