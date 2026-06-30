@@ -514,13 +514,24 @@ a.doc-link:hover { border-color: var(--accent); }
 .reader { transition: padding-right .24s cubic-bezier(.2,.9,.25,1); }
 .note-chat {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 56;
-  width: min(420px, 90vw);
+  width: var(--note-chat-w, min(420px, 90vw));
   display: flex; flex-direction: column;
   background: var(--surface); border-left: 1px solid var(--border);
   box-shadow: -14px 0 34px rgba(0,0,0,.38);
   padding: max(12px, env(safe-area-inset-top)) 14px calc(env(safe-area-inset-bottom) + 6px);
   animation: dockin .24s cubic-bezier(.2,.9,.25,1);
 }
+/* Drag the left edge to widen/narrow the dock; width persists via the --note-chat-w variable. */
+.note-chat-resize {
+  position: absolute; top: 0; left: -3px; bottom: 0; width: 9px; cursor: ew-resize;
+  z-index: 1; touch-action: none;
+}
+.note-chat-resize::before {
+  content: ""; position: absolute; top: 50%; left: 3px; width: 3px; height: 42px; margin-top: -21px;
+  border-radius: 3px; background: var(--border); transition: background .15s;
+}
+.note-chat-resize:hover::before, .note-chat.resizing .note-chat-resize::before { background: var(--accent); }
+.note-chat.resizing { animation: none; user-select: none; }
 @keyframes dockin { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 .note-chat-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 8px; border-bottom: 1px solid var(--border-soft); }
 .note-chat-title { font-weight: 600; font-size: 14px; }
@@ -529,7 +540,7 @@ a.doc-link:hover { border-color: var(--accent); }
 /* On wide screens the open sidebar shrinks the reader's content box, so the note slides left and
    re-centers in the remaining space; closing it restores the full width. */
 @media (min-width: 760px) {
-  .reader.chat-open { padding-right: min(420px, 40vw); }
+  .reader.chat-open { padding-right: min(var(--note-chat-w, 420px), 60vw); }
 }
 
 /* AI answer + ➕ add-to-note action */
@@ -704,8 +715,11 @@ body.dragging-tree .tree-row { touch-action: none; }
 .cap-toggle { display: flex; align-items: center; gap: 10px; margin: 2px 2px 14px; }
 
 /* ---- Chat ---- */
-/* Fixed height so the thread scrolls internally and the input bar stays above the tab bar. */
-.chat-view { display: flex; flex-direction: column; height: calc(100dvh - 178px); min-height: 320px; }
+/* In chat mode the capture section fills the scroll area exactly (no magic height), so the thread
+   scrolls internally and the input bar pins just above the tab bar instead of being clipped by it. */
+.view[data-view="capture"].chat-mode { display: flex; flex-direction: column; height: 100%; }
+.view[data-view="capture"].chat-mode #capture-chat { flex: 1 1 auto; min-height: 0; }
+.chat-view { display: flex; flex-direction: column; min-height: 320px; }
 .chat-thread { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 6px 2px 14px; }
 .chat-intro { margin: auto 0; text-align: center; color: var(--muted); }
 .chat-hi { font-size: 15px; margin: 0 0 16px; }

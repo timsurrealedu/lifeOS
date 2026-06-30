@@ -22,9 +22,13 @@ const DEFAULTS = {
   models: { process: 'sonnet', research: 'sonnet', review: 'haiku', home: 'haiku', chat: 'haiku', calsync: 'haiku', autosort: 'haiku' },
   // Runaway-loop guard: cap agent turns per run. 0/absent → no cap.
   maxTurns: 40,
-  // Fallback provider used only when the primary run hits a usage/rate limit. Both DeepSeek and
-  // GLM expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep working.
-  // Empty apiKey → disabled. Examples:
+  // Fallback chain, tried in order when the primary run hits a usage/rate limit:
+  //   claude → qwen → fallback (DeepSeek/GLM) → gemini
+  // qwen + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
+  // working; gemini is REST-only (read-only chats + add-to-note). Empty apiKey → that link skipped.
+  //   Qwen (DashScope) → baseUrl "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", model "qwen3-coder-plus"
+  qwen: { baseUrl: '', apiKey: '', model: '' },
+  // DeepSeek/GLM Anthropic-compatible endpoint. Examples:
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
   //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
   fallback: { baseUrl: '', apiKey: '', model: '' },
@@ -44,6 +48,7 @@ export function loadConfig() {
     // Deep-merge the known nested objects so a partial override (e.g. just fallback.apiKey)
     // doesn't drop the other defaults.
     cfg.models = { ...DEFAULTS.models, ...(saved.models || {}) };
+    cfg.qwen = { ...DEFAULTS.qwen, ...(saved.qwen || {}) };
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
     cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
   } catch {
@@ -57,6 +62,7 @@ export function saveConfig(patch) {
   const cfg = { ...prev, ...patch };
   // Merge nested objects rather than letting a partial patch clobber them.
   if (patch.models) cfg.models = { ...prev.models, ...patch.models };
+  if (patch.qwen) cfg.qwen = { ...prev.qwen, ...patch.qwen };
   if (patch.fallback) cfg.fallback = { ...prev.fallback, ...patch.fallback };
   if (patch.gemini) cfg.gemini = { ...prev.gemini, ...patch.gemini };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');

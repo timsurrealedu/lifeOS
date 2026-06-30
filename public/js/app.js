@@ -1013,6 +1013,27 @@ $('#reader-chat').addEventListener('click', () => {
 $('#note-chat-close').addEventListener('click', closeNoteChat);
 $('#note-chat-clear').addEventListener('click', () => { state.noteChat = []; renderNoteChat(); });
 
+// Drag the dock's left edge to widen it; the chosen width persists across notes and sessions.
+(function setupNoteChatResize() {
+  const saved = parseInt(localStorage.getItem('noteChatW') || '', 10);
+  if (saved) document.documentElement.style.setProperty('--note-chat-w', saved + 'px');
+  const handle = $('#note-chat-resize'), dock = $('#note-chat');
+  const clamp = (w) => Math.min(Math.max(w, 300), Math.min(window.innerWidth - 40, 900));
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); handle.setPointerCapture(e.pointerId); dock.classList.add('resizing');
+    const move = (ev) => {
+      const w = clamp(window.innerWidth - ev.clientX);
+      document.documentElement.style.setProperty('--note-chat-w', w + 'px');
+    };
+    const up = (ev) => {
+      handle.releasePointerCapture(ev.pointerId); dock.classList.remove('resizing');
+      handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up);
+      const w = clamp(window.innerWidth - ev.clientX); localStorage.setItem('noteChatW', String(w));
+    };
+    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+  });
+})();
+
 function renderNoteChat() {
   const thread = $('#note-chat-thread');
   $('#note-chat-intro').hidden = state.noteChat.length > 0;
@@ -1088,38 +1109,48 @@ async function sendNoteChat(text) {
 $('#note-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendNoteChat($('#note-chat-input').value); });
 
 // Ask the AI to write an overview of `topic` into the open note, then reload it in place.
-// Drives the SSE directly (no console sheet — it'd render behind the z-55 reader); progress shows
-// on the button itself and the note refreshes under the chat dock when done.
-function augmentNote(topic, context, btn) {
+// POSTs (not EventSource) because the tutor `context` is dense LaTeX that overruns a GET URL; the
+// server streams SSE events back over the fetch body, which we parse for status/done/error.
+// Progress shows on the button itself and the note refreshes under the chat dock when done.
+async function augmentNote(topic, context, btn) {
   if (!state.readerPath || !topic) { toast('Ask a question first'); return; }
   const path = state.readerPath;
   if (btn) { btn.disabled = true; btn.textContent = '✍️ Adding…'; }
   const reset = () => { if (btn) { btn.disabled = false; btn.textContent = '➕ Add to note'; } };
-  const es = new EventSource('/api/note/augment/stream?path=' + encodeURIComponent(path)
-    + '&topic=' + encodeURIComponent(topic)
-    + '&context=' + encodeURIComponent((context || '').slice(0, 4000)));
-  let finished = false;
-  es.addEventListener('status', (e) => {
-    try { if (JSON.parse(e.data).state === 'fallback-retry') toast('Primary hit a limit — trying fallback…'); } catch {}
-  });
-  es.addEventListener('done', async (e) => {
-    finished = true; es.close();
-    let code = 0; try { code = JSON.parse(e.data).code; } catch {}
+  try {
+    const resp = await fetch('/api/note/augment/stream', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, topic, context: (context || '').slice(0, 4000) }),
+    });
+    if (!resp.ok || !resp.body) throw new Error('Add failed (' + resp.status + ')');
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', code = null, errMsg = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const evMatch = /(?:^|\n)event: (.+)/.exec(block);
+        const dataMatch = /(?:^|\n)data: (.+)/.exec(block);
+        if (!evMatch) continue;                       // skip `: ping` heartbeat comments
+        const type = evMatch[1].trim();
+        let data = {}; if (dataMatch) { try { data = JSON.parse(dataMatch[1]); } catch {} }
+        if (type === 'status' && data.state === 'fallback-retry') toast('Primary hit a limit — trying fallback…');
+        else if (type === 'done') code = (data.code != null ? data.code : 0);
+        else if (type === 'error') errMsg = data.message || 'Add failed';
+      }
+    }
+    if (errMsg) { reset(); toast(errMsg); return; }
     if (code !== 0) { reset(); toast('Could not add to note'); return; }
     if (btn) { btn.disabled = false; btn.textContent = '✓ Added'; }
-    try {
-      const { content } = await api('/api/note?path=' + encodeURIComponent(path));
-      if (state.readerPath === path) { const body = $('#reader-body'); body.innerHTML = mdToHtml(content); bindWikilinks(body); }
-      state.notes = []; loadNotes(true);
-      toast('Overview added ✓');
-    } catch (err) { toast(err.message); }
-  });
-  es.addEventListener('error', (e) => {
-    if (finished) return;          // ignore the transport drop that follows a normal close
-    finished = true; es.close();
-    let msg = 'Add failed'; try { msg = JSON.parse(e.data).message || msg; } catch {}
-    reset(); toast(msg);
-  });
+    const { content } = await api('/api/note?path=' + encodeURIComponent(path));
+    if (state.readerPath === path) { const body = $('#reader-body'); body.innerHTML = mdToHtml(content); bindWikilinks(body); }
+    state.notes = []; loadNotes(true);
+    toast('Overview added ✓');
+  } catch (err) { reset(); toast(err.message); }
 }
 
 // Mirrors the server's protected list so we don't offer a delete that will just error.
@@ -1588,6 +1619,9 @@ $('#capture-seg').addEventListener('click', (e) => {
   $('#capture-main').hidden = chat;
   $('#capture-chat').hidden = !chat;
   $('#chat-clear').hidden = !chat;
+  // In chat mode the capture section becomes a flex column that fills the scroll area, so the
+  // input bar pins just above the tab bar instead of overflowing behind it.
+  document.querySelector('.view[data-view="capture"]').classList.toggle('chat-mode', chat);
   if (chat) { renderChat(); setTimeout(() => $('#chat-input').focus(), 50); }
 });
 function renderChat() {
@@ -1690,6 +1724,10 @@ async function openSettings() {
     $('#cfg-timezone').value = config.timezone;
     $('#cfg-languages').value = config.languages;
     $('#cfg-claudePath').value = config.claudePath;
+    const qw = config.qwen || {};
+    $('#cfg-qw-baseUrl').value = qw.baseUrl || '';
+    $('#cfg-qw-apiKey').value = qw.apiKey || '';
+    $('#cfg-qw-model').value = qw.model || '';
     const fb = config.fallback || {};
     $('#cfg-fb-baseUrl').value = fb.baseUrl || '';
     $('#cfg-fb-apiKey').value = fb.apiKey || '';
@@ -1732,6 +1770,11 @@ $('#btn-save-cfg').addEventListener('click', async () => {
         timezone: $('#cfg-timezone').value.trim(),
         languages: $('#cfg-languages').value.trim(),
         claudePath: $('#cfg-claudePath').value.trim(),
+        qwen: {
+          baseUrl: $('#cfg-qw-baseUrl').value.trim(),
+          apiKey: $('#cfg-qw-apiKey').value.trim(),
+          model: $('#cfg-qw-model').value.trim(),
+        },
         fallback: {
           baseUrl: $('#cfg-fb-baseUrl').value.trim(),
           apiKey: $('#cfg-fb-apiKey').value.trim(),

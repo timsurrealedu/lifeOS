@@ -515,6 +515,56 @@ export function createNote({ title, folder, content } = {}) {
  * Path-guarded and limited to existing `.md` files — this is a deliberate user save,
  * so overwriting the same file is the intent.
  */
+/**
+ * Insert an AI-generated overview `body` into a note at a contextual spot — strictly additive, the
+ * existing content is never altered. `anchor` is the verbatim text of an existing heading to place
+ * it after (its whole section), or `START` (top of the body, below any frontmatter + H1 title) or
+ * `END`. An anchor that doesn't match falls back to END. Returns the note's new content.
+ */
+export function placeOverview(content, anchor, body) {
+  const insert = String(body || '').replace(/\r/g, '').trim();
+  if (!insert) return content;
+  const lines = String(content).replace(/\r/g, '').split('\n');
+  const level = (i) => { const m = /^(#{1,6})\s+/.exec(lines[i] || ''); return m ? m[1].length : 0; };
+  const a = String(anchor || 'END').trim();
+
+  let at; // index in `lines` to splice the block in at
+  if (!a || /^end$/i.test(a)) {
+    at = lines.length;
+  } else if (/^start$/i.test(a)) {
+    let i = 0;
+    if (lines[0] && lines[0].trim() === '---') { i = 1; while (i < lines.length && lines[i].trim() !== '---') i++; i++; } // skip frontmatter
+    while (i < lines.length && lines[i].trim() === '') i++;
+    if (level(i) === 1) { i++; }                       // step past the H1 title so we land in the body
+    at = i;
+  } else {
+    const norm = (s) => s.replace(/^#{1,6}\s+/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const target = norm(a);
+    let idx = lines.findIndex((l, i) => level(i) > 0 && norm(l) === target);
+    if (idx < 0) idx = lines.findIndex((l) => l.trim() === a);       // exact-line fallback
+    if (idx < 0) { at = lines.length; }                              // not found → end
+    else { const lvl = level(idx); let j = idx + 1; while (j < lines.length && !(level(j) > 0 && level(j) <= lvl)) j++; at = j; }
+  }
+
+  const before = lines.slice(0, at);
+  while (before.length && before[before.length - 1].trim() === '') before.pop();   // collapse trailing blanks
+  const after = lines.slice(at);
+  let k = 0; while (k < after.length && after[k].trim() === '') k++;               // drop leading blanks
+  const out = [...before];
+  if (before.length) out.push('');                       // one blank line before the block
+  out.push(...insert.split('\n'));
+  if (k < after.length) { out.push(''); out.push(...after.slice(k)); }             // one blank line after
+  return out.join('\n').replace(/\s*$/, '') + '\n';
+}
+
+/** Read a note, insert the overview at the chosen anchor, write it back. Returns the new content. */
+export function augmentNoteFile(relPath, anchor, body) {
+  const content = readNote(relPath);
+  const next = placeOverview(content, anchor, body);
+  updateNote(relPath, next);
+  return next;
+}
+
 export function updateNote(relPath, content) {
   const root = vaultDir();
   const full = join(root, String(relPath || ''));

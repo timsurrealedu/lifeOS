@@ -9,7 +9,7 @@ import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
   moveEntry, listFolders, createFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
-  listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan,
+  listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
@@ -135,14 +135,18 @@ function sseRun(req, res, start) {
   });
   res.flushHeaders?.();
   const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  // Heartbeat: some runs (notably note-augment) go silent for 20-30s while claude reads + edits.
+  // An idle proxy/tunnel can buffer or drop a silent SSE stream, so emit a comment ping every 10s
+  // to keep bytes flowing until the run settles. Comments (`:` lines) are ignored by EventSource.
+  const ping = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 10000);
   const kill = start((type, data) => {
     send(type, data);
-    if (type === 'done' || type === 'error') res.end();
+    if (type === 'done' || type === 'error') { clearInterval(ping); res.end(); }
   });
   // Kill the run only if the *client* disconnects before we finish. Must watch the response, not
   // the request: express.json() drains the POST body, which ends the request stream and fires its
   // 'close' immediately — watching req here would kill claude the instant it starts.
-  res.on('close', () => { if (!res.writableEnded) kill(); });
+  res.on('close', () => { clearInterval(ping); if (!res.writableEnded) kill(); });
 }
 
 app.get('/api/process/stream', (req, res) => {
@@ -207,14 +211,39 @@ app.post('/api/note/chat', (req, res) => {
   res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 
-// ---- Add an overview of a topic INTO an open note (writes that one file) ----
-app.get('/api/note/augment/stream', (req, res) => {
-  const path = String(req.query.path || '').trim();
-  const topic = String(req.query.topic || '').trim();
-  const context = String(req.query.context || '').trim();
-  if (!path || !topic) return sseRun(req, res, (on) => { on('error', { message: 'path and topic required.' }); return () => {}; });
-  try { readNote(path); } catch { return sseRun(req, res, (on) => { on('error', { message: 'note not found.' }); return () => {}; }); }
-  sseRun(req, res, (on) => runNoteAugment(path, topic, context, on));
+// ---- Add an overview of a topic INTO an open note ----
+// POST (not GET/EventSource): the tutor reply we pass as `context` is dense LaTeX/markdown, which
+// balloons when URL-encoded and overruns the request-line/header limit — so it goes in the body.
+// The model only *generates* the overview (+ a placement anchor); the server does the insertion,
+// so it's strictly additive and can fall back to Gemini/DeepSeek like the chats.
+app.post('/api/note/augment/stream', (req, res) => {
+  const path = String(req.body && req.body.path || '').trim();
+  const topic = String(req.body && req.body.topic || '').trim();
+  const context = String(req.body && req.body.context || '').trim();
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  res.flushHeaders?.();
+  const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  const ping = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 10000);
+  const finish = () => { clearInterval(ping); if (!res.writableEnded) res.end(); };
+  if (!path || !topic) { send('error', { message: 'path and topic required.' }); return finish(); }
+  let content;
+  try { content = readNote(path); } catch { send('error', { message: 'note not found.' }); return finish(); }
+
+  const kill = runNoteAugment(path, content, topic, context, (type, data) => {
+    if (type === 'done') {
+      if (data.code !== 0) { send('error', { message: `The AI run didn't finish (exit ${data.code}).` }); return finish(); }
+      if (!data.body || !data.body.trim()) { send('error', { message: 'The AI returned nothing to add.' }); return finish(); }
+      try { augmentNoteFile(path, data.anchor, data.body); }
+      catch (e) { send('error', { message: e.message }); return finish(); }
+      send('done', { code: 0, usedFallback: data.usedFallback });
+      return finish();
+    }
+    send(type, data);                                   // status (incl. fallback-retry) + error
+    if (type === 'error') finish();
+  });
+  // Kill the run only if the client disconnects before we finish (watch res, not req — express.json
+  // drains the POST body and fires req 'close' immediately).
+  res.on('close', () => { clearInterval(ping); if (!res.writableEnded) kill(); });
 });
 
 // ---- Notes ----

@@ -11,10 +11,19 @@
   "ownerName": "Tim",
   "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku", "chat": "haiku", "calsync": "haiku", "autosort": "haiku" },
   "maxTurns": 40,
+  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> qwen -> fallback (DeepSeek/GLM) -> gemini. Leave a block's apiKey empty to skip it.",
+  "qwen": {
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
+    "apiKey": "",
+    "model": "qwen3-coder-plus"
+  },
   "fallback": {
-    "_comment": "Used only when the primary run hits a usage/rate limit. Leave apiKey empty to disable.",
     "baseUrl": "https://api.deepseek.com/anthropic",
     "apiKey": "",
     "model": "deepseek-v4-pro"
+  },
+  "gemini": {
+    "apiKey": "",
+    "model": "gemini-2.5-flash"
   }
 }

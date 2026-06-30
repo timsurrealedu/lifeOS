@@ -8,7 +8,14 @@ import { loadConfig, vaultDir } from './config.js';
 let writeRunning = false;
 export const isRunning = () => writeRunning;
 
-const READ_ONLY = new Set(['chat', 'notechat']);
+// Read-only kinds: no write lock, and eligible for the Gemini REST fallback. `noteaugment` is here
+// too — it now only *generates* the overview text (the server does the actual file insertion), so
+// it needs no edit tools and can fall back to Gemini/DeepSeek exactly like the chats.
+const READ_ONLY = new Set(['chat', 'notechat', 'noteaugment']);
+
+// Separator the augment run prints between its placement anchor and the markdown body. Kept rare so
+// it won't collide with note content; the server splits on it (see parseAugment + the augment route).
+export const AUGMENT_SEP = '<<<INSERT-BELOW>>>';
 
 const ALLOWED = {
   process: [
@@ -22,8 +29,9 @@ const ALLOWED = {
   chat: ['Read', 'Glob', 'Grep', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Read-only tutor scoped to one open note. Reads related notes for context; never writes.
   notechat: ['Read', 'Glob', 'Grep'],
-  // Augment ONE note: append an overview section the user asked for. Edits only that file.
-  noteaugment: ['Read', 'Edit', 'Glob', 'Grep'],
+  // Augment ONE note: the model only *writes the overview text* (read-only — server inserts it),
+  // so it may read related notes for context but never edits anything.
+  noteaugment: ['Read', 'Glob', 'Grep'],
   // Pull calendar events into a local cache file. Reads the calendar, writes only .cache/calendar.json.
   calsync: ['Read', 'Write', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Propose a folder tidy-up. Reads structure, writes only the proposal to .cache/autosort.json.
@@ -102,24 +110,29 @@ const PROMPTS = {
       + `in plain Markdown, no preamble.\n\nConversation so far:\n${transcript}\n\nAnswer the latest message.`;
   },
 
-  // Write an overview of a topic the user felt weak on INTO their open note. The only run that
-  // edits a user note from the tutor flow — deliberately additive, never destructive.
-  noteaugment: (cfg, notePath, topic, context) =>
-    `You are editing **one note** in ${cfg.ownerName}'s Obsidian vault, launched from lifeOS with no `
-    + `interactive user. The note is \`${notePath}\`.\n\n`
-    + `${cfg.ownerName} was studying this note and asked their tutor about a topic they felt weak on. `
-    + `They want a clear overview of that topic added **into this note** for later revision.\n\n`
-    + `The topic / question:\n"""\n${topic}\n"""\n`
-    + (context ? `\nContext from the tutor conversation (use it, but write your own clean overview):\n"""\n${context}\n"""\n` : '')
-    + '\nDo this:\n'
-    + `1. Read \`${notePath}\`.\n`
-    + '2. **Append** a new section near the end (before any footer/links/source-embed block if present) '
-    + 'with an H2 heading like `## Overview — <topic>` (a `#weak-topic` tag on the heading line is fine). '
-    + 'Write a concise, self-contained overview: the core idea, key formulas as **LaTeX** (`$…$` / `$$…$$`), '
-    + 'and a short worked example or intuition where it helps.\n'
-    + '3. **Never delete or rewrite the user\'s existing content** — only add. Match the note\'s existing '
-    + 'language and style. Keep `[[wikilinks]]` title-only (no folder paths).\n'
-    + '4. Use the `Edit` tool on that one file only; touch nothing else. Finish with a one-line summary.',
+  // Write an overview of a topic the user felt weak on, to be inserted INTO their open note. The
+  // model does NOT edit the file — it returns the section text plus where it belongs; the server
+  // inserts it (strictly additive). The note's full content is inlined so it needs no tools.
+  noteaugment: (cfg, notePath, noteContent, topic, context) =>
+    `You are helping ${cfg.ownerName} revise **one note** in their Obsidian vault (timezone ${cfg.timezone}). `
+    + `They were studying it and asked their tutor about a topic they felt weak on, and now want a clear `
+    + `overview of that topic added **into the note** for later revision.\n\n`
+    + `The note is \`${notePath}\`. Its full current content is:\n"""\n${noteContent}\n"""\n\n`
+    + `The topic / question they asked:\n"""\n${topic}\n"""\n`
+    + (context ? `\nWhat the tutor told them (use it, but write your own clean overview):\n"""\n${context}\n"""\n` : '')
+    + `\nWrite a concise, self-contained overview of that topic: the core idea, key formulas as **LaTeX** `
+    + `(inline \`$…$\`, display \`$$…$$\`), and a short worked example or intuition where it helps. Begin it `
+    + `with its own \`## \` or \`### \` heading (e.g. \`## Overview — <topic>\`). Match the note's existing `
+    + `language and style; keep \`[[wikilinks]]\` title-only.\n\n`
+    + `Decide WHERE in the note it best belongs — directly after the existing section it relates to, so it `
+    + `sits next to related material (near the top if it relates to an early section, the middle if a middle `
+    + `section, the end only if nothing matches).\n\n`
+    + `Respond in EXACTLY this format and nothing else — no preamble, no code fences:\n`
+    + `• First, ONE line: the exact text of the existing note heading your overview should go immediately `
+    + `after (copy it verbatim, including its \`#\` marks) — or \`START\` for the very top of the note, or `
+    + `\`END\` for the very end.\n`
+    + `• Then a line containing only: ${AUGMENT_SEP}\n`
+    + `• Then the markdown of the overview to insert (raw LaTeX, no escaping).`,
 
   autosort: (cfg) =>
     `You are the "Auto-sort" job in ${cfg.ownerName}'s lifeOS vault, no interactive user. Your job is to `
@@ -220,10 +233,11 @@ function buildArgs({ kind, prompt, model, maxTurns }) {
 /**
  * Spawn `claude -p` in the vault and stream stdout/stderr lines to `onEvent`.
  * onEvent(type, data): type ∈ {status, log, done, error}.
- * Picks the per-task model + turn cap from config, and — if the primary run dies with a
- * usage/rate-limit error and a `fallback` provider is configured — transparently retries the
- * same prompt once against that provider's Anthropic-compatible endpoint.
- * Returns a kill function.
+ * Picks the per-task model + turn cap from config, and — if a run dies with a usage/rate-limit
+ * error — cascades down the configured fallback chain (claude → qwen → DeepSeek → Gemini), trying
+ * the same prompt on each next provider. Qwen + DeepSeek are Anthropic-compatible so they drive the
+ * `claude` CLI (any kind); Gemini is REST-only (read-only kinds: chats + add-to-note). Returns a
+ * kill function.
  */
 function spawnClaude({ kind, prompt }, onEvent) {
   const readOnly = READ_ONLY.has(kind);
@@ -236,32 +250,52 @@ function spawnClaude({ kind, prompt }, onEvent) {
 
   const cfg = loadConfig();
   const cwd = vaultDir(cfg);
-  const fb = cfg.fallback || {};
-  const fallbackReady = !!(fb.apiKey && fb.baseUrl);
+
+  // Ordered fallback chain after the primary `claude` run. An Anthropic-compatible provider needs a
+  // baseUrl + apiKey (it runs through the CLI with an env override); Gemini needs only an apiKey and
+  // is REST-only, so it's offered for read-only kinds (no tools needed) — which now includes
+  // add-to-note. Unconfigured links are skipped.
+  const cli = (c, name) => (c && c.apiKey && c.baseUrl)
+    ? { type: 'cli', name, model: c.model, baseUrl: c.baseUrl, apiKey: c.apiKey } : null;
   const gem = cfg.gemini || {};
-  const geminiReady = !!gem.apiKey; // chats can fall back to Gemini's REST API directly
+  const chain = [
+    cli(cfg.qwen, 'Qwen'),
+    cli(cfg.fallback, 'DeepSeek'),
+    (readOnly && gem.apiKey) ? { type: 'gemini', name: 'Gemini', model: gem.model } : null,
+  ].filter(Boolean);
 
   let current = null;     // the live child, so the kill fn can target it
   let killed = false;     // user cancelled → never auto-retry
 
-  const attempt = (onFallback) => {
-    const model = onFallback ? fb.model : (cfg.models && cfg.models[kind]);
-    const env = onFallback
-      ? { ...process.env, ANTHROPIC_BASE_URL: fb.baseUrl, ANTHROPIC_AUTH_TOKEN: fb.apiKey, ANTHROPIC_API_KEY: fb.apiKey }
-      : process.env;
-    onEvent('status', { state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default' });
-
-    // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
-    let settled = false;
-    // Read-only chats (per-note tutor + vault chat) can answer via Gemini's REST API directly: their
-    // prompt is self-contained, so no tools/file edits are needed. Returns true if it took over.
-    const geminiFallback = (msg) => {
-      if (!(READ_ONLY.has(kind) && geminiReady && !onFallback)) return false;
-      onEvent('status', { state: 'fallback-retry', message: msg + ` — answering via Gemini (${gem.model || 'gemini'}).` });
-      streamGemini(prompt, onEvent, release);
+  // step = -1 → primary claude; 0..n → chain[step]. `run` settles via onEvent (done/error) or
+  // hands off to the next link. `why` describes what triggered the hand-off (shown to the user).
+  const run = (step) => {
+    if (killed) return;
+    const provider = step < 0 ? null : chain[step];
+    // Advance to the next link in the chain, announcing it. Returns false if the chain is exhausted.
+    const advance = (why) => {
+      if (killed || step + 1 >= chain.length) return false;
+      onEvent('status', { state: 'fallback-retry', message: `${why} — trying ${chain[step + 1].name}.` });
+      run(step + 1);
       return true;
     };
 
+    // Gemini: a direct REST call (no child process); it streams + settles (done/error) on its own.
+    if (provider && provider.type === 'gemini') {
+      onEvent('status', { state: 'fallback', kind, provider: provider.name, model: provider.model || 'gemini' });
+      streamGemini(prompt, onEvent, release);
+      return;
+    }
+
+    const onFallback = step >= 0;
+    const model = onFallback ? provider.model : (cfg.models && cfg.models[kind]);
+    const env = onFallback
+      ? { ...process.env, ANTHROPIC_BASE_URL: provider.baseUrl, ANTHROPIC_AUTH_TOKEN: provider.apiKey, ANTHROPIC_API_KEY: provider.apiKey }
+      : process.env;
+    onEvent('status', { state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default', provider: onFallback ? provider.name : 'Claude' });
+
+    // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
+    let settled = false;
     let child, output = '';
     try {
       // stdin: 'ignore' so claude doesn't wait ~3s for piped stdin that never comes
@@ -271,7 +305,7 @@ function spawnClaude({ kind, prompt }, onEvent) {
       });
     } catch (err) {
       settled = true;
-      if (geminiFallback('claude unavailable')) return;
+      if (advance(`Couldn't launch claude (${err.message})`)) return;
       release();
       onEvent('error', { message: `Failed to launch claude: ${err.message}` });
       return;
@@ -296,26 +330,20 @@ function spawnClaude({ kind, prompt }, onEvent) {
     // claude binary missing / can't spawn → ENOENT here (not the try/catch above).
     child.on('error', (err) => {
       if (settled) return; settled = true;
-      if (geminiFallback('claude unavailable')) return;
+      if (advance(`claude unavailable (${err.message})`)) return;
       release();
       onEvent('error', { message: err.message });
     });
     child.on('close', (code) => {
       if (settled) return; settled = true;
-      const limited = code !== 0 && !onFallback && !killed && LIMIT_RE.test(output);
-      // Preferred chat fallback: Gemini when the primary hit a usage/session limit.
-      if (limited && geminiFallback('Primary hit a limit')) return;
-      // Otherwise retry once on the Anthropic-compatible fallback provider (DeepSeek/GLM).
-      if (limited && fallbackReady) {
-        onEvent('status', { state: 'fallback-retry', message: `Primary hit a limit — retrying on fallback (${fb.model || 'fallback'}).` });
-        return attempt(true);
-      }
+      const limited = code !== 0 && !killed && LIMIT_RE.test(output);
+      if (limited && advance(onFallback ? `${provider.name} hit a limit` : 'Claude hit a usage limit')) return;
       release();
-      onEvent('done', { code, usedFallback: onFallback });
+      onEvent('done', { code, usedFallback: onFallback ? provider.name : false });
     });
   };
 
-  attempt(false);
+  run(-1);
   return () => { killed = true; try { current && current.kill('SIGTERM'); } catch { /* noop */ } };
 }
 
@@ -337,8 +365,39 @@ export const runChat = (messages, onEvent) =>
 export const runNoteChat = (notePath, noteContent, messages, onEvent) =>
   spawnClaude({ kind: 'notechat', prompt: PROMPTS.notechat(loadConfig(), notePath, noteContent, messages) }, onEvent);
 
-export const runNoteAugment = (notePath, topic, context, onEvent) =>
-  spawnClaude({ kind: 'noteaugment', prompt: PROMPTS.noteaugment(loadConfig(), notePath, topic, context) }, onEvent);
+/** Split the augment run's raw output into a placement anchor + the markdown body to insert. */
+export function parseAugment(raw) {
+  const t = String(raw || '').replace(/\r/g, '').trim();
+  const i = t.indexOf(AUGMENT_SEP);
+  let anchor, body;
+  if (i >= 0) { anchor = t.slice(0, i); body = t.slice(i + AUGMENT_SEP.length); }
+  else { anchor = 'END'; body = t; }                 // no separator → just append the whole thing
+  // Anchor = last non-empty line before the separator (ignore any stray preamble), de-quoted.
+  const al = anchor.split('\n').map((s) => s.trim()).filter(Boolean);
+  anchor = (al.length ? al[al.length - 1] : 'END').replace(/^[`"']+|[`"']+$/g, '').trim() || 'END';
+  // Body: drop an accidental wrapping code fence, trim.
+  body = body.trim().replace(/^```[a-z]*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  return { anchor, body };
+}
+
+// Generate the overview text for a note (does NOT touch the file). Streams status/error through and,
+// on success, hands the route a parsed { anchor, body } on the `done` event so it can do the insert.
+// Read-only, so it inherits the chats' Gemini→DeepSeek fallback chain.
+export function runNoteAugment(notePath, noteContent, topic, context, onEvent) {
+  let out = '';
+  return spawnClaude(
+    { kind: 'noteaugment', prompt: PROMPTS.noteaugment(loadConfig(), notePath, noteContent, topic, context) },
+    (type, data) => {
+      if (type === 'log') { if (data.channel === 'out') out += data.line + '\n'; return; }
+      if (type === 'done') {
+        if (data.code !== 0) { onEvent('done', { code: data.code, usedFallback: data.usedFallback }); return; }
+        onEvent('done', { code: 0, usedFallback: data.usedFallback, ...parseAugment(out) });
+        return;
+      }
+      onEvent(type, data);                              // status (incl. fallback-retry) + error
+    },
+  );
+}
 
 export const runCalSync = (onEvent) =>
   spawnClaude({ kind: 'calsync', prompt: PROMPTS.calsync(loadConfig()) }, onEvent);

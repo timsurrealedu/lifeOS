@@ -269,14 +269,22 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <p class="hint">CLIs used to turn attached PDFs/Office files into text when you process the inbox.</p>
       <div id="cfg-doctools" class="doctools"></div>
 
-      <h4 class="settings-sub">Fallback AI</h4>
-      <p class="hint">Used only when a run hits its usage/rate limit. DeepSeek and GLM expose Anthropic-compatible endpoints, so the same workflow keeps running. Leave the key empty to disable.</p>
+      <p class="hint">When a run hits its usage/rate limit it cascades down this chain: <b>Claude → Qwen → DeepSeek → Gemini</b>. Leave a key empty to skip that link.</p>
+
+      <h4 class="settings-sub">Qwen fallback <small>(1st)</small></h4>
+      <p class="hint">Qwen (Alibaba DashScope) exposes an Anthropic-compatible endpoint, so the same workflow keeps running. Get a key at <code>dashscope.console.aliyun.com</code>.</p>
+      <label>Base URL<input id="cfg-qw-baseUrl" placeholder="https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy" autocomplete="off" /></label>
+      <label>API key<input id="cfg-qw-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
+      <label>Model<input id="cfg-qw-model" placeholder="qwen3-coder-plus" autocomplete="off" /></label>
+
+      <h4 class="settings-sub">DeepSeek / GLM fallback <small>(2nd)</small></h4>
+      <p class="hint">DeepSeek and GLM also expose Anthropic-compatible endpoints. Leave the key empty to disable.</p>
       <label>Base URL<input id="cfg-fb-baseUrl" placeholder="https://api.deepseek.com/anthropic" autocomplete="off" /></label>
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">Gemini fallback <small>(AI chat only)</small></h4>
-      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b> &amp; <b>vault chat</b> answering via Gemini when Claude runs out of session. Free key at <code>aistudio.google.com/apikey</code>. Leave empty to disable.</p>
+      <h4 class="settings-sub">Gemini fallback <small>(last)</small></h4>
+      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when the others are exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
       <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
 
@@ -402,6 +410,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
 
     <!-- Per-note tutor chat dock (slides up over the bottom of the reader) -->
     <div class="note-chat" id="note-chat" hidden>
+      <div class="note-chat-resize" id="note-chat-resize" title="Drag to resize"></div>
       <div class="note-chat-head">
         <span class="note-chat-title">💬 Tutor</span>
         <div class="spacer"></div>
