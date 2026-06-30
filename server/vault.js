@@ -392,9 +392,98 @@ export function listFolders() {
 }
 
 /**
+ * The MOC hub note for a folder: the note named like the folder (ignoring case/spaces/punct),
+ * walking up to the nearest ancestor folder that has one, then falling back to a root-level hub
+ * named after the top segment (e.g. `University.md` for `University/...`). Returns {name,path} or null.
+ * Mirrors the implicit-MOC logic in buildGraph so the file edits match what the graph already implies.
+ */
+function findHubForFolder(notes, folderRel) {
+  if (!folderRel) return null;
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hubByFolder = new Map();
+  for (const n of notes) {
+    const parts = n.path.split('/');
+    if (parts.length < 2) continue;
+    const folder = parts.slice(0, -1).join('/');
+    if (norm(n.name) === norm(parts[parts.length - 2])) hubByFolder.set(folder, { name: n.name, path: n.path });
+  }
+  const segs = folderRel.split('/');
+  for (let i = segs.length; i >= 1; i--) {
+    const hit = hubByFolder.get(segs.slice(0, i).join('/'));
+    if (hit) return hit;
+  }
+  // Top-level folder whose hub note lives at the vault root (e.g. University/ ↔ University.md).
+  const rootHub = notes.find((n) => !n.path.includes('/') && norm(n.name) === norm(segs[0]));
+  return rootHub ? { name: rootHub.name, path: rootHub.path } : null;
+}
+
+/**
+ * Add `- [[title]]` to a hub note (idempotent). Inserts under an existing "…Notes" heading if the
+ * hub has one, otherwise appends a managed `## Notes` section — always above a trailing `→ [[Parent]]`
+ * footer so the hub's own backlink stays last. Returns true if it changed the file.
+ */
+function linkNoteInHub(hubPath, title) {
+  const full = join(vaultDir(), hubPath);
+  if (!existsSync(full)) return false;
+  let text = readFileSync(full, 'utf8').replace(/\r/g, '');
+  const esc = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp('\\[\\[\\s*' + esc + '\\s*(?:\\||\\]\\])', 'i').test(text)) return false; // already linked
+  const bullet = `- [[${title}]]`;
+
+  // Peel a trailing "→ [[Hub]]" footer so the new link lands above it.
+  let footer = '';
+  const fm = text.match(/(?:^|\n)((?:→[^\n]*\n?)+)\s*$/);
+  if (fm) { footer = fm[1].trim(); text = text.slice(0, fm.index); }
+  text = text.replace(/\s+$/, '');
+
+  const lines = text.split('\n');
+  const hIdx = lines.findIndex((l) => /^#{2,6}\s.*\bnotes?\b/i.test(l));
+  if (hIdx >= 0) {
+    let insertAt = hIdx + 1;
+    for (let j = hIdx + 1; j < lines.length; j++) {
+      if (/^#{1,6}\s/.test(lines[j])) break;            // next heading ends the section
+      if (lines[j].trim() !== '') insertAt = j + 1;     // place after the section's last content line
+    }
+    lines.splice(insertAt, 0, bullet);
+    text = lines.join('\n');
+  } else {
+    text += `\n\n## Notes\n\n${bullet}`;
+  }
+  text += '\n' + (footer ? `\n${footer}\n` : '');
+  writeFileSync(full, text);
+  return true;
+}
+
+/** Give a freshly-created note a `→ [[Hub]]` footer (skips if it already has any such footer). */
+function addHubFooter(fullPath, hubName) {
+  let t = readFileSync(fullPath, 'utf8');
+  if (/→\s*\[\[/.test(t)) return;
+  writeFileSync(fullPath, t.replace(/\s+$/, '') + `\n\n→ [[${hubName}]]\n`);
+}
+
+/**
+ * Deterministically link a new note into its folder's MOC hub — no AI, no tokens. Best-effort:
+ * never let MOC bookkeeping fail note creation. Returns the hub note's name if it linked one.
+ */
+function autolinkHub(relPath, title) {
+  try {
+    const folderRel = relPath.includes('/') ? relPath.split('/').slice(0, -1).join('/') : '';
+    if (!folderRel) return null;
+    const root = vaultDir();
+    const hub = findHubForFolder(walk(root, root, []), folderRel);
+    if (!hub || hub.name.toLowerCase() === title.toLowerCase()) return null; // no hub, or note IS the hub
+    const linked = linkNoteInHub(hub.path, title);
+    addHubFooter(join(root, relPath), hub.name);
+    return linked ? hub.name : null;
+  } catch { return null; }
+}
+
+/**
  * Write a user-authored note into the vault (the in-app "write your own note" editor).
  * Saved into `folder` (default `Drafts/`), tagged `#draft` so the next process-inbox run
  * optimizes it in place. Never overwrites — auto-suffixes the filename if it's taken.
+ * If the folder has a MOC hub, the note is linked into it automatically (no AI). Returns
+ * `{ path, hub }` where `hub` is the hub note it linked into (or null).
  */
 export function createNote({ title, folder, content } = {}) {
   const root = vaultDir();
@@ -416,7 +505,9 @@ export function createNote({ title, folder, content } = {}) {
   if (!/(^|\s)#draft\b/.test(body)) body += '\n\n#draft';            // optimize-me marker
   writeFileSync(full, `${body}\n`);
 
-  return relative(root, full).split(sep).join('/');
+  const relPath = relative(root, full).split(sep).join('/');
+  const hub = autolinkHub(relPath, name); // link by the actual note name (handles collision suffixes); no AI
+  return { path: relPath, hub };
 }
 
 /**

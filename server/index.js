@@ -225,7 +225,7 @@ app.get('/api/search', (req, res) => {
 });
 // Write your own note (in-app editor). Tagged #draft so process-inbox optimizes it later.
 app.post('/api/notes', (req, res) => {
-  try { ok(res, { path: createNote(req.body || {}) }); } catch (e) { fail(res, e); }
+  try { ok(res, createNote(req.body || {})); } catch (e) { fail(res, e); } // { path, hub }
 });
 // Save edits to an existing note (in-app editor, edit mode).
 app.post('/api/note/save', (req, res) => {

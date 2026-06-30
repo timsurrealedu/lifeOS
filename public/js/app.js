@@ -1284,7 +1284,7 @@ $('#editor-cancel').addEventListener('click', closeEditor);
 $('#editor-save').addEventListener('click', async () => {
   if (!edBody.value.trim()) { toast('Write something first'); return; }
   try {
-    let path, name;
+    let path, name, hub;
     if (edMode === 'edit') {
       ({ path } = await api('/api/note/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1301,7 +1301,7 @@ $('#editor-save').addEventListener('click', async () => {
     } else {
       const title = edTitle.value.trim();
       if (!title) { toast('Add a title'); edTitle.focus(); return; }
-      ({ path } = await api('/api/notes', {
+      ({ path, hub } = await api('/api/notes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, folder: $('#editor-folder').value.trim() || 'Drafts', content: edBody.value }),
       }));
@@ -1310,8 +1310,8 @@ $('#editor-save').addEventListener('click', async () => {
     // Hide without history.back() — we're about to (re)open the reader; a deferred popstate would
     // otherwise race its pushState. (Any stray history entry is harmless.)
     $('#editor').hidden = true; editorOpen = false;
-    state.notes = []; await loadNotes(true);
-    toast(edMode === 'edit' ? 'Note updated' : 'Note saved');
+    state.notes = []; state.graph = null; await loadNotes(true);
+    toast(edMode === 'edit' ? 'Note updated' : (hub ? `Saved · linked in ${hub}` : 'Note saved'));
     openNote(path, name);
   } catch (e) { toast(e.message); }
 });
