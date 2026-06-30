@@ -1,11 +1,44 @@
-# Auto-grab a free Oracle A1 (ARM) box from your GCP server
+# Auto-grab a free Oracle A1 (ARM) box from an always-on box
 
 Oracle's free Ampere A1 is chronically "out of host capacity" — it frees up in unpredictable bursts,
 often in the small hours of your region's night. Since your own devices are off then, this runs the
-retry loop on your **always-on GCP e2-micro**, so it keeps trying 24/7 and stops the moment it lands
-an instance.
+retry loop on an **always-on box** (e.g. your Oracle trial instance), so it keeps trying 24/7 and stops
+the moment it lands an instance.
 
-Do this **after** the GCP box is up and running lifeOS (you'll already have Node, pm2, etc. there).
+Do this **after** that box is up and running lifeOS (you'll already have Node, pm2, etc. there).
+
+---
+
+## 0. Recommended on an OCI VM: instance-principal auth (no API keys)
+
+If the grabber runs on an Oracle VM, skip the API-key dance (sections 1–2) and let the VM authenticate
+as itself. One-time console setup:
+
+1. **Get the box's instance OCID:** Console → Compute → Instances → your trial instance → copy **OCID**.
+2. **Create a dynamic group** — Console → Identity & Security → **Domains → (your domain) → Dynamic
+   groups → Create**. Name it `lifeos-a1-grabber`, matching rule:
+   ```
+   ALL {instance.id = '<the-instance-OCID-from-step-1>'}
+   ```
+3. **Create a policy** — Identity & Security → **Policies → Create policy** (in the **root**
+   compartment). Name `lifeos-a1-grabber-policy`, statements:
+   ```
+   Allow dynamic-group lifeos-a1-grabber to manage instance-family in tenancy
+   Allow dynamic-group lifeos-a1-grabber to use virtual-network-family in tenancy
+   Allow dynamic-group lifeos-a1-grabber to use volume-family in tenancy
+   Allow dynamic-group lifeos-a1-grabber to read all-resources in tenancy
+   ```
+   (If your tenancy uses identity domains, prefix the group: `dynamic-group '<DomainName>'/'lifeos-a1-grabber'`.)
+4. On the box, install the CLI and test instance-principal auth:
+   ```bash
+   bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"
+   exec $SHELL
+   export OCI_CLI_AUTH=instance_principal
+   oci iam availability-domain list --compartment-id <TENANCY_OCID> --query 'data[*].name' --raw-output
+   ```
+   If that lists your AD(s), instance principals work. Set `OCI_AUTH="instance_principal"` in
+   `oracle-a1.env` and **skip sections 1–2** (no `oci setup config`, no API key upload). Continue at
+   section 3 (SSH key) and 4 (discover OCIDs) using `export OCI_CLI_AUTH=instance_principal`.
 
 ---
 

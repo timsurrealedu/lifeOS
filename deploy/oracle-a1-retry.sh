@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
 # Oracle A1 (Ampere ARM) auto-grabber. Retries `instance launch` until the free ARM capacity frees
-# up, then stops. Built to run UNATTENDED on an always-on box (your GCP e2-micro) so it keeps trying
-# through the early-morning capacity windows when your own devices are off.
+# up, then stops. Built to run UNATTENDED on an always-on box (e.g. your Oracle trial box) so it keeps
+# trying through the capacity windows your own devices are off for.
+#
+# On an OCI VM, set OCI_AUTH=instance_principal in the env file to auth with no API keys (needs a
+# dynamic group + policy — see oracle-a1-retry.md). Set VAULT_DIR to get a success note in lifeOS.
 #
 # Setup, OCI CLI auth, and how to find every OCID: see deploy/oracle-a1-retry.md
 #
@@ -31,11 +34,25 @@ MEM_GB="${MEM_GB:-12}"
 NAME="${DISPLAY_NAME:-lifeos-a1}"
 INTERVAL="${INTERVAL_SECONDS:-180}"           # wait between cycles on a plain "no capacity"
 RATE_SLEEP="${RATE_SLEEP_SECONDS:-600}"       # longer wait after a "too many requests"
+VAULT_DIR="${VAULT_DIR:-}"                     # optional: drop a success note here (surfaces in lifeOS)
+
+# On an OCI VM, auth via instance principal (no API keys) when OCI_AUTH=instance_principal.
+[ "${OCI_AUTH:-}" = "instance_principal" ] && export OCI_CLI_AUTH=instance_principal
 
 command -v oci >/dev/null 2>&1 || { echo "oci CLI not found — install it first (see oracle-a1-retry.md)."; exit 1; }
 PUBKEY="$(tr -d '\r\n' < "$SSH_PUBKEY_PATH")"
 [ -n "$PUBKEY" ] || { echo "SSH_PUBKEY_PATH ($SSH_PUBKEY_PATH) is empty."; exit 1; }
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+# On success, drop a capture into the synced vault inbox so it shows up in the lifeOS app + phone.
+notify_vault() {
+  [ -n "$VAULT_DIR" ] && [ -f "$VAULT_DIR/inbox.md" ] || return 0
+  local line="- 🎉 Free Oracle A1 captured ($(ts))! Migrate lifeOS to it — see deploy/oracle-a1-retry.md step 6. #a1-captured"
+  awk -v ins="$line" '1; /^## Unprocessed[[:space:]]*$/ && !d {print ""; print ins; d=1}' \
+    "$VAULT_DIR/inbox.md" > "$VAULT_DIR/inbox.md.tmp" 2>/dev/null \
+    && mv "$VAULT_DIR/inbox.md.tmp" "$VAULT_DIR/inbox.md" \
+    && echo "[$(ts)] 📥 Dropped a note into the vault inbox — it'll sync to your phone."
+}
 
 echo "[$(ts)] A1 grabber started — $SHAPE ${OCPUS}OCPU/${MEM_GB}GB, ADs: $AVAILABILITY_DOMAINS, base interval ${INTERVAL}s"
 
@@ -60,6 +77,7 @@ while true; do
     if [ $code -eq 0 ]; then
       echo "[$(ts)] 🎉 SUCCESS — instance is launching!"
       echo "$out" | tee "$HERE/a1-success.json"
+      notify_vault
       echo "[$(ts)] Saved to $HERE/a1-success.json. Grabber stopping — go grab the public IP in the console."
       exit 0
     fi
