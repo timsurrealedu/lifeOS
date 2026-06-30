@@ -154,9 +154,12 @@ function sseRun(req, res, start) {
 }
 
 app.get('/api/process/stream', (req, res) => {
+  // ?provider=Qwen|DeepSeek → force the run through that fallback to test it (skips Claude). When
+  // testing we don't skip-when-idle: spawning the provider is the point even if the inbox is empty.
+  const provider = String(req.query.provider || '').trim();
   // Don't even spawn claude when there's nothing to do — the inbox is empty AND no #draft notes
   // need optimizing. Saves a whole run's context-load tokens (matters on nightly schedules).
-  if (readInboxItems().length === 0 && !hasDrafts()) {
+  if (!provider && readInboxItems().length === 0 && !hasDrafts()) {
     return sseRun(req, res, (on) => {
       on('status', { state: 'skipped', message: 'Nothing to process — inbox empty, no drafts.' });
       on('done', { code: 0, skipped: true });
@@ -168,7 +171,7 @@ app.get('/api/process/stream', (req, res) => {
   sseRun(req, res, (on) => runProcessInbox((type, data) => {
     if (type === 'done' || type === 'error') clearInboxLock();
     on(type, data);
-  }));
+  }, provider || undefined));
 });
 
 app.get('/api/research/stream', (req, res) => {

@@ -317,7 +317,7 @@ function buildArgs({ kind, prompt, model, maxTurns }) {
  * `claude` CLI (any kind); Gemini is REST-only (read-only kinds only: chats + add-to-note, so on
  * write kinds it's skipped and the chain is Qwen → DeepSeek). Returns a kill function.
  */
-function spawnClaude({ kind, prompt }, onEvent) {
+function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
   const readOnly = READ_ONLY.has(kind);
   if (!readOnly && writeRunning) {
     onEvent('error', { message: 'A run is already in progress.' });
@@ -343,6 +343,22 @@ function spawnClaude({ kind, prompt }, onEvent) {
     (readOnly && gem.apiKey) ? { type: 'gemini', name: 'Gemini', model: gem.model } : null,
     cli(cfg.fallback, 'DeepSeek'),
   ].filter(Boolean);
+
+  // Test switch: force the run straight onto one fallback provider (skipping the primary Claude run)
+  // so you can confirm e.g. Qwen actually drives a write job, without waiting to hit a real usage
+  // limit. Narrow the chain to just that provider; an unconfigured/ineligible name errors clearly.
+  let startStep = -1;
+  if (forceProvider) {
+    const want = String(forceProvider).toLowerCase();
+    const only = chain.find((p) => p.name.toLowerCase() === want);
+    if (!only) {
+      release();
+      onEvent('error', { message: `Can't test "${forceProvider}": it isn't configured${readOnly ? '' : ", or it can't run write jobs (Gemini is read-only)"}.` });
+      return () => {};
+    }
+    chain.length = 0; chain.push(only);                 // same array object → closures still see it
+    startStep = 0;
+  }
 
   let current = null;     // the live child, so the kill fn can target it
   let killed = false;     // user cancelled → never auto-retry
@@ -435,12 +451,14 @@ function spawnClaude({ kind, prompt }, onEvent) {
     });
   };
 
-  run(-1);
+  run(startStep);
   return () => { killed = true; try { current && current.kill('SIGTERM'); } catch { /* noop */ } };
 }
 
-export const runProcessInbox = (onEvent) =>
-  spawnClaude({ kind: 'process', prompt: PROMPTS.process() }, onEvent);
+// `forceProvider` (optional) runs the inbox straight through one fallback by name ('Qwen'/'DeepSeek')
+// to test it — see the Settings "Test a fallback" control.
+export const runProcessInbox = (onEvent, forceProvider) =>
+  spawnClaude({ kind: 'process', prompt: PROMPTS.process(), forceProvider }, onEvent);
 
 export const runResearch = (idea, onEvent) =>
   spawnClaude({ kind: 'research', prompt: PROMPTS.research(loadConfig(), idea) }, onEvent);

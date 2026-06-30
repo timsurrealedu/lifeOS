@@ -288,6 +288,16 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
 
+      <h4 class="settings-sub">Test a fallback</h4>
+      <p class="hint">Run <b>Process inbox</b> straight through one provider (skipping Claude) to confirm it actually drives a write job — no need to wait to hit a real usage limit. Save your keys first. Gemini is read-only, so it can't run this write job.</p>
+      <div class="settings-actions">
+        <select id="cfg-test-provider" class="settings-select">
+          <option value="Qwen">Qwen</option>
+          <option value="DeepSeek">DeepSeek</option>
+        </select>
+        <button class="btn" id="btn-test-fallback">Run Process inbox via this</button>
+      </div>
+
       <div class="settings-actions">
         <button class="btn primary" id="btn-save-cfg">Save</button>
         <span id="cfg-vaultdir" class="hint"></span>

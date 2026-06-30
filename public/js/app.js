@@ -345,7 +345,7 @@ async function uploadAudio(hint) {
 }
 
 /* ---------- Claude runs (SSE) ---------- */
-$('#btn-process').addEventListener('click', startProcess);
+$('#btn-process').addEventListener('click', () => startProcess());
 
 // Generic streaming-run sheet. Collects stdout and hands it to onDone(text, exitCode).
 function startStream(url, { title = 'Working…', onDone } = {}) {
@@ -366,7 +366,7 @@ function startStream(url, { title = 'Working…', onDone } = {}) {
     const d = JSON.parse(e.data);
     if (d.state === 'starting') append(`▸ claude started · ${d.model || 'default'} · ${d.cwd}`);
     else if (d.state === 'skipped') { append('• ' + (d.message || 'Nothing to do')); $('#process-status').textContent = 'Nothing to do'; }
-    else if (d.state === 'fallback-retry' || d.state === 'fallback') append('⤷ ' + (d.message || `switching to fallback (${d.model || ''})`), 'err');
+    else if (d.state === 'fallback-retry' || d.state === 'fallback') append('⤷ ' + (d.message || `via ${d.provider || 'fallback'}${d.model ? ' · ' + d.model : ''}`), 'err');
   });
   es.addEventListener('log', (e) => {
     const d = JSON.parse(e.data);
@@ -393,8 +393,10 @@ function startStream(url, { title = 'Working…', onDone } = {}) {
   return es;
 }
 
-function startProcess() {
-  startStream('/api/process/stream', { title: 'Processing inbox…', onDone: (_out, _code, info) => afterProcess(info) });
+// provider (optional, 'Qwen'/'DeepSeek') → force the run through that fallback to test it.
+function startProcess(provider) {
+  const url = '/api/process/stream' + (provider ? '?provider=' + encodeURIComponent(provider) : '');
+  startStream(url, { title: provider ? `Testing ${provider}…` : 'Processing inbox…', onDone: (_out, _code, info) => afterProcess(info) });
 }
 
 async function afterProcess(info) {
@@ -1271,6 +1273,18 @@ function splitBlocks(md) {
 const lpHost = () => $('#lp-editor');
 function autosizeTA(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
 
+// Pick the edit field's styling so revealing a block's source keeps the rendered look (a heading
+// stays big & bold, a quote stays muted) instead of collapsing to plain text. Math/code/frontmatter
+// stay monospace — raw syntax is what you edit there.
+function editClassFor(block) {
+  const b = String(block || ''), first = b.replace(/^\s+/, '');
+  const h = first.match(/^(#{1,6})\s/);
+  if (h) return 'lp-edit-h' + Math.min(h[1].length, 3);
+  if (/^---\r?\n[\s\S]*\n---\s*$/.test(b) || /^\s*```/.test(first) || /^\s*\$\$/.test(first)) return 'lp-edit-mono';
+  if (/^>\s?/.test(first)) return 'lp-edit-quote';
+  return 'lp-edit-prose';
+}
+
 // Render every block as formatted HTML (themed). Clicking a block opens its source (see delegation).
 function renderLive() {
   lpActiveIdx = -1;
@@ -1311,7 +1325,7 @@ function enterBlockEdit(idx) {
   if (!div) return;
   lpActiveIdx = idx;
   const ta = document.createElement('textarea');
-  ta.className = 'lp-edit'; ta.value = blocks[idx];
+  ta.className = 'lp-edit ' + editClassFor(blocks[idx]); ta.value = blocks[idx];
   div.innerHTML = ''; div.classList.add('editing'); div.appendChild(ta);
   autosizeTA(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
   ta.addEventListener('input', () => autosizeTA(ta));
@@ -1791,6 +1805,14 @@ $('#btn-save-cfg').addEventListener('click', async () => {
     await refreshInbox();
     toast('Saved · vault: ' + vaultDir);
   } catch (e) { toast(e.message); }
+});
+
+// Test a fallback: run Process inbox forced through the chosen provider (skips Claude), so you can
+// confirm it drives a write job without waiting for a real usage limit. Close Settings → process sheet.
+$('#btn-test-fallback').addEventListener('click', () => {
+  const provider = $('#cfg-test-provider').value;
+  closeSheets();
+  startProcess(provider);
 });
 
 /* ---------- Helpers ---------- */

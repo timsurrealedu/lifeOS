@@ -438,6 +438,11 @@ a.doc-link:hover { border-color: var(--accent); }
 .settings label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 .settings input { padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; outline: none; }
 .settings input:focus { border-color: var(--accent); }
+.settings-select {
+  padding: 10px 13px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; outline: none; cursor: pointer;
+}
+.settings-select:focus { border-color: var(--accent); }
 .hint { font-size: 12px; color: var(--faint); margin: 0; }
 .hint code { background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
 .settings-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
@@ -604,17 +609,29 @@ a.doc-link:hover { border-color: var(--accent); }
   width: 100%; max-width: var(--max); margin: 0 auto;
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 48px);
 }
-.lp-block { border-radius: 8px; padding: 1px 8px; margin: 1px 0; cursor: text; transition: background .1s; }
-.lp-block:hover { background: var(--surface-2); }
-.lp-block.editing { background: var(--surface-2); cursor: auto; box-shadow: inset 0 0 0 1px var(--border-soft); }
+.lp-block { border-radius: 8px; padding: 1px 8px; margin: 1px 0; cursor: text; }
+/* Seamless like Obsidian: no hover cards, no box around the active block. Clicking a block just
+   reveals its raw markdown inline (see .lp-edit-* below) while keeping the formatting. */
+.lp-block.editing { cursor: auto; }
 .lp-block > :first-child { margin-top: .25em; }
 .lp-block > :last-child { margin-bottom: .25em; }
 .lp-block .wikilink { cursor: text; }          /* in the editor, links are text, not navigation */
 .lp-empty { color: var(--faint); font-style: italic; margin: .25em 0; }
 .lp-edit {
   display: block; width: 100%; resize: none; border: none; outline: none; background: transparent;
-  color: var(--text); font-family: var(--mono); font-size: 15px; line-height: 1.65; padding: 0; overflow: hidden;
+  color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.65; padding: 0; overflow: hidden;
+  caret-color: var(--accent);
 }
+/* The edit field mirrors the rendered block it reveals, so a heading stays big & bold (just showing
+   its `##`) and a quote stays muted, instead of collapsing to plain monospace. Math/code/frontmatter
+   keep monospace — raw syntax is what you actually edit there. Mirrors the .markdown h1–h3 sizes. */
+.lp-edit-prose { font-family: var(--font); }
+.lp-edit-mono  { font-family: var(--mono); font-size: 13.5px; caret-color: var(--text); }
+.lp-edit-quote { color: var(--muted); font-style: italic; }
+.lp-edit-h1, .lp-edit-h2, .lp-edit-h3 { font-family: var(--serif); font-weight: 600; line-height: 1.3; }
+.lp-edit-h1 { font-size: 22px; color: var(--accent); }
+.lp-edit-h2 { font-size: 18px; color: var(--accent); }
+.lp-edit-h3 { font-size: 16px; color: var(--text); }
 
 /* Line-number gutter (toggle in Settings). Numbers ride along with the textarea's scroll. */
 .gutter { flex: none; width: 0; overflow: hidden; position: relative; }
