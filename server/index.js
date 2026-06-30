@@ -139,7 +139,10 @@ function sseRun(req, res, start) {
     send(type, data);
     if (type === 'done' || type === 'error') res.end();
   });
-  req.on('close', () => kill());
+  // Kill the run only if the *client* disconnects before we finish. Must watch the response, not
+  // the request: express.json() drains the POST body, which ends the request stream and fires its
+  // 'close' immediately — watching req here would kill claude the instant it starts.
+  res.on('close', () => { if (!res.writableEnded) kill(); });
 }
 
 app.get('/api/process/stream', (req, res) => {
@@ -178,7 +181,10 @@ app.post('/api/chat', (req, res) => {
     else if (type === 'error') { res.write('\n[error] ' + data.message); res.end(); }
     else if (type === 'done') res.end();
   });
-  req.on('close', () => kill());
+  // Kill the run only if the *client* disconnects before we finish. Must watch the response, not
+  // the request: express.json() drains the POST body, which ends the request stream and fires its
+  // 'close' immediately — watching req here would kill claude the instant it starts.
+  res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 
 // ---- Per-note tutor chat (read-only, scoped to one open note) ----
@@ -195,7 +201,10 @@ app.post('/api/note/chat', (req, res) => {
     else if (type === 'error') { res.write('\n[error] ' + data.message); res.end(); }
     else if (type === 'done') res.end();
   });
-  req.on('close', () => kill());
+  // Kill the run only if the *client* disconnects before we finish. Must watch the response, not
+  // the request: express.json() drains the POST body, which ends the request stream and fires its
+  // 'close' immediately — watching req here would kill claude the instant it starts.
+  res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 
 // ---- Add an overview of a topic INTO an open note (writes that one file) ----
