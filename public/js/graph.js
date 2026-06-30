@@ -10,12 +10,25 @@ window.LifeGraph = (function () {
     const ctx = canvas.getContext('2d');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
+    // Pull colours from the active theme so the graph matches dark / light / cyberpunk.
+    const css = getComputedStyle(canvas);
+    const cv = (name, fb) => (css.getPropertyValue(name).trim() || fb);
+    const C = {
+      accent: cv('--accent', '#e2914f'),
+      hub: cv('--accent', '#e2914f'),
+      leaf: cv('--faint', '#8a7c66'),
+      dangling: cv('--border', '#3b3025'),
+      text: cv('--text', '#f3ebdf'),
+      hi: cv('--sage', '#9bb273'),
+    };
+
     // Hubs (high-degree "parents") are drawn as noticeably bigger balls than leaf notes.
     const radius = (degree) => 6 + Math.min(degree, 22) * 2.1;
     const n = data.nodes.length || 1;
     // Seed positions on a spread-out spiral (deterministic) so the sim starts untangled
-    // and converges gently rather than flinging nodes from a random clump.
-    const spread = 60 + Math.sqrt(n) * 46;
+    // and converges gently rather than flinging nodes from a random clump. A wider spread
+    // gives the settled layout that roomy, orbit-like feel.
+    const spread = 90 + Math.sqrt(n) * 64;
     const nodes = data.nodes.map((nd, i) => {
       const a = i * 2.399963; // golden angle → even angular spread
       const rad = spread * Math.sqrt((i + 0.5) / n);
@@ -26,8 +39,13 @@ window.LifeGraph = (function () {
       .map((l) => ({ s: byId.get(l.source.toLowerCase()), t: byId.get(l.target.toLowerCase()) }))
       .filter((l) => l.s && l.t);
 
+    // Adjacency → used to highlight a node's direct connections on hover (Obsidian-style).
+    const neighbors = new Map(nodes.map((nd) => [nd, new Set()]));
+    for (const l of links) { neighbors.get(l.s).add(l.t); neighbors.get(l.t).add(l.s); }
+
     const view = { scale: 1, ox: 0, oy: 0, panx: 0, pany: 0 };
     let selected = null;
+    let hovered = null;
     // Declared up here (not with the other interaction vars below) because tick()
     // reads dragNode and the loop runs before that block — a `let` there would put
     // dragNode in the temporal dead zone and throw on the first frame.
@@ -54,7 +72,7 @@ window.LifeGraph = (function () {
           const b = nodes[j];
           let dx = a.x - b.x, dy = a.y - b.y;
           let d2 = dx * dx + dy * dy || 0.01;
-          const f = ((1700 + (a.r + b.r) * 26) * k) / d2;
+          const f = ((2900 + (a.r + b.r) * 34) * k) / d2;
           const d = Math.sqrt(d2);
           const fx = (dx / d) * f, fy = (dy / d) * f;
           a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
@@ -63,13 +81,13 @@ window.LifeGraph = (function () {
       for (const l of links) {
         let dx = l.t.x - l.s.x, dy = l.t.y - l.s.y;
         const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const rest = 86 + l.s.r + l.t.r;
-        const f = ((d - rest) * 0.035) * k;
+        const rest = 124 + l.s.r + l.t.r;
+        const f = ((d - rest) * 0.032) * k;
         const fx = (dx / d) * f, fy = (dy / d) * f;
         l.s.vx += fx; l.s.vy += fy; l.t.vx -= fx; l.t.vy -= fy;
       }
       for (const nd of nodes) {
-        nd.vx -= nd.x * 0.0016 * k; nd.vy -= nd.y * 0.0016 * k; // weak centering
+        nd.vx -= nd.x * 0.0013 * k; nd.vy -= nd.y * 0.0013 * k; // weak centering
         nd.vx *= 0.86; nd.vy *= 0.86;
         if (nd !== dragNode) { nd.x += nd.vx; nd.y += nd.vy; }
       }
@@ -101,32 +119,44 @@ window.LifeGraph = (function () {
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // The focused node: hover takes priority, else the tapped selection. When set, only it
+      // and its direct connections stay lit; everything else fades back (Obsidian-style).
+      const active = hovered || selected;
+      const lit = active ? new Set([active, ...neighbors.get(active)]) : null;
+
       ctx.lineWidth = 1 * dpr;
-      ctx.strokeStyle = 'rgba(226,145,79,0.18)';
       for (const l of links) {
+        const onActive = active && (l.s === active || l.t === active);
+        ctx.globalAlpha = active ? (onActive ? 0.7 : 0.04) : 0.18;
+        ctx.strokeStyle = onActive ? C.hi : C.accent;
+        ctx.lineWidth = (onActive ? 1.6 : 1) * dpr;
         ctx.beginPath();
         ctx.moveTo(tx(l.s.x), ty(l.s.y));
         ctx.lineTo(tx(l.t.x), ty(l.t.y));
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
+
       for (const nd of nodes) {
         const X = tx(nd.x), Y = ty(nd.y), R = nd.r * dpr * view.scale;
-        const isSel = nd === selected;
+        const isSel = nd === selected, isHov = nd === hovered;
+        const on = !active || lit.has(nd);
+        ctx.globalAlpha = on ? 1 : 0.12;
         ctx.beginPath(); ctx.arc(X, Y, R, 0, Math.PI * 2);
-        ctx.fillStyle = nd.exists
-          ? (nd.degree > 4 ? '#e2914f' : '#c97f44')
-          : '#4a3d30';
-        if (isSel) ctx.fillStyle = '#9bb273';
+        ctx.fillStyle = nd.exists ? (nd.degree > 4 ? C.hub : C.leaf) : C.dangling;
+        if (isSel || isHov) ctx.fillStyle = C.hi;
         ctx.fill();
-        if (isSel) { ctx.strokeStyle = '#9bb273'; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
-        // label hubs / selected / when zoomed in
-        if (nd.degree >= 3 || isSel || view.scale > 1.4) {
-          ctx.fillStyle = isSel ? '#eafce0' : 'rgba(243,235,223,0.74)';
+        if (isSel || isHov) { ctx.strokeStyle = C.hi; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
+        // Label hubs / the focused node + its neighbours / when zoomed in.
+        if (nd.degree >= 3 || isSel || isHov || (active && lit.has(nd)) || view.scale > 1.4) {
+          ctx.fillStyle = (isSel || isHov) ? C.hi : C.text;
+          ctx.globalAlpha = on ? (active && !lit.has(nd) ? 0.3 : 0.82) : 0.12;
           const fs = Math.min(15, 10 + nd.degree * 0.3) * dpr;
           ctx.font = `${fs}px -apple-system, system-ui, sans-serif`;
           ctx.textAlign = 'center';
           ctx.fillText(nd.id, X, Y + R + 12 * dpr);
         }
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -179,6 +209,14 @@ window.LifeGraph = (function () {
     canvas.addEventListener('mousedown', (e) => { downAt = Date.now(); down(e.clientX, e.clientY); });
     window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
     window.addEventListener('mouseup', () => up());
+    // Hover → highlight the node under the cursor and its connections (no drag in progress).
+    canvas.addEventListener('mousemove', (e) => {
+      if (dragNode || dragging) { hovered = null; canvas.style.cursor = dragging ? 'grabbing' : 'default'; return; }
+      const nd = pick(e.clientX, e.clientY);
+      hovered = nd || null;
+      canvas.style.cursor = nd ? 'pointer' : 'default';
+    });
+    canvas.addEventListener('mouseleave', () => { hovered = null; });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.1 : 0.9);

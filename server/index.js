@@ -7,8 +7,8 @@ import { mkdirSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, deleteNote, deleteFolder,
-  moveEntry, listFolders, createFolder, searchNotes, buildGraph, listTasks, toggleTask, readLog,
+  addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
+  moveEntry, listFolders, createFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan,
 } from './vault.js';
 import {
@@ -214,7 +214,7 @@ app.get('/api/note', (req, res) => {
   try { ok(res, { path: req.query.path, content: readNote(String(req.query.path)) }); }
   catch (e) { fail(res, e, 404); }
 });
-app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders() }));
+app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders(), systemFolders: SYSTEM_FOLDER_NAMES }));
 // Create a folder (supports nested subfolders via `Parent/Child`).
 app.post('/api/folders', (req, res) => {
   try { ok(res, { path: createFolder(req.body && req.body.path) }); } catch (e) { fail(res, e); }
@@ -230,6 +230,11 @@ app.post('/api/notes', (req, res) => {
 // Save edits to an existing note (in-app editor, edit mode).
 app.post('/api/note/save', (req, res) => {
   try { ok(res, { path: updateNote(req.body.path, req.body.content) }); } catch (e) { fail(res, e); }
+});
+// Rename a note (change its title → renames the file + syncs the H1).
+app.post('/api/note/rename', (req, res) => {
+  try { ok(res, { path: renameNote(req.body && req.body.path, req.body && req.body.title) }); }
+  catch (e) { fail(res, e); }
 });
 // Delete a note / a folder (path-guarded; protected system files & infra dirs are refused).
 app.delete('/api/note', (req, res) => {

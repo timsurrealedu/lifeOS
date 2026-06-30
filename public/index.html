@@ -12,6 +12,13 @@
   <link rel="apple-touch-icon" href="/icons/icon.svg" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
+  <script>
+    // Apply the saved theme before first paint so there's no flash of the default.
+    try {
+      var t = localStorage.getItem('lifeos.theme') || 'dark';
+      if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div id="app">
@@ -22,6 +29,7 @@
         <span class="brand-name">life<b>OS</b></span>
       </div>
       <div class="topbar-actions">
+        <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">🎨</button>
         <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
         <button class="icon-btn" data-action="open-settings" title="Settings" aria-label="Settings">⚙</button>
       </div>
@@ -135,8 +143,16 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
       <!-- NOTES -->
       <section class="view" data-view="notes" hidden>
-        <div class="view-head"><h2>Notes</h2><div class="spacer"></div><button class="btn sm" id="btn-autosort">✨ Auto-sort</button><button class="btn sm" id="btn-new-folder">📁 Folder</button><button class="btn primary sm" id="btn-new-note">✎ New note</button></div>
-        <input id="notes-search" class="search" type="search" placeholder="Search notes…" />
+        <div class="view-head notes-head">
+          <h2>Notes</h2>
+          <div class="spacer"></div>
+          <div class="notes-actions">
+            <button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button>
+            <button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button>
+            <button class="btn primary sm" id="btn-new-note" title="New note">✎ New</button>
+          </div>
+        </div>
+        <input id="notes-search" class="search" type="search" placeholder="Search notes or #tags…" />
         <ul id="notes-list" class="list"></ul>
         <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
       </section>
@@ -234,6 +250,20 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>Languages<input id="cfg-languages" /></label>
       <label>claude binary<input id="cfg-claudePath" /></label>
 
+      <h4 class="settings-sub">Appearance</h4>
+      <div class="appearance">
+        <div class="seg-field">
+          <span class="seg-field-label">Theme</span>
+          <div class="seg seg-theme" id="theme-seg">
+            <button class="seg-btn" type="button" data-theme-opt="dark">🌙 Dark</button>
+            <button class="seg-btn" type="button" data-theme-opt="light">☀️ Light</button>
+            <button class="seg-btn" type="button" data-theme-opt="cyberpunk">⚡ Cyber</button>
+          </div>
+        </div>
+        <label class="switch-row"><span>Vim keybindings <small>(note editor)</small></span><input type="checkbox" id="cfg-vim" /></label>
+        <label class="switch-row"><span>Line numbers <small>(note editor)</small></span><input type="checkbox" id="cfg-lineno" /></label>
+      </div>
+
       <h4 class="settings-sub">Document tools</h4>
       <p class="hint">CLIs used to turn attached PDFs/Office files into text when you process the inbox.</p>
       <div id="cfg-doctools" class="doctools"></div>
@@ -328,9 +358,13 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <span class="fmt-sep"></span>
       <button class="fmt fmt-ink" data-fmt="ink" type="button" title="Handwrite / draw (math, practice)">✍️</button>
     </div>
-    <textarea id="editor-body" class="editor-body" placeholder="Write your note in Markdown…
+    <div class="editor-area" id="editor-area">
+      <div class="gutter" id="editor-gutter"><div class="gutter-inner" id="editor-gutter-inner"></div></div>
+      <textarea id="editor-body" class="editor-body" placeholder="Write your note in Markdown…
 On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX — without deleting anything you wrote."></textarea>
+    </div>
     <article id="editor-preview" class="markdown editor-preview" hidden></article>
+    <div class="vim-status" id="vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="vim-pending"></span></div>
   </div>
 
   <!-- Full-page note reader -->
@@ -342,6 +376,20 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
       <button class="icon-btn" id="reader-del" title="Delete note" aria-label="Delete note" hidden>🗑</button>
       <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
     </header>
+
+    <!-- Obsidian-style properties / tags header (collapsible) -->
+    <div class="props" id="reader-props" hidden>
+      <button class="props-toggle" id="props-toggle" type="button" aria-expanded="true">
+        <span class="props-caret">▾</span><span>Properties</span>
+      </button>
+      <div class="props-body" id="props-body">
+        <div class="prop-row">
+          <span class="prop-key">🏷 tags</span>
+          <div class="prop-tags" id="reader-tags"></div>
+        </div>
+      </div>
+    </div>
+
     <article id="reader-body" class="markdown reader-body"></article>
 
     <!-- Per-note tutor chat dock (slides up over the bottom of the reader) -->
@@ -369,6 +417,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
   <script defer src="/vendor/katex/katex.min.js"></script>
   <script src="/js/graph.js"></script>
   <script src="/js/inkpad.js"></script>
+  <script src="/js/vim.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

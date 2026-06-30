@@ -25,9 +25,65 @@
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, system-ui, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Hoefler Text", Georgia, serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --graph-bg: #100c08;
   /* z-scale */
   --z-tabbar: 30; --z-backdrop: 40; --z-sheet: 50; --z-toast: 60;
+  color-scheme: dark;
 }
+
+/* ---- Light theme: warm paper ---- */
+:root[data-theme="light"] {
+  --bg: #f6f2ea;
+  --bg-tint: radial-gradient(1100px 520px at 78% -8%, #ffe6cf 0%, transparent 60%);
+  --surface: #ffffff;
+  --surface-2: #f2ece2;
+  --surface-3: #e8e0d2;
+  --border: #d8cdba;
+  --border-soft: #e7ddcc;
+  --text: #2a2017;
+  --muted: #6d6151;
+  --faint: #9c8e79;
+  --accent: #c2641f;
+  --accent-ink: #fff5ea;
+  --accent-soft: rgba(194,100,31,.13);
+  --sage: #5f8a36;
+  --sage-ink: #f2f8e8;
+  --danger: #c0432c;
+  --shadow: 0 16px 40px -22px rgba(90,66,40,.34);
+  --graph-bg: #efe7d8;
+  color-scheme: light;
+}
+
+/* ---- Cyberpunk theme: neon night ---- */
+:root[data-theme="cyberpunk"] {
+  --bg: #08040f;
+  --bg-tint: radial-gradient(1000px 540px at 82% -10%, #240a4a 0%, transparent 58%),
+             radial-gradient(820px 420px at 8% 112%, #05283f 0%, transparent 58%);
+  --surface: #120a24;
+  --surface-2: #1a1036;
+  --surface-3: #251747;
+  --border: #3c2275;
+  --border-soft: #2a1858;
+  --text: #e9f8ff;
+  --muted: #a596e6;
+  --faint: #6f63ad;
+  --accent: #ff2bd6;
+  --accent-ink: #18001c;
+  --accent-soft: rgba(255,43,214,.16);
+  --sage: #21f5d4;
+  --sage-ink: #00211b;
+  --danger: #ff4d6d;
+  --shadow: 0 10px 36px -10px rgba(255,43,214,.36);
+  --graph-bg: #0a0518;
+  color-scheme: dark;
+}
+/* Neon glow accents — cyberpunk only */
+:root[data-theme="cyberpunk"] .brand-name b,
+:root[data-theme="cyberpunk"] .brand-mark { text-shadow: 0 0 12px var(--accent); }
+:root[data-theme="cyberpunk"] .tab.active { text-shadow: 0 0 10px var(--accent); }
+:root[data-theme="cyberpunk"] .btn.primary { box-shadow: 0 0 18px -4px var(--accent); }
+:root[data-theme="cyberpunk"] .chip.live,
+:root[data-theme="cyberpunk"] .tag { text-shadow: 0 0 8px currentColor; }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; }
@@ -38,16 +94,21 @@ body {
   background-image: var(--bg-tint);
   background-attachment: fixed;
   line-height: 1.5;
-  overflow-x: hidden;
+  /* The app shell scrolls internally (see #views), not the document — this keeps the bottom
+     tab bar pinned to the visual viewport instead of hiding behind the mobile browser chrome. */
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-#app { max-width: var(--max); margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+#app {
+  max-width: var(--max); margin: 0 auto; height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
+}
 
 /* ---- Topbar ---- */
 .topbar {
-  position: sticky; top: 0; z-index: 20;
+  flex: none; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
   padding: max(14px, env(safe-area-inset-top)) 18px 12px;
   background: linear-gradient(var(--bg) 72%, transparent);
@@ -64,7 +125,11 @@ body {
 .icon-btn:active { transform: scale(.92); background: var(--surface-2); }
 
 /* ---- Views ---- */
-#views { flex: 1; padding: 8px 18px calc(var(--tab-h) + 28px); }
+#views {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 8px 18px 28px;
+}
 .view { animation: fade .25s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .view-head { display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 16px; }
@@ -207,6 +272,13 @@ a.doc-link:hover { border-color: var(--accent); }
 .tree-folder .li-title { font-weight: 600; }
 .tw-count { flex: none; color: var(--faint); font-size: 12px; background: var(--surface-2); border-radius: 999px; padding: 1px 9px; }
 .tree-note .li-sub { font-size: 11px; }
+/* System folders (lifeOS-managed) — visually flagged + not deletable. */
+.tree-system .li-title { display: flex; align-items: center; gap: 8px; }
+.sys-tag {
+  flex: none; font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--faint);
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 999px; padding: 1px 8px;
+}
+.tree-system .li-emoji { opacity: .85; }
 
 .badge { background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
 .search {
@@ -216,6 +288,12 @@ a.doc-link:hover { border-color: var(--accent); }
 .search::placeholder { color: var(--faint); }
 .search:focus { border-color: var(--accent); }
 .empty { text-align: center; color: var(--faint); padding: 48px 20px; font-size: 15px; font-family: var(--serif); }
+
+/* Notes header actions — compact so nothing gets cut off on narrow phones */
+.notes-head { flex-wrap: wrap; row-gap: 8px; align-items: center; }
+.notes-actions { display: flex; align-items: center; gap: 7px; flex: none; }
+.notes-actions .icon-btn { width: 36px; height: 36px; font-size: 15px; }
+.notes-actions .btn.sm { padding: 8px 13px; }
 
 /* ---- Plan ---- */
 .plan-group { margin-bottom: 22px; }
@@ -237,7 +315,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .t-meta { font-size: 12px; color: var(--faint); margin-top: 2px; }
 
 /* ---- Graph ---- */
-.graph-wrap { position: relative; height: calc(100vh - var(--tab-h) - 180px); min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border-soft); background: #100c08; }
+.graph-wrap { position: relative; height: calc(100dvh - var(--tab-h) - 168px); min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border-soft); background: var(--graph-bg); }
 #graph-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .graph-label {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
@@ -299,7 +377,7 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* ---- Tabbar ---- */
 .tabbar {
-  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: var(--max);
+  flex: none; width: 100%;
   height: calc(var(--tab-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
   display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; z-index: var(--z-tabbar);
   background: var(--surface); border-top: 1px solid var(--border-soft);
@@ -361,6 +439,15 @@ a.doc-link:hover { border-color: var(--accent); }
 .hint code { background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
 .settings-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .settings-sub { margin: 8px 0 0; font-size: 14px; color: var(--text); border-top: 1px solid var(--border); padding-top: 16px; }
+.appearance { display: flex; flex-direction: column; gap: 14px; }
+.seg-field { display: flex; flex-direction: column; gap: 8px; }
+.seg-field-label { font-size: 13px; color: var(--muted); }
+.seg-theme { align-self: flex-start; max-width: 100%; flex-wrap: wrap; }
+.seg-theme .seg-btn { font-size: 13px; }
+.switch-row { flex-direction: row !important; align-items: center; justify-content: space-between; gap: 12px; }
+.switch-row span { color: var(--text); font-size: 14px; }
+.switch-row span small { color: var(--faint); font-weight: 400; }
+.switch-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; cursor: pointer; }
 
 /* ---- Full-page reader ---- */
 .reader {
@@ -383,6 +470,42 @@ a.doc-link:hover { border-color: var(--accent); }
   flex: 1; overflow: auto; width: 100%; max-width: var(--max); margin: 0 auto;
   padding: 14px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
+
+/* ---- Reader properties / tags header (Obsidian-style, collapsible) ---- */
+.props {
+  width: 100%; max-width: var(--max); margin: 10px auto 0; flex: none;
+  border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2);
+  overflow: hidden;
+}
+.props-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none;
+  color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 10px 14px; cursor: pointer;
+}
+.props-caret { font-size: 10px; transition: transform .15s; color: var(--faint); }
+.props.collapsed .props-caret { transform: rotate(-90deg); }
+.props.collapsed .props-body { display: none; }
+.props-body { padding: 2px 14px 12px; }
+.prop-row { display: flex; align-items: flex-start; gap: 12px; }
+.prop-key { flex: none; color: var(--faint); font-size: 13px; min-width: 58px; padding-top: 5px; }
+.prop-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.prop-tag {
+  display: inline-flex; align-items: center; gap: 7px; background: var(--surface-3);
+  border: 1px solid var(--border-soft); color: var(--text); border-radius: 999px;
+  padding: 4px 6px 4px 11px; font-size: 13px;
+}
+.prop-tag .name { cursor: pointer; }
+.prop-tag .name:hover { color: var(--accent); }
+.prop-tag .x {
+  cursor: pointer; color: var(--faint); font-size: 12px; line-height: 1; padding: 1px 4px;
+  border-radius: 50%; transition: color .12s, background .12s;
+}
+.prop-tag .x:hover { color: var(--danger); background: var(--surface); }
+.prop-tags .none { color: var(--faint); font-size: 13px; padding-top: 4px; }
+.prop-add {
+  border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 999px;
+  padding: 4px 11px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.prop-add:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- Per-note tutor chat sidebar (docks to the right; pushes the note left) ---- */
 .reader { transition: padding-right .24s cubic-bezier(.2,.9,.25,1); }
@@ -451,13 +574,37 @@ a.doc-link:hover { border-color: var(--accent); }
 .fmt-sep { flex: none; width: 1px; align-self: stretch; margin: 4px 3px; background: var(--border-soft); }
 .fmt-ink { border-color: var(--accent-soft); }
 .fmt-ink:hover { border-color: var(--accent); }
+/* Editor body lives in a flex row alongside an optional line-number gutter. */
+.editor-area { flex: 1 1 auto; min-height: 0; display: flex; width: 100%; max-width: var(--max); margin: 0 auto; }
 .editor-body {
-  flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; resize: none; border: none; outline: none;
+  flex: 1; min-width: 0; resize: none; border: none; outline: none;
   background: transparent; color: var(--text); font-family: var(--mono); font-size: 15px; line-height: 1.65;
   padding: 16px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
 .editor-body::placeholder { color: var(--faint); }
 .editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
+
+/* Line-number gutter (toggle in Settings). Numbers ride along with the textarea's scroll. */
+.gutter { flex: none; width: 0; overflow: hidden; position: relative; }
+.editor.lineno .gutter { width: calc(var(--gutter-w, 2) * 1ch + 18px); }
+.editor.lineno .editor-body { padding-left: 8px; }
+.gutter-inner {
+  position: absolute; top: 0; right: 9px; left: 0; will-change: transform;
+  font-family: var(--mono); font-size: 15px; line-height: 1.65; color: var(--faint);
+  text-align: right; white-space: pre; padding-top: 16px; pointer-events: none;
+}
+
+/* Vim mode status bar */
+.vim-status {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .06em;
+  padding: 5px 16px calc(env(safe-area-inset-bottom) + 5px);
+  border-top: 1px solid var(--border-soft); background: var(--surface-2); color: var(--muted);
+}
+.vim-status .mode { font-weight: 700; color: var(--accent-ink); background: var(--accent); padding: 1px 9px; border-radius: 5px; }
+.vim-status[data-mode="INSERT"] .mode { background: var(--sage); }
+.vim-status[data-mode="VISUAL"] .mode { background: #6ea8d8; }
+.vim-pending { color: var(--faint); }
 
 /* toast */
 .toast {

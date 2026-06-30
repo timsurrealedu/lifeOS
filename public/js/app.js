@@ -14,7 +14,30 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+
+/* ---------- Preferences (theme + editor) — persisted locally ---------- */
+const THEMES = ['dark', 'light', 'cyberpunk'];
+const THEME_BG = { dark: '#15110d', light: '#f6f2ea', cyberpunk: '#08040f' };
+const prefs = {
+  get theme() { return localStorage.getItem('lifeos.theme') || 'dark'; },
+  get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
+  get lineno() { return localStorage.getItem('lifeos.lineno') === '1'; },
+  set(key, val) { localStorage.setItem('lifeos.' + key, val); },
+};
+function applyTheme(name) {
+  if (!THEMES.includes(name)) name = 'dark';
+  prefs.set('theme', name);
+  if (name === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', name);
+  const meta = $('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', THEME_BG[name]);
+  $$('#theme-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === name));
+}
+function cycleTheme() {
+  const next = THEMES[(THEMES.indexOf(prefs.theme) + 1) % THEMES.length];
+  applyTheme(next);
+  toast('Theme: ' + next[0].toUpperCase() + next.slice(1));
+}
 
 /* ---------- Navigation ---------- */
 function show(view) {
@@ -48,6 +71,13 @@ document.addEventListener('click', (e) => {
   if (act === 'close-camera') closeCamera();
   if (act === 'open-log') openLog();
   if (act === 'open-settings') openSettings();
+  if (act === 'cycle-theme') cycleTheme();
+});
+
+// Theme picker inside Settings.
+$('#theme-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  applyTheme(b.dataset.themeOpt);
 });
 
 /* ---------- Capture ---------- */
@@ -480,8 +510,8 @@ function renderInbox() {
 async function loadNotes(force) {
   if (state.notes.length && !force) { renderNotes(); return; }
   try {
-    const [{ notes }, { folders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
-    state.notes = notes; state.folders = folders; renderNotes();
+    const [{ notes }, { folders, systemFolders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
+    state.notes = notes; state.folders = folders; state.systemFolders = systemFolders || []; renderNotes();
   } catch (e) { toast(e.message); }
 }
 
@@ -510,15 +540,23 @@ function renderNotes() {
   $('#notes-empty').hidden = state.notes.length > 0;
 
   // Searching → flat, filtered list (with the folder path so cross-folder hits make sense).
+  // A leading `#` searches tags only; otherwise we match name, path AND tags.
   if (q) {
     ul.className = 'list';
-    const list = state.notes.filter((n) => n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
+    const tagOnly = q.startsWith('#');
+    const needle = tagOnly ? q.slice(1) : q;
+    const list = state.notes.filter((n) => {
+      const tags = (n.tags || []).map((t) => t.toLowerCase());
+      if (tagOnly) return tags.some((t) => t.includes(needle));
+      return n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q) || tags.some((t) => t.includes(q));
+    });
     for (const n of list) {
       const li = document.createElement('li');
       li.className = 'list-item';
       const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
+      const tagStr = (n.tags || []).length ? ' · ' + n.tags.map((t) => '#' + t).join(' ') : '';
       li.innerHTML = `<span class="li-emoji">📄</span>
-        <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
+        <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}${esc(tagStr)}</div></div>`;
       li.addEventListener('click', () => openNote(n.path, n.name));
       ul.appendChild(li);
     }
@@ -561,20 +599,23 @@ function renderTreeInto(node, depth, ul) {
   const dirs = [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const d of dirs) {
     const open = state.expandedFolders.has(d.path);
+    const isSystem = state.systemFolders.includes(d.name);
     const li = document.createElement('li');
-    li.className = 'tree-row tree-folder';
+    li.className = 'tree-row tree-folder' + (isSystem ? ' tree-system' : '');
     li.style.paddingLeft = pad + 'px';
     li.dataset.path = d.path; li.dataset.type = 'folder'; li.dataset.name = d.name;
+    // System folders get a lock + "system" tag and no delete button (lifeOS relies on them).
     li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
       <span class="li-emoji">${open ? '📂' : '📁'}</span>
-      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>
+      <div class="li-main"><div class="li-title">${esc(d.name)}${isSystem ? '<span class="sys-tag">🔒 system</span>' : ''}</div></div>
       <span class="tw-count">${countFiles(d)}</span>
-      <button class="tw-del" aria-label="delete folder" title="Delete folder">✕</button>`;
+      ${isSystem ? '' : '<button class="tw-del" aria-label="delete folder" title="Delete folder">✕</button>'}`;
     li.addEventListener('click', () => {
       if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
       renderNotes();
     });
-    li.querySelector('.tw-del').addEventListener('click', (e) => { e.stopPropagation(); deleteFolderPath(d.path, countFiles(d)); });
+    const del = li.querySelector('.tw-del');
+    if (del) del.addEventListener('click', (e) => { e.stopPropagation(); deleteFolderPath(d.path, countFiles(d)); });
     ul.appendChild(li);
     if (open) renderTreeInto(d, depth + 1, ul);
   }
@@ -765,12 +806,172 @@ function showReader(title, html, path = null) {
   $('#reader-del').hidden = !path || isProtectedPath(path);
   // New note open → drop any prior tutor conversation and collapse the dock.
   state.noteChat = []; closeNoteChat();
+  renderReaderProps(path ? state.readerContent : '');
   const body = $('#reader-body');
   body.innerHTML = html;
   bindWikilinks(body);
   if (!readerOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
   $('#reader').hidden = false;
   body.scrollTop = 0;
+}
+
+/* ---- Reader properties / tags header (Obsidian-style) ---- */
+// Frontmatter helpers (mirror the server) — notes may declare tags in YAML `tags:` and/or inline #tags.
+const FM_RE = /^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+function splitFM(text) {
+  const m = String(text || '').match(FM_RE);
+  if (!m) return { fm: '', body: String(text || ''), matched: '' };
+  return { fm: m[1], body: String(text).slice(m[0].length), matched: m[0] };
+}
+function buildFM(fm, body) { return '---\n' + fm.replace(/\n+$/, '') + '\n---\n' + body.replace(/^\n/, ''); }
+function fmTags(fm) {
+  if (!fm) return [];
+  const norm = (s) => String(s).trim().replace(/^["']|["']$/g, '').replace(/^#/, '');
+  const out = []; let inTags = false;
+  for (const line of fm.split('\n')) {
+    const head = line.match(/^([ \t]*)([\w-]+):[ \t]*(.*)$/);
+    if (head) {
+      inTags = /^tags?$/i.test(head[2]);
+      if (inTags && head[3].trim()) {
+        let v = head[3].trim(); if (v.startsWith('[')) v = v.replace(/^\[|\]$/g, '');
+        v.split(',').map(norm).filter(Boolean).forEach((t) => out.push(t));
+        inTags = false;
+      }
+      continue;
+    }
+    if (inTags) { const li = line.match(/^[ \t]*-[ \t]*(.+)$/); if (li) { const t = norm(li[1]); if (t) out.push(t); } else if (line.trim()) inTags = false; }
+  }
+  return out;
+}
+// All tags on a note — frontmatter `tags:` plus inline #tags (deduped, ordered).
+function noteTags(text) {
+  const { fm, body } = splitFM(text);
+  const out = []; const seen = new Set();
+  for (const t of fmTags(fm)) if (!seen.has(t)) { seen.add(t); out.push(t); }
+  const clean = body.replace(/```[\s\S]*?```/g, '');
+  for (const line of clean.split('\n')) {
+    if (/^#{1,6}\s/.test(line)) continue;
+    for (const m of line.matchAll(/(?:^|\s)#([A-Za-z][\w/-]*)/g)) if (!seen.has(m[1])) { seen.add(m[1]); out.push(m[1]); }
+  }
+  return out;
+}
+// Strip a tag wherever it lives (frontmatter array/list/inline value, or an inline body #tag).
+function removeTagFromContent(content, tag) {
+  const norm = (s) => String(s).trim().replace(/^["']|["']$/g, '').replace(/^#/, '');
+  const { fm, body, matched } = splitFM(content);
+  const esc = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const newBody = body.replace(new RegExp('[ \\t]?#' + esc + '(?![\\w/-])', 'g'), '');
+  if (!matched) return newBody;
+  let inTags = false;
+  const fmLines = [];
+  for (const line of fm.split('\n')) {
+    const head = line.match(/^([ \t]*)([\w-]+):[ \t]*(.*)$/);
+    if (head) {
+      inTags = /^tags?$/i.test(head[2]);
+      if (inTags && head[3].trim()) {
+        let v = head[3].trim(); const arr = v.startsWith('[');
+        if (arr) v = v.replace(/^\[|\]$/g, '');
+        const items = v.split(',').map((s) => s.trim()).filter(Boolean).filter((s) => norm(s) !== tag);
+        fmLines.push(`${head[1]}${head[2]}: ${arr ? '[' + items.join(', ') + ']' : items.join(', ')}`);
+        inTags = false; continue;
+      }
+      fmLines.push(line); continue;
+    }
+    if (inTags) {
+      const li = line.match(/^[ \t]*-[ \t]*(.+)$/);
+      if (li && norm(li[1]) === tag) continue;       // drop this tag list item
+      if (!/^[ \t]*-/.test(line) && line.trim()) inTags = false;
+    }
+    fmLines.push(line);
+  }
+  return buildFM(fmLines.join('\n'), newBody);
+}
+// Add a tag — into frontmatter `tags:` when the note has frontmatter, else as an inline #tag.
+function addTagToContent(content, tag) {
+  const { fm, body, matched } = splitFM(content);
+  if (matched) {
+    let nf;
+    const m = fm.match(/^tags?:[ \t]*(.*)$/im);
+    if (m && m[1].trim()) {
+      // Inline value: `tags: [a, b]` or `tags: a, b`.
+      nf = fm.replace(/^(tags?:[ \t]*)(.*)$/im, (mm, k, v) => {
+        v = v.trim();
+        if (v.startsWith('[')) { const inner = v.replace(/^\[|\]$/g, '').trim(); return k + '[' + (inner ? inner + ', ' : '') + tag + ']'; }
+        return k + v + ', ' + tag;
+      });
+    } else if (m) {
+      // Block-list form: `tags:` followed by `- a` lines → append a matching `- tag` item.
+      nf = fm.replace(/^(tags?:[ \t]*\r?\n)((?:[ \t]*-[ \t]*.*\r?\n?)*)/im, (mm, k, items) => {
+        const ind = (items.match(/^([ \t]*-[ \t]*)/) || [, '  - '])[1];
+        return k + items.replace(/\n+$/, '') + (items.trim() ? '\n' : '') + ind + tag + '\n';
+      });
+      if (nf === fm) nf = fm.replace(/^(tags?:[ \t]*)$/im, `$1\n  - ${tag}`);
+    } else {
+      nf = fm.replace(/\n+$/, '') + `\ntags: [${tag}]`;
+    }
+    return buildFM(nf, body);
+  }
+  const sep = /\n$/.test(content) ? '' : '\n';
+  return content + sep + '\n#' + tag + '\n';
+}
+function renderReaderProps(content) {
+  const props = $('#reader-props');
+  if (!state.readerPath) { props.hidden = true; return; }
+  props.hidden = false;
+  props.classList.toggle('collapsed', localStorage.getItem('lifeos.propsCollapsed') === '1');
+  $('#props-toggle').setAttribute('aria-expanded', String(!props.classList.contains('collapsed')));
+  const box = $('#reader-tags'); box.innerHTML = '';
+  const tags = noteTags(content);
+  if (!tags.length) { const s = document.createElement('span'); s.className = 'none'; s.textContent = 'No tags'; box.appendChild(s); }
+  for (const t of tags) {
+    const pill = document.createElement('span'); pill.className = 'prop-tag';
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = '#' + t;
+    name.title = 'Search notes tagged #' + t;
+    name.addEventListener('click', () => searchByTag(t));
+    const x = document.createElement('span'); x.className = 'x'; x.textContent = '✕'; x.title = 'Remove tag';
+    x.addEventListener('click', () => removeReaderTag(t));
+    pill.append(name, x); box.appendChild(pill);
+  }
+  const add = document.createElement('button'); add.className = 'prop-add'; add.type = 'button'; add.textContent = '+ Add tag';
+  add.addEventListener('click', addReaderTag);
+  box.appendChild(add);
+}
+$('#props-toggle').addEventListener('click', () => {
+  const props = $('#reader-props');
+  const collapsed = props.classList.toggle('collapsed');
+  localStorage.setItem('lifeos.propsCollapsed', collapsed ? '1' : '0');
+  $('#props-toggle').setAttribute('aria-expanded', String(!collapsed));
+});
+// Jump to the Notes view filtered to a tag.
+function searchByTag(tag) {
+  closeReader();
+  show('notes');
+  const s = $('#notes-search'); s.value = '#' + tag; renderNotes();
+}
+// Persist an edited note body, refresh the open reader + tag header.
+async function saveReaderContent(newContent, msg) {
+  try {
+    await api('/api/note/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: state.readerPath, content: newContent }),
+    });
+    state.readerContent = newContent;
+    const body = $('#reader-body'); body.innerHTML = mdToHtml(newContent); bindWikilinks(body);
+    renderReaderProps(newContent);
+    state.notes = []; // tags changed → notes list is stale
+    if (msg) toast(msg);
+  } catch (e) { toast(e.message); }
+}
+function removeReaderTag(tag) {
+  saveReaderContent(removeTagFromContent(state.readerContent, tag), 'Removed #' + tag);
+}
+function addReaderTag() {
+  let tag = prompt('Add a tag (without #):');
+  if (tag == null) return;
+  tag = tag.trim().replace(/^#/, '').replace(/[^\w/-]/g, '');
+  if (!tag) return;
+  if (noteTags(state.readerContent).includes(tag)) { toast('Already tagged #' + tag); return; }
+  saveReaderContent(addTagToContent(state.readerContent, tag), 'Added #' + tag);
 }
 function closeReader() {
   if (!readerOpen) return;
@@ -936,6 +1137,7 @@ window.addEventListener('popstate', () => {
 async function openNote(path, name) {
   try {
     const { content } = await api('/api/note?path=' + encodeURIComponent(path));
+    state.readerContent = content;
     showReader(name, mdToHtml(content), path);
   } catch (e) { toast(e.message); }
 }
@@ -945,6 +1147,7 @@ const edTitle = $('#editor-title');
 const edBody = $('#editor-body');
 let editorOpen = false, edPreviewing = false;
 let edMode = 'create', edPath = null; // 'create' → POST new note; 'edit' → overwrite edPath
+let edOrigName = '';                  // title at open (edit mode) → detect renames on save
 
 // Toolbar primitives operating on the textarea selection.
 function edSurround(before, after = before, placeholder = '') {
@@ -1014,28 +1217,33 @@ function editorMarkdown() {
 }
 function showEditorSource() {
   edPreviewing = false;
-  edBody.hidden = false; $('#editor-preview').hidden = true; $('#editor-toolbar').hidden = false;
+  $('#editor-area').hidden = false; $('#editor-preview').hidden = true; $('#editor-toolbar').hidden = false;
+  $('#vim-status').hidden = !prefs.vim;
   $('#editor-preview-toggle').querySelector('span').textContent = 'Preview';
 }
 function showEditorPreview() {
   edPreviewing = true;
   $('#editor-preview').innerHTML = mdToHtml(editorMarkdown());
-  $('#editor-preview').hidden = false; edBody.hidden = true; $('#editor-toolbar').hidden = true;
+  $('#editor-preview').hidden = false; $('#editor-area').hidden = true; $('#editor-toolbar').hidden = true;
+  $('#vim-status').hidden = true;
   $('#editor-preview-toggle').querySelector('span').textContent = 'Edit';
 }
 $('#editor-preview-toggle').addEventListener('click', () => (edPreviewing ? showEditorSource() : showEditorPreview()));
 
-// Edit mode hides the folder picker (path is fixed) and locks the title (the H1 lives in the body).
+// Edit mode hides the folder picker (path is fixed). The title stays editable so it can be
+// renamed; on save we rename the file when it changed.
 function setEditorMode(mode) {
   edMode = mode;
   const editing = mode === 'edit';
-  edTitle.readOnly = editing;
+  edTitle.readOnly = false;
+  edTitle.placeholder = editing ? 'Note title (rename)' : 'Note title';
   $('.editor-folder-label').hidden = editing;
 }
 function showEditor() {
   showEditorSource();
   if (!editorOpen) { history.pushState({ editor: true }, ''); editorOpen = true; }
   $('#editor').hidden = false;
+  applyEditorPrefs();
 }
 
 // New note (create mode).
@@ -1056,6 +1264,7 @@ async function openEditorFor(path, name) {
     const { content } = await api('/api/note?path=' + encodeURIComponent(path));
     setEditorMode('edit'); edPath = path;
     edTitle.value = name || path.split('/').pop().replace(/\.md$/, '');
+    edOrigName = edTitle.value;
     edBody.value = content.replace(/\r/g, '');
     showEditor();
     edBody.focus();
@@ -1082,6 +1291,13 @@ $('#editor-save').addEventListener('click', async () => {
         body: JSON.stringify({ path: edPath, content: edBody.value }),
       }));
       name = edTitle.value.trim() || path.split('/').pop().replace(/\.md$/, '');
+      // Title changed → rename the underlying file too.
+      if (name && name !== edOrigName) {
+        try { ({ path } = await api('/api/note/rename', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, title: name }),
+        })); } catch (err) { toast(err.message); }
+      }
     } else {
       const title = edTitle.value.trim();
       if (!title) { toast('Add a title'); edTitle.focus(); return; }
@@ -1099,6 +1315,46 @@ $('#editor-save').addEventListener('click', async () => {
     openNote(path, name);
   } catch (e) { toast(e.message); }
 });
+
+/* ---------- Editor extras: line numbers + Vim ---------- */
+const edGutter = $('#editor-gutter');
+const edGutterInner = $('#editor-gutter-inner');
+const editorEl = $('#editor');
+
+// Repaint the line-number gutter (count rows, widen the gutter for the digit count).
+function renderGutter() {
+  if (!prefs.lineno) return;
+  const n = edBody.value.split('\n').length || 1;
+  let s = '';
+  for (let i = 1; i <= n; i++) s += i + '\n';
+  edGutterInner.textContent = s;
+  editorEl.style.setProperty('--gutter-w', String(String(n).length));
+  syncGutterScroll();
+}
+function syncGutterScroll() {
+  if (prefs.lineno) edGutterInner.style.transform = `translateY(${-edBody.scrollTop}px)`;
+}
+edBody.addEventListener('scroll', syncGutterScroll);
+
+// Vim controller (attached once; toggled via prefs).
+const editorVim = window.LifeVim.attach(edBody, {
+  onMode: (mode, pending) => {
+    const bar = $('#vim-status');
+    if (!mode) { bar.hidden = true; return; }
+    bar.hidden = false; bar.dataset.mode = mode;
+    bar.querySelector('.mode').textContent = mode;
+    $('#vim-pending').textContent = pending || '';
+  },
+});
+
+// Apply the current editor prefs to the open editor (line numbers + vim on/off).
+function applyEditorPrefs() {
+  editorEl.classList.toggle('lineno', prefs.lineno);
+  if (prefs.lineno) renderGutter(); else edGutterInner.textContent = '';
+  editorVim.setEnabled(prefs.vim);
+  $('#vim-status').hidden = !prefs.vim;
+}
+edBody.addEventListener('input', () => { if (prefs.lineno) renderGutter(); });
 
 /* ---------- Plan (list) + Calendar ---------- */
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -1357,9 +1613,16 @@ async function openSettings() {
     $('#cfg-fb-model').value = fb.model || '';
     $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
     renderDocTools(docTools || []);
+    // Appearance / editor prefs (client-side, localStorage).
+    applyTheme(prefs.theme);
+    $('#cfg-vim').checked = prefs.vim;
+    $('#cfg-lineno').checked = prefs.lineno;
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
 }
+// Editor preference toggles (live — apply to the editor immediately if it's open).
+$('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
+$('#cfg-lineno').addEventListener('change', (e) => { prefs.set('lineno', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
 // Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
 function renderDocTools(tools) {
   const box = $('#cfg-doctools'); if (!box) return;
@@ -1424,6 +1687,7 @@ function renderTeX(tex, display) {
 // mangle them (a `$x_i$` or `$a*b$` would otherwise trip the italic/bold rules), then restored last.
 function mdToHtml(md) {
   md = md.replace(/\r/g, '');
+  md = splitFM(md).body; // hide YAML frontmatter from the rendered note (shown in Properties instead)
   const slots = [];
   // `@@n@@` token: survives esc() and every markdown regex below, and won't occur in real note text.
   const stash = (html) => `@@${slots.push(html) - 1}@@`;
@@ -1482,6 +1746,7 @@ function bindWikilinks(root) {
 
 /* ---------- Boot ---------- */
 (async function boot() {
+  applyTheme(prefs.theme);
   await refreshInbox();
   await loadNotes(true);
   show('capture');

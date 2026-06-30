@@ -32,6 +32,13 @@ const PROTECTED_FILES = new Set(['CLAUDE.md', 'inbox.md', 'inbox.lock']);
 const RESERVED_DIRS = new Set([
   '.claude', '.git', '.obsidian', '.inbox-archive', 'node_modules', '.cache', 'attachments',
 ]);
+// Content folders lifeOS scaffolds and depends on (Idea bank, tasks, drafts, reviews, inbox log,
+// domain hubs). Matched by basename so a moved folder (e.g. Personal/TODO) stays protected. The UI
+// marks these so the user doesn't delete them, and deleteFolder refuses them as a backstop.
+export const SYSTEM_FOLDER_NAMES = [
+  'Captures', 'University', 'Personal', 'Ideas', 'Drafts', 'Reviews', 'TODO',
+];
+const SYSTEM_FOLDERS = new Set(SYSTEM_FOLDER_NAMES);
 
 /**
  * First folder with this basename **anywhere** under the vault (slash-joined relative path), or null.
@@ -211,10 +218,62 @@ function walk(dir, root, out) {
   return out;
 }
 
+/** Split a leading YAML frontmatter block (`---\n…\n---`) off the body. */
+export function parseFrontmatter(text) {
+  const m = String(text || '').match(/^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!m) return { fm: '', body: String(text || ''), matched: '' };
+  return { fm: m[1], body: String(text).slice(m[0].length), matched: m[0] };
+}
+/** Tags declared in frontmatter — `tags: [a, b]`, `tags: a, b`, or a `- ` block list. */
+function frontmatterTags(fm) {
+  if (!fm) return [];
+  const norm = (s) => String(s).trim().replace(/^["']|["']$/g, '').replace(/^#/, '');
+  const out = [];
+  const lines = fm.split('\n');
+  let inTags = false;
+  for (const line of lines) {
+    const head = line.match(/^([ \t]*)([\w-]+):[ \t]*(.*)$/);
+    if (head) {
+      inTags = /^tags?$/i.test(head[2]);
+      if (inTags && head[3].trim()) {
+        let v = head[3].trim();
+        if (v.startsWith('[')) v = v.replace(/^\[|\]$/g, '');
+        v.split(',').map(norm).filter(Boolean).forEach((t) => out.push(t));
+        inTags = false;
+      }
+      continue;
+    }
+    if (inTags) {
+      const li = line.match(/^[ \t]*-[ \t]*(.+)$/);
+      if (li) { const t = norm(li[1]); if (t) out.push(t); }
+      else if (line.trim()) inTags = false;
+    }
+  }
+  return out;
+}
+
+/** Pull tag names out of a note — frontmatter `tags:` plus inline `#tags` (skips code/headings). */
+export function extractTags(text) {
+  const { fm, body } = parseFrontmatter(text);
+  const out = new Set(frontmatterTags(fm));
+  const clean = body.replace(/```[\s\S]*?```/g, ''); // ignore code fences
+  for (const line of clean.split('\n')) {
+    if (/^#{1,6}\s/.test(line)) continue; // markdown heading, not a tag
+    for (const m of line.matchAll(/(?:^|\s)#([A-Za-z][\w/-]*)/g)) out.add(m[1]);
+  }
+  return [...out];
+}
+
 export function listNotes() {
   const root = vaultDir();
   if (!existsSync(root)) return [];
-  return walk(root, root, []).sort((a, b) => b.mtime - a.mtime);
+  const notes = walk(root, root, []).sort((a, b) => b.mtime - a.mtime);
+  // Attach each note's tags so the UI can search and display them (cheap for a personal vault).
+  for (const n of notes) {
+    try { n.tags = extractTags(readFileSync(join(root, n.path), 'utf8')); }
+    catch { n.tags = []; }
+  }
+  return notes;
 }
 
 /** Notes living under the Ideas/ folder, newest first (the "Idea Bank"). */
@@ -374,6 +433,43 @@ export function updateNote(relPath, content) {
   return relative(root, full).split(sep).join('/');
 }
 
+/**
+ * Rename a note (change its title). Renames the `.md` file to the new title within the same folder,
+ * and — if the first line is an H1 matching the old title — rewrites that heading too, so the note's
+ * displayed title and filename stay in sync. Path-guarded; auto-suffixes on collision. Wikilinks are
+ * by title, so this can change what links resolve — that's the intended "rename" behaviour.
+ * Returns the new relative path.
+ */
+export function renameNote(relPath, newTitle) {
+  const root = vaultDir();
+  const full = join(root, String(relPath || ''));
+  if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
+  if (PROTECTED_FILES.has(basename(full)) || RESERVED_DIRS.has(topSegment(relPath))) {
+    throw new Error('that file is protected');
+  }
+  const clean = String(newTitle || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) throw new Error('title required');
+  const oldName = basename(full, '.md');
+  const dir = dirname(full);
+
+  // Sync the leading H1 if it still mirrors the old filename.
+  let text = readFileSync(full, 'utf8');
+  const lines = text.split('\n');
+  if (lines.length && /^#\s/.test(lines[0]) && lines[0].replace(/^#\s+/, '').trim() === oldName) {
+    lines[0] = `# ${clean}`;
+    text = lines.join('\n');
+  }
+
+  // Same name (only casing/heading change) → just rewrite in place.
+  if (clean === oldName) { writeFileSync(full, text); return relPath; }
+
+  let target = join(dir, `${clean}.md`), i = 2;
+  while (existsSync(target)) { target = join(dir, `${clean} ${i++}.md`); }
+  writeFileSync(full, text);
+  renameSync(full, target);
+  return relative(root, target).split(sep).join('/');
+}
+
 /** First path segment (e.g. ".claude" from ".claude/skills/x.md"), for the reserved-dir guard. */
 function topSegment(relPath) {
   return String(relPath || '').replace(/\\/g, '/').split('/').filter(Boolean)[0] || '';
@@ -406,6 +502,7 @@ export function deleteFolder(relPath) {
   if (!dir.startsWith(root) || dir === root) throw new Error('bad folder');
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new Error('not found');
   if (RESERVED_DIRS.has(topSegment(clean))) throw new Error('that folder is protected');
+  if (SYSTEM_FOLDERS.has(basename(clean))) throw new Error('that folder is part of lifeOS and can\'t be deleted');
   // Don't let a delete take out a protected file that somehow lives under here.
   for (const n of walk(dir, root, [])) {
     if (PROTECTED_FILES.has(basename(n.path))) throw new Error('folder contains a protected file');
