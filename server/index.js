@@ -10,6 +10,7 @@ import {
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
   moveEntry, listFolders, createFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
+  clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
@@ -19,6 +20,9 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
 ensureVault(cfg);
+// A `pm2 restart` mid-run kills the claude child without cleanup; drop any stale inbox.lock on boot
+// so processing isn't blocked by a leftover from before the restart.
+if (clearStaleInboxLock()) console.log('  • cleared a stale inbox.lock from a previous run');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -159,7 +163,12 @@ app.get('/api/process/stream', (req, res) => {
       return () => {};
     });
   }
-  sseRun(req, res, runProcessInbox);
+  // Backstop: clear inbox.lock whenever the run settles, however it settled — a force-stopped run
+  // (max-turns kill, crash) skips the skill's own lock cleanup and would otherwise strand it.
+  sseRun(req, res, (on) => runProcessInbox((type, data) => {
+    if (type === 'done' || type === 'error') clearInboxLock();
+    on(type, data);
+  }));
 });
 
 app.get('/api/research/stream', (req, res) => {

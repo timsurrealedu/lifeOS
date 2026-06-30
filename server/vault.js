@@ -309,6 +309,31 @@ export function readNote(relPath) {
   return readFileSync(full, 'utf8');
 }
 
+// ---- inbox.lock (process-inbox's cross-machine guard) ----
+// The skill is supposed to delete inbox.lock when it finishes, but a run that's force-stopped
+// (max-turns kill, crash, server restart) skips that — orphaning the lock so the next run refuses
+// to start. These give the server a backstop so a stuck lock never blocks processing.
+
+/** Delete inbox.lock unconditionally. Called when a process-inbox run ends, however it ended. */
+export function clearInboxLock() {
+  const lock = join(vaultDir(), 'inbox.lock');
+  try { if (existsSync(lock)) { unlinkSync(lock); return true; } } catch { /* noop */ }
+  return false;
+}
+
+/** On boot, drop an inbox.lock older than `maxAgeMs` (default 30 min) — a run can't outlive that,
+ *  so anything older is a leftover from a crash/restart. Recent locks are left alone in case a
+ *  genuine run on another (Syncthing-synced) machine still holds it. Returns true if removed. */
+export function clearStaleInboxLock(maxAgeMs = 30 * 60 * 1000) {
+  const lock = join(vaultDir(), 'inbox.lock');
+  try {
+    if (!existsSync(lock)) return false;
+    if (Date.now() - statSync(lock).mtimeMs < maxAgeMs) return false;
+    unlinkSync(lock);
+    return true;
+  } catch { return false; }
+}
+
 /**
  * Create an (empty) folder, with subfolders via `/` (e.g.
  * `University/Scientific Computing/UAS`). Path-guarded and idempotent (mkdir recursive),

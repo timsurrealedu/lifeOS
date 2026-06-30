@@ -20,8 +20,10 @@ const DEFAULTS = {
   // Per-task model so cheap runs don't burn a premium model. Empty/absent → CLI default.
   // (chat = the read-only advisor; bump to 'sonnet' for deeper advice at higher token cost.)
   models: { process: 'sonnet', research: 'sonnet', review: 'haiku', home: 'haiku', chat: 'haiku', calsync: 'haiku', autosort: 'haiku' },
-  // Runaway-loop guard: cap agent turns per run. 0/absent → no cap.
-  maxTurns: 40,
+  // Runaway-loop guard: cap agent turns per run. 0/absent → no cap. Bumped to 80 so heavy items
+  // (e.g. "make practice problems for each topic from this image") finish instead of being killed
+  // mid-task at the cap — which also leaves processing half-done.
+  maxTurns: 80,
   // Fallback chain, tried in order when the primary run hits a usage/rate limit:
   //   claude → qwen → fallback (DeepSeek/GLM) → gemini
   // qwen + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep

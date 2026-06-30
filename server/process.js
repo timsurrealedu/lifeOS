@@ -163,7 +163,82 @@ const PROMPTS = {
 
 // Output that means "the primary account is out of capacity" — the only failure we retry on the
 // fallback provider. Kept narrow so ordinary errors (bad tool, crash) don't waste a fallback run.
-const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
+const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|spend limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
+
+// Agentic "console" runs stream their progress to the app's process sheet. We launch these with
+// --output-format stream-json so the server can turn each event into a readable progress line
+// (instead of claude -p going silent until done). The chats + note-augment are NOT here: they
+// consume claude's plain-text output directly. Keyed by kind.
+const STREAM_JSON = new Set(['process', 'research', 'review', 'home', 'calsync', 'autosort']);
+
+// Bound MCP startup + per-tool-call time so a flaky MCP server (e.g. the Google Calendar tool over
+// Tailscale) can't hang an entire run. Claude proceeds without that tool once the bound elapses.
+const MCP_TIMEOUT_MS = '15000';
+const MCP_TOOL_TIMEOUT_MS = '30000';
+
+/** Shorten a tool's key argument for a one-line progress entry. */
+function toolSummary(name, input) {
+  const inp = input || {};
+  const short = (s) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > 90 ? s.slice(0, 90) + '…' : s; };
+  const f = inp.file_path || inp.path || inp.notePath || '';
+  switch (name) {
+    case 'Read': case 'Edit': case 'Write': case 'NotebookEdit': return `${name} ${short(f)}`;
+    case 'Bash': return `Bash: ${short(inp.command)}`;
+    case 'Grep': return `Grep ${short(inp.pattern)}`;
+    case 'Glob': return `Glob ${short(inp.pattern)}`;
+    case 'Skill': return `Skill ${short(inp.command || inp.name)}`;
+    default:
+      if (name && name.startsWith('mcp__')) return name.split('__').slice(-1)[0].replace(/_/g, ' ');
+      return name || 'tool';
+  }
+}
+
+/**
+ * Turn one Claude stream-json event into human-readable console line(s) for the process sheet.
+ * Returns an array of { channel, line } ('err' shows red). Defensive — unknown shapes yield [].
+ */
+function describeStreamEvent(ev) {
+  const out = [];
+  const push = (line, channel = 'out') => { if (line && String(line).trim()) out.push({ channel, line: String(line) }); };
+  if (!ev || typeof ev !== 'object') return out;
+
+  if (ev.type === 'system' && ev.subtype === 'init') {
+    // Surface only MCP servers in a bad state (the usual culprit when a run hangs/misbehaves).
+    for (const s of (ev.mcp_servers || [])) {
+      if (!/^(connected|ready|ok)$/i.test(s.status || '')) push(`  ⚠ mcp · ${s.name}: ${s.status}`, 'err');
+    }
+    return out;
+  }
+  if (ev.type === 'rate_limit_event' && ev.rate_limit_info && /reject|exceed|limit/i.test(ev.rate_limit_info.status || ev.rate_limit_info.rateLimitType || '')) {
+    push('  ⚠ rate limit hit', 'err');
+    return out;
+  }
+  if (ev.type === 'assistant' && ev.message && Array.isArray(ev.message.content)) {
+    for (const b of ev.message.content) {
+      if (b.type === 'text') push(b.text);
+      else if (b.type === 'tool_use') push(`🔧 ${toolSummary(b.name, b.input)}`);
+    }
+    return out;
+  }
+  if (ev.type === 'user' && ev.message && Array.isArray(ev.message.content)) {
+    for (const b of ev.message.content) {
+      if (b.type === 'tool_result' && b.is_error) {
+        const t = typeof b.content === 'string' ? b.content : JSON.stringify(b.content);
+        push(`  ⚠ tool error: ${String(t).slice(0, 200)}`, 'err');
+      }
+    }
+    return out;
+  }
+  if (ev.type === 'result') {
+    push(ev.result, ev.is_error ? 'err' : 'out');
+    const bits = [];
+    if (ev.num_turns != null) bits.push(`${ev.num_turns} turns`);
+    if (ev.duration_ms != null) bits.push(`${Math.round(ev.duration_ms / 1000)}s`);
+    if (ev.total_cost_usd) bits.push(`$${Number(ev.total_cost_usd).toFixed(4)}`);
+    if (bits.length) push(`— ${bits.join(' · ')}`);
+  }
+  return out;
+}
 
 /**
  * Direct Gemini (Google AI Studio) call — the fallback for the read-only AI **chats** when the
@@ -224,6 +299,8 @@ async function streamGemini(prompt, onEvent, release) {
 /** Compose the `claude -p` argv for one attempt (model is optional → CLI default). */
 function buildArgs({ kind, prompt, model, maxTurns }) {
   const args = ['-p', prompt, '--permission-mode', 'acceptEdits'];
+  // Agentic runs stream JSON events so the server can show live progress; chats stay plain text.
+  if (STREAM_JSON.has(kind)) args.push('--output-format', 'stream-json', '--verbose');
   if (model) args.push('--model', model);
   if (maxTurns) args.push('--max-turns', String(maxTurns));
   args.push('--allowedTools', ...(ALLOWED[kind] || ALLOWED.process));
@@ -289,9 +366,11 @@ function spawnClaude({ kind, prompt }, onEvent) {
 
     const onFallback = step >= 0;
     const model = onFallback ? provider.model : (cfg.models && cfg.models[kind]);
+    // Bound MCP startup + tool-call time on every run so a stuck MCP server can't hang us.
+    const baseEnv = { ...process.env, MCP_TIMEOUT: MCP_TIMEOUT_MS, MCP_TOOL_TIMEOUT: MCP_TOOL_TIMEOUT_MS };
     const env = onFallback
-      ? { ...process.env, ANTHROPIC_BASE_URL: provider.baseUrl, ANTHROPIC_AUTH_TOKEN: provider.apiKey, ANTHROPIC_API_KEY: provider.apiKey }
-      : process.env;
+      ? { ...baseEnv, ANTHROPIC_BASE_URL: provider.baseUrl, ANTHROPIC_AUTH_TOKEN: provider.apiKey, ANTHROPIC_API_KEY: provider.apiKey }
+      : baseEnv;
     onEvent('status', { state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default', provider: onFallback ? provider.name : 'Claude' });
 
     // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
@@ -312,6 +391,16 @@ function spawnClaude({ kind, prompt }, onEvent) {
     }
     current = child;
 
+    // For stream-json kinds, each stdout line is one JSON event → translate to readable progress.
+    // Everything else (chats' plain text, and all stderr) passes through verbatim.
+    const streamJson = STREAM_JSON.has(kind);
+    const emitLine = (channel, line) => {
+      if (channel !== 'out' || !streamJson) { onEvent('log', { channel, line }); return; }
+      const s = line.trim();
+      if (!s) return;
+      let ev; try { ev = JSON.parse(s); } catch { onEvent('log', { channel: 'out', line }); return; }
+      for (const o of describeStreamEvent(ev)) onEvent('log', o);
+    };
     const pump = (stream, channel) => {
       let buf = '';
       stream.setEncoding('utf8');
@@ -320,9 +409,9 @@ function spawnClaude({ kind, prompt }, onEvent) {
         output += chunk;
         const lines = buf.split('\n');
         buf = lines.pop();
-        for (const line of lines) onEvent('log', { channel, line });
+        for (const line of lines) emitLine(channel, line);
       });
-      stream.on('end', () => { if (buf.trim()) onEvent('log', { channel, line: buf }); });
+      stream.on('end', () => { if (buf.trim()) emitLine(channel, buf); });
     };
     pump(child.stdout, 'out');
     pump(child.stderr, 'err');
