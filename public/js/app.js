@@ -840,7 +840,7 @@ function showReader(title, html, path = null) {
   renderReaderProps(path ? state.readerContent : '');
   const body = $('#reader-body');
   body.innerHTML = html;
-  bindWikilinks(body);
+  bindWikilinks(body); bindImages(body);
   const firstOpen = !readerOpen;
   if (firstOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
   $('#reader').hidden = false;
@@ -1072,7 +1072,7 @@ async function saveReaderContent(newContent, msg) {
       body: JSON.stringify({ path: state.readerPath, content: newContent }),
     });
     state.readerContent = newContent;
-    const body = $('#reader-body'); body.innerHTML = mdToHtml(newContent); bindWikilinks(body);
+    const body = $('#reader-body'); body.innerHTML = mdToHtml(newContent); bindWikilinks(body); bindImages(body);
     renderReaderProps(newContent);
     state.notes = []; // tags changed → notes list is stale
     if (msg) toast(msg);
@@ -1262,7 +1262,7 @@ async function augmentNote(topic, context, btn) {
     if (code !== 0) { reset(); toast('Could not add to note'); return; }
     if (btn) { btn.disabled = false; btn.textContent = '✓ Added'; }
     const { content } = await api('/api/note?path=' + encodeURIComponent(path));
-    if (state.readerPath === path) { const body = $('#reader-body'); body.innerHTML = mdToHtml(content); bindWikilinks(body); }
+    if (state.readerPath === path) { const body = $('#reader-body'); body.innerHTML = mdToHtml(content); bindWikilinks(body); bindImages(body); }
     state.notes = []; loadNotes(true);
     toast('Overview added ✓');
   } catch (err) { reset(); toast(err.message); }
@@ -1275,8 +1275,10 @@ function isProtectedPath(path) {
   if (['CLAUDE.md', 'inbox.md', 'inbox.lock'].includes(base)) return true;
   return RESERVED_DIRS.has(path.split('/')[0]);
 }
-// One handler closes only the topmost overlay (editor sits above reader).
+// One handler closes only the topmost overlay (image viewer sits above editor sits above reader).
 window.addEventListener('popstate', () => {
+  const iv = $('#imgview');
+  if (iv && !iv.hidden) { iv.hidden = true; $('#imgview-img').src = ''; return; }
   if (editorOpen) { editorOpen = false; $('#editor').hidden = true; }
   else if (readerOpen) { readerOpen = false; closeNoteChat(); $('#reader').hidden = true; }
 });
@@ -1996,7 +1998,7 @@ function mdToHtml(md) {
         const fname = ref.split('/').pop();
         return `<a class="doc-link" href="${src}" target="_blank" rel="noopener">📎 ${fname}</a>`;
       }
-      return `<img src="${src}" alt="${ref}" onerror="this.style.display='none'">`;
+      return `<img class="md-img" src="${src}" alt="${ref}" onerror="this.style.display='none'">`;
     })
     // `name`/`label` are already HTML-escaped by the outer esc(t) above — do NOT escape again, or an
     // `&` in a title becomes `&amp;amp;` and the data-link stops matching the note (breaking the click).
@@ -2027,6 +2029,60 @@ function bindWikilinks(root) {
     el.addEventListener('click', () => { if (path) openNote(path, name); else toast('No note for "' + name + '" yet'); });
   });
 }
+// Make embedded images (incl. handwritten ink pages) tap-to-expand: opens the zoom/pan viewer.
+function bindImages(root) {
+  $$('.md-img', root).forEach((im) => {
+    im.addEventListener('click', () => window.openImageViewer(im.currentSrc || im.src));
+  });
+}
+
+/* ---- Full-screen image viewer (zoom + pan, like Flexcil) ---- */
+(function setupImageViewer() {
+  const view = $('#imgview'), img = $('#imgview-img');
+  let s = 1, tx = 0, ty = 0, drag = false, lx = 0, ly = 0, pinch = null;
+  const clampS = (v) => Math.min(8, Math.max(1, v));
+  const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${s})`; };
+  const reset = () => { s = 1; tx = 0; ty = 0; apply(); };
+  // Zoom about a screen point, keeping that point fixed (transform-origin is the image's top-left).
+  const zoomAt = (cx, cy, ns) => {
+    ns = clampS(ns);
+    const r = img.getBoundingClientRect(), k = ns / s;
+    tx += (cx - r.left) * (1 - k); ty += (cy - r.top) * (1 - k);
+    s = ns; if (s === 1) { tx = 0; ty = 0; } apply();
+  };
+  window.openImageViewer = (src) => {
+    if (!src) return;
+    img.src = src; reset(); view.hidden = false;
+    history.pushState({ imgview: true }, '');
+  };
+  const close = () => {
+    if (view.hidden) return;
+    if (history.state && history.state.imgview) history.back();   // popstate hides it (closes topmost)
+    else { view.hidden = true; img.src = ''; }
+  };
+  $('#imgview-close').addEventListener('click', close);
+  view.addEventListener('click', (e) => { if (e.target === view) close(); });   // tap the backdrop
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !view.hidden) close(); });
+  view.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, s * (e.deltaY < 0 ? 1.12 : 1 / 1.12)); }, { passive: false });
+  img.addEventListener('dblclick', (e) => { if (s > 1) reset(); else zoomAt(e.clientX, e.clientY, 2.4); });
+  // mouse drag to pan
+  img.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') return; drag = true; lx = e.clientX; ly = e.clientY; view.classList.add('grabbing'); try { img.setPointerCapture(e.pointerId); } catch {} });
+  img.addEventListener('pointermove', (e) => { if (!drag) return; tx += e.clientX - lx; ty += e.clientY - ly; lx = e.clientX; ly = e.clientY; apply(); });
+  const endDrag = () => { drag = false; view.classList.remove('grabbing'); };
+  img.addEventListener('pointerup', endDrag); img.addEventListener('pointercancel', endDrag);
+  // touch: pinch-zoom + one-finger pan (when zoomed in)
+  const tdist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const tmid = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+  view.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) pinch = { d: tdist(e.touches), s0: s };
+    else if (e.touches.length === 1 && s > 1) { drag = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; }
+  }, { passive: true });
+  view.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && pinch) { const m = tmid(e.touches); zoomAt(m.x, m.y, pinch.s0 * tdist(e.touches) / pinch.d); }
+    else if (drag && e.touches.length === 1) { const t = e.touches[0]; tx += t.clientX - lx; ty += t.clientY - ly; lx = t.clientX; ly = t.clientY; apply(); }
+  }, { passive: true });
+  view.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; if (e.touches.length === 0) { drag = false; if (s === 1) reset(); } });
+})();
 
 /* ---------- Boot ---------- */
 (async function boot() {

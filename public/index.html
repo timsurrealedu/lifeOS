@@ -455,6 +455,12 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     </div>
   </div>
 
+  <!-- Tap an embedded image (incl. handwritten ink pages) to expand it — pinch / wheel to zoom, drag to pan -->
+  <div class="imgview" id="imgview" hidden>
+    <button class="icon-btn imgview-close" id="imgview-close" aria-label="Close">✕</button>
+    <img id="imgview-img" alt="" draggable="false" />
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script defer src="/vendor/katex/katex.min.js"></script>

@@ -429,6 +429,23 @@ a.doc-link:hover { border-color: var(--accent); }
 .wikilink.dangling { color: var(--faint); border-bottom: 1px dotted var(--faint); }
 .markdown .tag { color: var(--sage); }
 .markdown img { max-width: 100%; border-radius: 10px; }
+.markdown img.md-img { cursor: zoom-in; }
+
+/* Full-screen image viewer (tap an embedded image to expand — zoom + pan, Flexcil-style) */
+.imgview {
+  position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.92); overflow: hidden; touch-action: none;
+  animation: readerin .18s ease;
+}
+.imgview img {
+  max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none;
+  transform-origin: 0 0; will-change: transform; cursor: grab;
+}
+.imgview.grabbing img { cursor: grabbing; }
+.imgview-close {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); right: 14px; z-index: 1;
+  background: rgba(0,0,0,.45); color: #fff;
+}
 .markdown audio { width: 100%; margin: 8px 0; }
 .markdown blockquote { border-left: 2px solid var(--accent); margin: 8px 0; padding: 2px 14px; color: var(--muted); }
 .markdown mark { background: var(--accent-soft); color: var(--text); padding: 0 3px; border-radius: 4px; }
