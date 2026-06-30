@@ -269,7 +269,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <p class="hint">CLIs used to turn attached PDFs/Office files into text when you process the inbox.</p>
       <div id="cfg-doctools" class="doctools"></div>
 
-      <p class="hint">When a run hits its usage/rate limit it cascades down this chain: <b>Claude → Qwen → DeepSeek → Gemini</b>. Leave a key empty to skip that link.</p>
+      <p class="hint">When a run hits its usage/rate limit it cascades down this chain: <b>Claude → Qwen → Gemini → DeepSeek</b>. Leave a key empty to skip that link. (Gemini is REST-only, so on write jobs like Process inbox it's skipped and the order there is Qwen → DeepSeek.)</p>
 
       <h4 class="settings-sub">Qwen fallback <small>(1st)</small></h4>
       <p class="hint">Qwen (Alibaba DashScope) exposes an Anthropic-compatible endpoint, so the same workflow keeps running. Get a key at <code>dashscope.console.aliyun.com</code>.</p>
@@ -277,16 +277,16 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>API key<input id="cfg-qw-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-qw-model" placeholder="qwen3-coder-plus" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">DeepSeek / GLM fallback <small>(2nd)</small></h4>
-      <p class="hint">DeepSeek and GLM also expose Anthropic-compatible endpoints. Leave the key empty to disable.</p>
+      <h4 class="settings-sub">Gemini fallback <small>(2nd)</small></h4>
+      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when Qwen is exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
+      <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
+      <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
+
+      <h4 class="settings-sub">DeepSeek / GLM fallback <small>(3rd)</small></h4>
+      <p class="hint">DeepSeek and GLM also expose Anthropic-compatible endpoints, so they cover write jobs too. Leave the key empty to disable.</p>
       <label>Base URL<input id="cfg-fb-baseUrl" placeholder="https://api.deepseek.com/anthropic" autocomplete="off" /></label>
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
-
-      <h4 class="settings-sub">Gemini fallback <small>(last)</small></h4>
-      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when the others are exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
-      <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
-      <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
 
       <div class="settings-actions">
         <button class="btn primary" id="btn-save-cfg">Save</button>

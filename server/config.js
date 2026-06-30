@@ -25,19 +25,21 @@ const DEFAULTS = {
   // mid-task at the cap — which also leaves processing half-done.
   maxTurns: 80,
   // Fallback chain, tried in order when the primary run hits a usage/rate limit:
-  //   claude → qwen → fallback (DeepSeek/GLM) → gemini
+  //   claude → qwen → gemini → fallback (DeepSeek/GLM)
   // qwen + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
-  // working; gemini is REST-only (read-only chats + add-to-note). Empty apiKey → that link skipped.
+  // working; gemini is REST-only (read-only chats + add-to-note), so on write jobs it's skipped and
+  // the chain is qwen → fallback. Empty apiKey → that link skipped.
   //   Qwen (DashScope) → baseUrl "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", model "qwen3-coder-plus"
   qwen: { baseUrl: '', apiKey: '', model: '' },
-  // DeepSeek/GLM Anthropic-compatible endpoint. Examples:
+  // DeepSeek/GLM Anthropic-compatible endpoint (3rd in the chain, after qwen + gemini). Examples:
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
   //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
   fallback: { baseUrl: '', apiKey: '', model: '' },
-  // Gemini (Google AI Studio) fallback for the read-only AI **chats** (per-note tutor + vault chat)
-  // only. Gemini isn't Anthropic-compatible, so it can't drive the `claude` CLI like `fallback` does;
-  // instead the server calls Gemini's REST API directly with the same (self-contained) chat prompt
-  // when the primary run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
+  // Gemini (Google AI Studio) fallback for the read-only AI features (per-note tutor + vault chat +
+  // add-to-note) only — 2nd in the chain, after Qwen and before DeepSeek. Gemini isn't
+  // Anthropic-compatible, so it can't drive the `claude` CLI like `fallback` does; instead the
+  // server calls Gemini's REST API directly with the same (self-contained) prompt when the primary
+  // run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
   // https://aistudio.google.com/apikey
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },
 };

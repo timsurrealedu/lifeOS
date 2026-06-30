@@ -8,7 +8,8 @@ import { loadConfig, vaultDir } from './config.js';
 let writeRunning = false;
 export const isRunning = () => writeRunning;
 
-// Read-only kinds: no write lock, and eligible for the Gemini REST fallback. `noteaugment` is here
+// Read-only kinds: no write lock, and eligible for the Gemini REST fallback (2nd in the chain,
+// after Qwen and before DeepSeek). `noteaugment` is here
 // too — it now only *generates* the overview text (the server does the actual file insertion), so
 // it needs no edit tools and can fall back to Gemini/DeepSeek exactly like the chats.
 const READ_ONLY = new Set(['chat', 'notechat', 'noteaugment']);
@@ -311,10 +312,10 @@ function buildArgs({ kind, prompt, model, maxTurns }) {
  * Spawn `claude -p` in the vault and stream stdout/stderr lines to `onEvent`.
  * onEvent(type, data): type ∈ {status, log, done, error}.
  * Picks the per-task model + turn cap from config, and — if a run dies with a usage/rate-limit
- * error — cascades down the configured fallback chain (claude → qwen → DeepSeek → Gemini), trying
+ * error — cascades down the configured fallback chain (claude → Qwen → Gemini → DeepSeek), trying
  * the same prompt on each next provider. Qwen + DeepSeek are Anthropic-compatible so they drive the
- * `claude` CLI (any kind); Gemini is REST-only (read-only kinds: chats + add-to-note). Returns a
- * kill function.
+ * `claude` CLI (any kind); Gemini is REST-only (read-only kinds only: chats + add-to-note, so on
+ * write kinds it's skipped and the chain is Qwen → DeepSeek). Returns a kill function.
  */
 function spawnClaude({ kind, prompt }, onEvent) {
   const readOnly = READ_ONLY.has(kind);
@@ -328,17 +329,19 @@ function spawnClaude({ kind, prompt }, onEvent) {
   const cfg = loadConfig();
   const cwd = vaultDir(cfg);
 
-  // Ordered fallback chain after the primary `claude` run. An Anthropic-compatible provider needs a
-  // baseUrl + apiKey (it runs through the CLI with an env override); Gemini needs only an apiKey and
-  // is REST-only, so it's offered for read-only kinds (no tools needed) — which now includes
-  // add-to-note. Unconfigured links are skipped.
+  // Ordered fallback chain after the primary `claude` run: Qwen → Gemini → DeepSeek. An
+  // Anthropic-compatible provider needs a baseUrl + apiKey (it runs through the CLI with an env
+  // override); Gemini needs only an apiKey and is REST-only, so it's offered for read-only kinds
+  // (no tools needed) — which includes add-to-note. On write kinds (capture/process etc.) Gemini
+  // can't drive the tools, so it's filtered out and the chain there is Qwen → DeepSeek.
+  // Unconfigured links are skipped.
   const cli = (c, name) => (c && c.apiKey && c.baseUrl)
     ? { type: 'cli', name, model: c.model, baseUrl: c.baseUrl, apiKey: c.apiKey } : null;
   const gem = cfg.gemini || {};
   const chain = [
     cli(cfg.qwen, 'Qwen'),
-    cli(cfg.fallback, 'DeepSeek'),
     (readOnly && gem.apiKey) ? { type: 'gemini', name: 'Gemini', model: gem.model } : null,
+    cli(cfg.fallback, 'DeepSeek'),
   ].filter(Boolean);
 
   let current = null;     // the live child, so the kill fn can target it

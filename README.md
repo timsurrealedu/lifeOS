@@ -189,7 +189,7 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 | `timezone`, `languages`, `todoPath`, `todoFormat`, `ownerName` | written into the vault's `CLAUDE.md` house rules |
 | `models` | per-task model so cheap runs don't burn a premium one: `{ "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku" }`. Omit a key → CLI default. |
 | `maxTurns` | cap on agent turns per run (runaway-loop guard, default `40`; `0` = no cap) |
-| `fallback` | `{ baseUrl, apiKey, model }` — a provider used **only** when the primary run hits a usage/rate limit. Empty `apiKey` = disabled. |
+| `qwen` / `gemini` / `fallback` | the fallback chain (in order) used **only** when the primary run hits a usage/rate limit. Empty `apiKey` = that link disabled. See **Fallback chain** below. |
 
 ### Token efficiency
 
@@ -203,22 +203,34 @@ The app keeps `claude -p` token spend down several ways:
 - **`maxTurns`** caps worst-case loops; the `process-inbox` skill is told to grep before reading,
   avoid re-reads, and keep summaries short.
 
-### Fallback provider (DeepSeek / GLM)
+### Fallback chain (Qwen → Gemini → DeepSeek)
 
-Both DeepSeek and GLM expose **Anthropic-compatible** endpoints, so the same `claude` CLI and vault
-skills keep working — only the backend changes. Set it in **⚙ Settings → Fallback AI** (or in
-`config.json`). When a primary run dies with a usage/rate-limit error, lifeOS automatically retries
-the same prompt once on the fallback and notes it in the run log.
+When a primary `claude` run dies with a usage/rate-limit error, lifeOS automatically retries the
+same prompt down a chain of fallback providers, in priority order, and notes which one answered in
+the run log. Configure them in **⚙ Settings → Fallback AI** (or in `config.json`). Leave any link's
+`apiKey` empty to skip it.
+
+1. **Qwen** (Alibaba DashScope) — Anthropic-compatible, drives the same `claude` CLI + skills, so it
+   covers **every** AI feature including write jobs (capture / Process inbox, Research, etc.).
+2. **Gemini** (Google AI Studio) — REST-only, so it covers the **read-only** features (vault chat,
+   per-note tutor, ➕ Add to note) but **not** write jobs. On a write job it's skipped and the chain
+   there is Qwen → DeepSeek.
+3. **DeepSeek / GLM** — Anthropic-compatible like Qwen, so it also covers every feature, write jobs
+   included.
 
 ```jsonc
-// DeepSeek (V4 native ids: deepseek-v4-pro = strongest, deepseek-v4-flash = cheap/fast)
+// 1. Qwen (Alibaba DashScope)
+"qwen":     { "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", "apiKey": "sk-…", "model": "qwen3-coder-plus" }
+// 2. Gemini (Google AI Studio — free key at aistudio.google.com/apikey)
+"gemini":   { "apiKey": "AIza…", "model": "gemini-2.5-flash" }
+// 3a. DeepSeek (V4 native ids: deepseek-v4-pro = strongest, deepseek-v4-flash = cheap/fast)
 "fallback": { "baseUrl": "https://api.deepseek.com/anthropic", "apiKey": "sk-…", "model": "deepseek-v4-pro" }
-// GLM (Z.ai)
+// 3b. GLM (Z.ai) — alternative for the `fallback` slot
 "fallback": { "baseUrl": "https://api.z.ai/api/anthropic",     "apiKey": "…",    "model": "glm-4.6" }
 ```
 
-`config.json` is gitignored, so the key stays local. Tool-use quality on these providers is below
-Claude — treat the fallback as a safety net, not the default path.
+`config.json` is gitignored, so the keys stay local. Tool-use quality on these providers is below
+Claude — treat the chain as a safety net, not the default path.
 
 ## Layout
 
