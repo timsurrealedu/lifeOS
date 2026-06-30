@@ -3,3 +3,7 @@ vault/
 config.json
 *.log
 .DS_Store
+
+# Cloud deploy: filled-in secrets/state never get committed (only the .example does)
+deploy/oracle-a1.env
+deploy/a1-success.json

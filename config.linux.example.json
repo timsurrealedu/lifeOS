@@ -1,0 +1,20 @@
+{
+  "_comment": "Linux/cloud config. Copy to config.json on the VM and edit the two paths marked below.",
+  "vaultPath": "/home/ubuntu/Obsidian Vault",
+  "claudePath": "claude",
+  "port": 7777,
+  "host": "0.0.0.0",
+  "timezone": "Asia/Jakarta",
+  "languages": "English + Indonesian",
+  "todoPath": "TODO/{year}/{month}.md",
+  "todoFormat": "- [ ] DD Mon DESC",
+  "ownerName": "Tim",
+  "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku", "chat": "haiku", "calsync": "haiku", "autosort": "haiku" },
+  "maxTurns": 40,
+  "fallback": {
+    "_comment": "Used only when the primary run hits a usage/rate limit. Leave apiKey empty to disable.",
+    "baseUrl": "https://api.deepseek.com/anthropic",
+    "apiKey": "",
+    "model": "deepseek-v4-pro"
+  }
+}
