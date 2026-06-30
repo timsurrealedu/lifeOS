@@ -1694,6 +1694,9 @@ async function openSettings() {
     $('#cfg-fb-baseUrl').value = fb.baseUrl || '';
     $('#cfg-fb-apiKey').value = fb.apiKey || '';
     $('#cfg-fb-model').value = fb.model || '';
+    const gm = config.gemini || {};
+    $('#cfg-gem-apiKey').value = gm.apiKey || '';
+    $('#cfg-gem-model').value = gm.model || '';
     $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
     renderDocTools(docTools || []);
     // Appearance / editor prefs (client-side, localStorage).
@@ -1733,6 +1736,10 @@ $('#btn-save-cfg').addEventListener('click', async () => {
           baseUrl: $('#cfg-fb-baseUrl').value.trim(),
           apiKey: $('#cfg-fb-apiKey').value.trim(),
           model: $('#cfg-fb-model').value.trim(),
+        },
+        gemini: {
+          apiKey: $('#cfg-gem-apiKey').value.trim(),
+          model: $('#cfg-gem-model').value.trim() || 'gemini-2.5-flash',
         },
       }),
     });

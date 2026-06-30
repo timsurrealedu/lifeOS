@@ -150,7 +150,63 @@ const PROMPTS = {
 
 // Output that means "the primary account is out of capacity" — the only failure we retry on the
 // fallback provider. Kept narrow so ordinary errors (bad tool, crash) don't waste a fallback run.
-const LIMIT_RE = /usage limit|rate.?limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
+const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
+
+/**
+ * Direct Gemini (Google AI Studio) call — the fallback for the read-only AI **chats** when the
+ * primary `claude` run hits a usage limit. Gemini isn't Anthropic-compatible, so we can't route the
+ * CLI through it; instead we POST the same self-contained chat prompt to Gemini's REST API and stream
+ * the reply back as `out` lines (the exact shape the chat routes already consume). Text in, text out,
+ * no tools — which is all a chat needs, since the note's content + conversation are inside the prompt.
+ */
+async function streamGemini(prompt, onEvent, release) {
+  const gem = loadConfig().gemini || {};
+  const model = (gem.model || 'gemini-2.5-flash').trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
+  // Re-frame Gemini's token chunks into whole lines (like claude's stdout pump) so the route's
+  // per-line newline handling reconstructs the markdown correctly.
+  let line = '';
+  const emit = (t) => { line += t; const parts = line.split('\n'); line = parts.pop(); for (const p of parts) onEvent('log', { channel: 'out', line: p }); };
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gem.apiKey },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
+    });
+    if (!resp.ok || !resp.body) {
+      const t = await resp.text().catch(() => '');
+      release(); onEvent('error', { message: `Gemini fallback failed (HTTP ${resp.status}). ${t.slice(0, 180)}` });
+      return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let sse = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sse += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = sse.indexOf('\n')) >= 0) {
+        const raw = sse.slice(0, nl).trim(); sse = sse.slice(nl + 1);
+        if (!raw.startsWith('data:')) continue;
+        const payload = raw.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const j = JSON.parse(payload);
+          if (j.error) { release(); onEvent('error', { message: `Gemini: ${j.error.message || 'error'}` }); return; }
+          const txt = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+          if (txt) emit(txt);
+        } catch { /* a data line is one complete JSON object; ignore any stray non-JSON */ }
+      }
+    }
+    if (line) onEvent('log', { channel: 'out', line }); // flush trailing partial line
+    release();
+    onEvent('done', { code: 0, usedFallback: 'gemini' });
+  } catch (e) {
+    release();
+    onEvent('error', { message: 'Gemini fallback error: ' + e.message });
+  }
+}
 
 /** Compose the `claude -p` argv for one attempt (model is optional → CLI default). */
 function buildArgs({ kind, prompt, model, maxTurns }) {
@@ -182,6 +238,8 @@ function spawnClaude({ kind, prompt }, onEvent) {
   const cwd = vaultDir(cfg);
   const fb = cfg.fallback || {};
   const fallbackReady = !!(fb.apiKey && fb.baseUrl);
+  const gem = cfg.gemini || {};
+  const geminiReady = !!gem.apiKey; // chats can fall back to Gemini's REST API directly
 
   let current = null;     // the live child, so the kill fn can target it
   let killed = false;     // user cancelled → never auto-retry
@@ -193,6 +251,17 @@ function spawnClaude({ kind, prompt }, onEvent) {
       : process.env;
     onEvent('status', { state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default' });
 
+    // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
+    let settled = false;
+    // Read-only chats (per-note tutor + vault chat) can answer via Gemini's REST API directly: their
+    // prompt is self-contained, so no tools/file edits are needed. Returns true if it took over.
+    const geminiFallback = (msg) => {
+      if (!(READ_ONLY.has(kind) && geminiReady && !onFallback)) return false;
+      onEvent('status', { state: 'fallback-retry', message: msg + ` — answering via Gemini (${gem.model || 'gemini'}).` });
+      streamGemini(prompt, onEvent, release);
+      return true;
+    };
+
     let child, output = '';
     try {
       // stdin: 'ignore' so claude doesn't wait ~3s for piped stdin that never comes
@@ -201,6 +270,8 @@ function spawnClaude({ kind, prompt }, onEvent) {
         cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
+      settled = true;
+      if (geminiFallback('claude unavailable')) return;
       release();
       onEvent('error', { message: `Failed to launch claude: ${err.message}` });
       return;
@@ -222,10 +293,20 @@ function spawnClaude({ kind, prompt }, onEvent) {
     pump(child.stdout, 'out');
     pump(child.stderr, 'err');
 
-    child.on('error', (err) => { release(); onEvent('error', { message: err.message }); });
+    // claude binary missing / can't spawn → ENOENT here (not the try/catch above).
+    child.on('error', (err) => {
+      if (settled) return; settled = true;
+      if (geminiFallback('claude unavailable')) return;
+      release();
+      onEvent('error', { message: err.message });
+    });
     child.on('close', (code) => {
-      // Retry on the fallback provider once, only for a genuine capacity failure.
-      if (code !== 0 && !onFallback && !killed && fallbackReady && LIMIT_RE.test(output)) {
+      if (settled) return; settled = true;
+      const limited = code !== 0 && !onFallback && !killed && LIMIT_RE.test(output);
+      // Preferred chat fallback: Gemini when the primary hit a usage/session limit.
+      if (limited && geminiFallback('Primary hit a limit')) return;
+      // Otherwise retry once on the Anthropic-compatible fallback provider (DeepSeek/GLM).
+      if (limited && fallbackReady) {
         onEvent('status', { state: 'fallback-retry', message: `Primary hit a limit — retrying on fallback (${fb.model || 'fallback'}).` });
         return attempt(true);
       }

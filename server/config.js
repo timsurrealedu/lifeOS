@@ -28,6 +28,12 @@ const DEFAULTS = {
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
   //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
   fallback: { baseUrl: '', apiKey: '', model: '' },
+  // Gemini (Google AI Studio) fallback for the read-only AI **chats** (per-note tutor + vault chat)
+  // only. Gemini isn't Anthropic-compatible, so it can't drive the `claude` CLI like `fallback` does;
+  // instead the server calls Gemini's REST API directly with the same (self-contained) chat prompt
+  // when the primary run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
+  // https://aistudio.google.com/apikey
+  gemini: { apiKey: '', model: 'gemini-2.5-flash' },
 };
 
 export function loadConfig() {
@@ -39,6 +45,7 @@ export function loadConfig() {
     // doesn't drop the other defaults.
     cfg.models = { ...DEFAULTS.models, ...(saved.models || {}) };
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
+    cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
   } catch {
     /* first run: defaults */
   }
@@ -51,6 +58,7 @@ export function saveConfig(patch) {
   // Merge nested objects rather than letting a partial patch clobber them.
   if (patch.models) cfg.models = { ...prev.models, ...patch.models };
   if (patch.fallback) cfg.fallback = { ...prev.fallback, ...patch.fallback };
+  if (patch.gemini) cfg.gemini = { ...prev.gemini, ...patch.gemini };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
   return cfg;
 }

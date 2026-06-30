@@ -275,6 +275,11 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
 
+      <h4 class="settings-sub">Gemini fallback <small>(AI chat only)</small></h4>
+      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b> &amp; <b>vault chat</b> answering via Gemini when Claude runs out of session. Free key at <code>aistudio.google.com/apikey</code>. Leave empty to disable.</p>
+      <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
+      <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
+
       <div class="settings-actions">
         <button class="btn primary" id="btn-save-cfg">Save</button>
         <span id="cfg-vaultdir" class="hint"></span>
