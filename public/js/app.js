@@ -611,12 +611,14 @@ function renderTreeInto(node, depth, ul) {
     li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
       <span class="li-emoji">${open ? '📂' : '📁'}</span>
       <div class="li-main"><div class="li-title">${esc(d.name)}${isSystem ? '<span class="sys-tag">🔒 system</span>' : ''}</div></div>
+      <button class="tw-add" aria-label="new note or subfolder here" title="New note / subfolder here">＋</button>
       <span class="tw-count">${countFiles(d)}</span>
       ${isSystem ? '' : '<button class="tw-del" aria-label="delete folder" title="Delete folder">✕</button>'}`;
     li.addEventListener('click', () => {
       if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
       renderNotes();
     });
+    li.querySelector('.tw-add').addEventListener('click', (e) => { e.stopPropagation(); createInFolder(d.path); });
     const del = li.querySelector('.tw-del');
     if (del) del.addEventListener('click', (e) => { e.stopPropagation(); deleteFolderPath(d.path, countFiles(d)); });
     ul.appendChild(li);
@@ -683,7 +685,7 @@ async function moveEntryUI(src, dest, label) {
 }
 function onDragDown(e) {
   if (e.button != null && e.button !== 0) return; // left/touch only
-  if (e.target.closest('.tw-del')) return;        // delete button, not a drag
+  if (e.target.closest('.tw-del') || e.target.closest('.tw-add')) return; // row action buttons, not a drag
   const row = e.target.closest('.tree-row[data-path]');
   if (!row) return;
   dragS = {
@@ -757,6 +759,32 @@ $('#btn-new-folder').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
+// Create a note or subfolder INSIDE a specific folder (the tree's ＋). A trailing / makes a subfolder;
+// otherwise it opens the editor pre-targeted to that folder so you can write the note straight away.
+async function createInFolder(folderPath) {
+  const name = prompt(`New in "${folderPath}" — type a note title.\nEnd with / to make a subfolder instead (e.g. "Week 1/").`);
+  if (!name || !name.trim()) return;
+  const v = name.trim();
+  if (v.endsWith('/')) {
+    const sub = v.replace(/\/+$/, '').trim();
+    if (!sub) return;
+    try {
+      const { path } = await api('/api/folders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: folderPath + '/' + sub }),
+      });
+      let acc = '';
+      for (const p of path.split('/')) { acc = acc ? acc + '/' + p : p; state.expandedFolders.add(acc); }
+      state.notes = []; state.folders = null;
+      await loadNotes(true);
+      toast('Folder created');
+    } catch (e) { toast(e.message); }
+  } else {
+    state.expandedFolders.add(folderPath);
+    openEditorInFolder(v, folderPath);
+  }
+}
+
 /* ---------- Auto-sort (AI proposes → preview → apply) ---------- */
 $('#btn-autosort').addEventListener('click', () => {
   startStream('/api/autosort/stream', {
@@ -813,10 +841,95 @@ function showReader(title, html, path = null) {
   const body = $('#reader-body');
   body.innerHTML = html;
   bindWikilinks(body);
-  if (!readerOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
+  const firstOpen = !readerOpen;
+  if (firstOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
   $('#reader').hidden = false;
-  body.scrollTop = 0;
+  $('#reader-scroll').scrollTop = 0;
+  setupReaderSidebar(firstOpen);
 }
+
+/* ---- Reader file sidebar (Obsidian-style): switch notes without leaving the reader ---- */
+// Renders the same folder tree as the Notes tab into the reader's left dock; clicking a note swaps
+// the reader content in place, with the open note highlighted.
+function renderReaderTree() {
+  const ul = $('#reader-tree'); if (!ul) return;
+  ul.innerHTML = '';
+  if (!state.notes.length) return;
+  renderReaderTreeInto(buildTree(state.notes, state.folders || []), 0, ul);
+}
+function renderReaderTreeInto(node, depth, ul) {
+  const pad = depth * 14 + 10;
+  const dirs = [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of dirs) {
+    const open = state.expandedFolders.has(d.path);
+    const li = document.createElement('li');
+    li.className = 'tree-row tree-folder';
+    li.style.paddingLeft = pad + 'px';
+    li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
+      <span class="li-emoji">${open ? '📂' : '📁'}</span>
+      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>`;
+    li.addEventListener('click', () => {
+      if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
+      renderReaderTree();
+    });
+    ul.appendChild(li);
+    if (open) renderReaderTreeInto(d, depth + 1, ul);
+  }
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+  for (const n of files) {
+    const li = document.createElement('li');
+    li.className = 'tree-row tree-note' + (n.path === state.readerPath ? ' active' : '');
+    li.style.paddingLeft = pad + 'px';
+    li.innerHTML = `<span class="tw-caret"></span>
+      <span class="li-emoji">📄</span>
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div></div>`;
+    li.addEventListener('click', () => {
+      openNote(n.path, n.name);
+      if (!window.matchMedia('(min-width: 760px)').matches) $('#reader').classList.remove('sidebar-open');
+    });
+    ul.appendChild(li);
+  }
+}
+// Apply the sidebar's open/collapsed state and (re)fill its tree. On first open we honour the saved
+// desktop-collapse preference and start the mobile drawer closed; switching notes just refreshes it.
+function setupReaderSidebar(firstOpen) {
+  const reader = $('#reader');
+  const desktop = window.matchMedia('(min-width: 760px)').matches;
+  if (firstOpen) {
+    reader.classList.remove('sidebar-open');
+    reader.classList.toggle('sidebar-hidden', desktop && localStorage.getItem('lifeos.readerSidebarHidden') === '1');
+  }
+  if (state.notes.length) renderReaderTree();
+  else loadNotes().then(renderReaderTree).catch(() => {});
+}
+function toggleReaderSidebar() {
+  const reader = $('#reader');
+  if (window.matchMedia('(min-width: 760px)').matches) {
+    const hidden = reader.classList.toggle('sidebar-hidden');     // collapse → full-screen reading
+    localStorage.setItem('lifeos.readerSidebarHidden', hidden ? '1' : '0');
+  } else {
+    reader.classList.toggle('sidebar-open');                      // mobile drawer
+  }
+}
+$('#reader-sidebar-toggle').addEventListener('click', toggleReaderSidebar);
+$('#reader-sidebar-collapse').addEventListener('click', toggleReaderSidebar);
+// Mobile: swipe right from the left edge opens the file drawer; swipe left closes it.
+(function setupReaderSwipe() {
+  const reader = $('#reader');
+  let sx = 0, sy = 0, tracking = false;
+  reader.addEventListener('touchstart', (e) => {
+    if (window.matchMedia('(min-width: 760px)').matches || e.touches.length !== 1) { tracking = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+  }, { passive: true });
+  reader.addEventListener('touchend', (e) => {
+    if (!tracking) return; tracking = false;
+    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.3) return;   // need a clear horizontal swipe
+    const open = reader.classList.contains('sidebar-open');
+    if (dx > 0 && !open && sx < 64) reader.classList.add('sidebar-open'); // from the left edge → open
+    else if (dx < 0 && open) reader.classList.remove('sidebar-open');     // → close
+  }, { passive: true });
+})();
 
 /* ---- Reader properties / tags header (Obsidian-style) ---- */
 // Frontmatter helpers (mirror the server) — notes may declare tags in YAML `tags:` and/or inline #tags.
@@ -1383,6 +1496,20 @@ async function openEditor() {
   } catch {}
   showEditor();
   edTitle.focus();
+}
+
+// New note pre-targeted to a folder (from the tree's ＋). Opens the create editor with the folder
+// filled in and the title seeded, ready to write; saving creates the file inside that folder.
+async function openEditorInFolder(title, folder) {
+  setEditorMode('create'); edPath = null;
+  edTitle.value = title || ''; edBody.value = '';
+  try {
+    const { folders } = await api('/api/folders');
+    $('#editor-folders').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
+  } catch {}
+  $('#editor-folder').value = folder || 'Drafts';
+  showEditor();
+  edBody.focus();
 }
 
 // Edit an existing note in place (edit mode).

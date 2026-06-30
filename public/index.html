@@ -395,28 +395,44 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
 
   <!-- Full-page note reader -->
   <div class="reader" id="reader" hidden>
-    <header class="reader-head">
-      <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
-      <h2 id="reader-title">Note</h2>
-      <button class="icon-btn" id="reader-chat" title="Ask the tutor about this note" aria-label="Ask about this note" hidden>💬</button>
-      <button class="icon-btn" id="reader-del" title="Delete note" aria-label="Delete note" hidden>🗑</button>
-      <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
-    </header>
+    <!-- File/folder sidebar (Obsidian-style): docked on the left on desktop, swipe-in on mobile.
+         Lets you switch between notes without leaving the reader; collapse it for full-screen. -->
+    <aside class="reader-sidebar" id="reader-sidebar">
+      <div class="reader-sidebar-head">
+        <span class="reader-sidebar-title">Files</span>
+        <button class="icon-btn" id="reader-sidebar-collapse" title="Hide files" aria-label="Hide files">⟨</button>
+      </div>
+      <ul class="tree reader-tree" id="reader-tree"></ul>
+    </aside>
 
-    <!-- Obsidian-style properties / tags header (collapsible) -->
-    <div class="props" id="reader-props" hidden>
-      <button class="props-toggle" id="props-toggle" type="button" aria-expanded="true">
-        <span class="props-caret">▾</span><span>Properties</span>
-      </button>
-      <div class="props-body" id="props-body">
-        <div class="prop-row">
-          <span class="prop-key">🏷 tags</span>
-          <div class="prop-tags" id="reader-tags"></div>
+    <div class="reader-main" id="reader-main">
+      <header class="reader-head">
+        <button class="icon-btn" id="reader-sidebar-toggle" title="Files" aria-label="Toggle files">☰</button>
+        <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
+        <h2 id="reader-title">Note</h2>
+        <button class="icon-btn" id="reader-chat" title="Ask the tutor about this note" aria-label="Ask about this note" hidden>💬</button>
+        <button class="icon-btn" id="reader-del" title="Delete note" aria-label="Delete note" hidden>🗑</button>
+        <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
+      </header>
+
+      <!-- Scroll region: properties live INSIDE it, so they scroll away with the note (not pinned). -->
+      <div class="reader-scroll" id="reader-scroll">
+        <!-- Obsidian-style properties / tags header (collapsible) -->
+        <div class="props" id="reader-props" hidden>
+          <button class="props-toggle" id="props-toggle" type="button" aria-expanded="true">
+            <span class="props-caret">▾</span><span>Properties</span>
+          </button>
+          <div class="props-body" id="props-body">
+            <div class="prop-row">
+              <span class="prop-key">🏷 tags</span>
+              <div class="prop-tags" id="reader-tags"></div>
+            </div>
+          </div>
         </div>
+
+        <article id="reader-body" class="markdown reader-body"></article>
       </div>
     </div>
-
-    <article id="reader-body" class="markdown reader-body"></article>
 
     <!-- Per-note tutor chat dock (slides up over the bottom of the reader) -->
     <div class="note-chat" id="note-chat" hidden>

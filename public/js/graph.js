@@ -22,8 +22,9 @@ window.LifeGraph = (function () {
       hi: cv('--sage', '#9bb273'),
     };
 
-    // Hubs (high-degree "parents") are drawn as noticeably bigger balls than leaf notes.
-    const radius = (degree) => 6 + Math.min(degree, 22) * 2.1;
+    // Hubs (high-degree "parents") are drawn bigger than leaf notes — but kept fairly compact so
+    // they don't dominate the canvas.
+    const radius = (degree) => 4.5 + Math.min(degree, 20) * 1.45;
     const n = data.nodes.length || 1;
     // Seed positions on a spread-out spiral (deterministic) so the sim starts untangled
     // and converges gently rather than flinging nodes from a random clump. A wider spread
@@ -62,9 +63,14 @@ window.LifeGraph = (function () {
     // ---- physics ----
     // Stronger repulsion + size-aware spring rest lengths keep the graph spaced out
     // (no painful clumping). Repulsion grows with node size so big hubs clear room.
-    let alpha = 1;
+    // `alpha` is the sim "temperature": it cools toward `alphaTarget` each tick. Normally the
+    // target is 0 so the layout settles and freezes. While a node is being dragged we hold the
+    // target warm (see down/up) so neighbours keep springing along with it — without this the sim
+    // freezes after a second or two and dragged nodes stop dragging their links (the old bug where
+    // small balls stuck in place after moving a hub back and forth).
+    let alpha = 1, alphaTarget = 0;
     function tick() {
-      alpha *= 0.985;
+      alpha = alphaTarget + (alpha - alphaTarget) * 0.985;
       const k = alpha;
       for (let i = 0; i < nodes.length; i++) {
         const a = nodes[i];
@@ -147,10 +153,21 @@ window.LifeGraph = (function () {
         if (isSel || isHov) ctx.fillStyle = C.hi;
         ctx.fill();
         if (isSel || isHov) { ctx.strokeStyle = C.hi; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
-        // Label hubs / the focused node + its neighbours / when zoomed in.
-        if (nd.degree >= 3 || isSel || isHov || (active && lit.has(nd)) || view.scale > 1.4) {
-          ctx.fillStyle = (isSel || isHov) ? C.hi : C.text;
-          ctx.globalAlpha = on ? (active && !lit.has(nd) ? 0.3 : 0.82) : 0.12;
+        // Labels fade with zoom: hubs (high degree) keep their label when zoomed out; leaf labels
+        // fade in only as you zoom in — so zooming out dissolves them from the small balls up to
+        // the big ones. The focused node + its neighbours are always labelled.
+        const focus = isSel || isHov;
+        let labelA;
+        if (focus) labelA = 1;
+        else {
+          const appear = 1.4 - Math.min(nd.degree, 20) * 0.06;          // hubs appear at lower zoom
+          labelA = Math.max(0, Math.min(1, (view.scale - appear) / 0.5));
+          labelA *= active ? (lit.has(nd) ? 0.85 : 0.22) : 0.85;        // dim non-focused on selection
+        }
+        if (!on) labelA = Math.min(labelA, 0.12);
+        if (labelA > 0.03) {
+          ctx.fillStyle = focus ? C.hi : C.text;
+          ctx.globalAlpha = labelA;
           const fs = Math.min(15, 10 + nd.degree * 0.3) * dpr;
           ctx.font = `${fs}px -apple-system, system-ui, sans-serif`;
           ctx.textAlign = 'center';
@@ -183,17 +200,22 @@ window.LifeGraph = (function () {
     function down(cx, cy) {
       const nd = pick(cx, cy);
       last = { cx, cy };
-      if (nd) { dragNode = nd; selected = nd; alpha = Math.max(alpha, 0.3); onSelect && onSelect(nd.id, nd.exists); }
+      // Reheat AND hold the sim warm for the whole drag, so links keep pulling neighbours live.
+      if (nd) { dragNode = nd; selected = nd; alphaTarget = 0.3; alpha = Math.max(alpha, 0.5); onSelect && onSelect(nd.id, nd.exists); }
       else { dragging = true; }
     }
     function move(cx, cy) {
-      if (dragNode) { const { x, y } = toLocal(cx, cy); dragNode.x = x; dragNode.y = y; }
-      else if (dragging && last) { view.panx += (cx - last.cx) * dpr; view.pany += (cy - last.cy) * dpr; last = { cx, cy }; }
+      if (dragNode) {
+        const { x, y } = toLocal(cx, cy);
+        dragNode.x = x; dragNode.y = y; dragNode.vx = 0; dragNode.vy = 0; // pin to cursor, no fling on release
+        alpha = Math.max(alpha, 0.3);                                     // keep it lively even on slow drags
+      } else if (dragging && last) { view.panx += (cx - last.cx) * dpr; view.pany += (cy - last.cy) * dpr; last = { cx, cy }; }
     }
     let downAt = 0;
     function up() {
       if (dragNode && Date.now() - downAt < 250) onOpen && onOpen(dragNode.id);
       dragNode = null; dragging = false; last = null;
+      alphaTarget = 0;   // let the layout cool back down and settle
     }
 
     function zoomAt(cx, cy, f) {

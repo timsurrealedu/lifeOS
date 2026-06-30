@@ -459,13 +459,15 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* ---- Full-page reader ---- */
 .reader {
-  position: fixed; inset: 0; z-index: 55; display: flex; flex-direction: column;
+  position: fixed; inset: 0; z-index: 55; display: flex; flex-direction: row;
   background: var(--bg); background-image: var(--bg-tint);
   animation: readerin .22s cubic-bezier(.2,.9,.25,1);
 }
 @keyframes readerin { from { transform: translateX(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Main column (header + scrolling body) sits to the right of the file sidebar. */
+.reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .reader-head {
-  position: sticky; top: 0; display: flex; align-items: center; gap: 12px;
+  flex: none; display: flex; align-items: center; gap: 12px;
   padding: max(14px, env(safe-area-inset-top)) 16px 12px;
   background: linear-gradient(var(--bg) 74%, transparent);
   border-bottom: 1px solid var(--border-soft);
@@ -474,9 +476,45 @@ a.doc-link:hover { border-color: var(--accent); }
   margin: 0; flex: 1; font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* The scroll region holds BOTH the properties block and the article, so the properties scroll up
+   and out of the way as you read/write instead of staying pinned at the top. */
+.reader-scroll { flex: 1; overflow: auto; }
 .reader-body {
-  flex: 1; overflow: auto; width: 100%; max-width: var(--max); margin: 0 auto;
+  width: 100%; max-width: var(--max); margin: 0 auto;
   padding: 14px 20px calc(env(safe-area-inset-bottom) + 48px);
+}
+
+/* ---- Reader file sidebar (Obsidian-style left dock) ---- */
+.reader-sidebar {
+  flex: none; width: 280px; display: flex; flex-direction: column;
+  background: var(--surface); border-right: 1px solid var(--border); overflow: hidden;
+}
+.reader-sidebar-head {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: max(14px, env(safe-area-inset-top)) 8px 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.reader-sidebar-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--muted); }
+.reader-tree { flex: 1; overflow: auto; margin: 0; padding: 6px 4px calc(env(safe-area-inset-bottom) + 40px); list-style: none; }
+.reader-tree .tree-row { font-size: 13.5px; }
+.reader-tree .tree-row.active { background: var(--accent-soft); border-radius: 8px; }
+.reader-tree .tree-row.active .li-title { color: var(--accent); }
+/* Collapsed (desktop) → full-screen reading. The toggle (☰) is always available in the header. */
+.reader.sidebar-hidden .reader-sidebar { display: none; }
+#reader-sidebar-toggle { display: none; }            /* desktop: collapse via header toggle only when wanted */
+.reader.sidebar-hidden #reader-sidebar-toggle { display: inline-flex; }
+
+/* Mobile: the sidebar is an off-canvas drawer you swipe in (right) / out (left). */
+@media (max-width: 759px) {
+  .reader-sidebar {
+    position: absolute; top: 0; left: 0; bottom: 0; z-index: 60;
+    width: min(82vw, 320px); transform: translateX(-100%);
+    transition: transform .24s cubic-bezier(.2,.9,.25,1);
+    box-shadow: 10px 0 34px rgba(0,0,0,.42);
+  }
+  .reader.sidebar-open .reader-sidebar { transform: none; }
+  .reader.sidebar-hidden .reader-sidebar { display: flex; }   /* ignore the desktop-collapse class on phones */
+  #reader-sidebar-toggle { display: inline-flex; }            /* always show the drawer toggle on mobile */
 }
 
 /* ---- Reader properties / tags header (Obsidian-style, collapsible) ---- */
@@ -677,8 +715,15 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .tree-row:hover .tw-del, .tree-row:focus-within .tw-del { opacity: 1; }
 .tw-del:hover { color: var(--danger); background: var(--surface-3); }
-/* On touch (no hover) keep delete visible but quiet. */
-@media (hover: none) { .tw-del { opacity: .5; } }
+/* New-note / new-subfolder button on folder rows — same quiet treatment as delete. */
+.tw-add {
+  flex: none; border: none; background: none; color: var(--faint); font-size: 14px; line-height: 1;
+  padding: 4px 7px; border-radius: 8px; cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.tree-row:hover .tw-add, .tree-row:focus-within .tw-add { opacity: 1; }
+.tw-add:hover { color: var(--accent); background: var(--surface-3); }
+/* On touch (no hover) keep the row actions visible but quiet. */
+@media (hover: none) { .tw-del, .tw-add { opacity: .5; } }
 
 /* ---- Segmented toggle (Plan list/calendar) ---- */
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
