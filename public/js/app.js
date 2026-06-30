@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, graph: null, expandedFolders: new Set(), readerPath: null, chat: [], chatBusy: false, planView: 'list', calMonth: null };
+const state = { inbox: [], notes: [], folders: null, view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Navigation ---------- */
 function show(view) {
@@ -60,9 +60,9 @@ textEl.addEventListener('input', autoGrow);
 
 // Preview helpers (shared by photo / camera / recording)
 function resetCapture() {
-  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingAudio = null;
-  for (const id of ['#photo-preview', '#audio-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
-  $('#photo-input').value = '';
+  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingAudio = null; state.pendingDoc = null;
+  for (const id of ['#photo-preview', '#audio-preview', '#doc-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
+  $('#photo-input').value = ''; $('#doc-input').value = '';
   $('#btn-add').textContent = 'Add to inbox';
 }
 function discardBtn() {
@@ -101,11 +101,28 @@ function showAudioPreview(blob, dur) {
   pv.classList.remove('hidden');
   $('#btn-add').textContent = 'Add recording to inbox';
 }
+const fmtBytes = (n) => n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+const docEmoji = (name) => /\.pdf$/i.test(name) ? '📕'
+  : /\.(ppt|pptx|key)$/i.test(name) ? '📙'
+  : /\.(doc|docx|odt)$/i.test(name) ? '📘'
+  : /\.(xls|xlsx|csv|ods)$/i.test(name) ? '📗' : '📄';
+function showDocPreview(file) {
+  state.pendingDoc = file;
+  const pv = $('#doc-preview'); pv.innerHTML = '';
+  const chip = document.createElement('div'); chip.className = 'doc-chip';
+  chip.innerHTML = `<span class="doc-ico">${docEmoji(file.name)}</span>
+    <span class="doc-name">${esc(file.name)}</span>
+    <span class="doc-size">${fmtBytes(file.size)}</span>`;
+  pv.append(chip, discardBtn());
+  pv.classList.remove('hidden');
+  $('#btn-add').textContent = 'Add file to inbox';
+}
 
 $('#btn-add').addEventListener('click', async () => {
   const text = textEl.value.trim();
   if (state.pendingPhoto) { await uploadPhoto(text); return; }
   if (state.pendingAudio) { await uploadAudio(text); return; }
+  if (state.pendingDoc) { await uploadDocument(text); return; }
   if (!text) { toast('Nothing to add'); return; }
   try {
     const { items } = await api('/api/capture', {
@@ -124,6 +141,27 @@ $('#photo-input').addEventListener('change', (e) => {
   showPhotoPreview(file);
   toast('Photo ready — add a hint above (optional)');
 });
+
+// Document (PDF / PPTX / DOCX / … pick existing file)
+$('#doc-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 25 * 1024 * 1024) { toast('File too large (max 25 MB)'); $('#doc-input').value = ''; return; }
+  showDocPreview(file);
+  toast('File ready — add a hint above (optional)');
+});
+async function uploadDocument(hint) {
+  const file = state.pendingDoc;
+  const fd = new FormData();
+  fd.append('document', file, file.name);
+  if (hint) fd.append('hint', hint);
+  try {
+    const { items } = await api('/api/capture/document', { method: 'POST', body: fd });
+    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    resetCapture();
+    toast('File added to inbox');
+  } catch (e) { toast(e.message); }
+}
 
 // Shrink a captured photo to ~maxDim before upload so the later vision read costs far fewer
 // tokens (phone photos are often 3000–4000px; Claude downsamples past ~1568px anyway). Handwriting
@@ -414,6 +452,7 @@ function updateInboxCount() {
 function emoji(item) {
   if (/#recording|recordings\//.test(item)) return '🎙️';
   if (/#handwriting|handwriting\//.test(item)) return '✍️';
+  if (/#document|!\[\[[^\]]+\.(pdf|docx?|pptx?|xlsx?|csv|txt)\]\]/i.test(item)) return '📎';
   if (/!\[\[/.test(item)) return '📷';
   if (/\b(\d{1,2}[:.]\d{2}|\d{1,2}\s?(am|pm)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|exam|deadline|due|meeting|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(item)) return '📅';
   if (/\b(email|buy|call|send|book|pay|fix|ask)\b/i.test(item)) return '✅';
@@ -722,7 +761,10 @@ function showReader(title, html, path = null) {
   $('#reader-title').textContent = title;
   state.readerPath = path;
   $('#reader-edit').hidden = !path;
+  $('#reader-chat').hidden = !path;
   $('#reader-del').hidden = !path || isProtectedPath(path);
+  // New note open → drop any prior tutor conversation and collapse the dock.
+  state.noteChat = []; closeNoteChat();
   const body = $('#reader-body');
   body.innerHTML = html;
   bindWikilinks(body);
@@ -751,6 +793,133 @@ $('#reader-del').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
+/* ---------- Per-note tutor chat (read-only) + ➕ add-to-note ---------- */
+function closeNoteChat() {
+  $('#reader').classList.remove('chat-open');
+  $('#note-chat').hidden = true;
+}
+function openNoteChat() {
+  if (!state.readerPath) return;
+  $('#reader').classList.add('chat-open');
+  $('#note-chat').hidden = false;
+  renderNoteChat();
+  setTimeout(() => $('#note-chat-input').focus(), 50);
+}
+$('#reader-chat').addEventListener('click', () => {
+  if ($('#note-chat').hidden) openNoteChat(); else closeNoteChat();
+});
+$('#note-chat-close').addEventListener('click', closeNoteChat);
+$('#note-chat-clear').addEventListener('click', () => { state.noteChat = []; renderNoteChat(); });
+
+function renderNoteChat() {
+  const thread = $('#note-chat-thread');
+  $('#note-chat-intro').hidden = state.noteChat.length > 0;
+  thread.querySelectorAll('.bubble, .bubble-wrap').forEach((b) => b.remove());
+  state.noteChat.forEach((m, i) => {
+    if (m.role === 'user') {
+      const b = document.createElement('div');
+      b.className = 'bubble me';
+      b.innerHTML = esc(m.text).replace(/\n/g, '<br>');
+      thread.appendChild(b);
+      return;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'bubble-wrap';
+    const b = document.createElement('div');
+    b.className = 'bubble ai';
+    b.innerHTML = m.text ? mdToHtml(m.text) : '<span class="typing">…</span>';
+    bindWikilinks(b);
+    wrap.appendChild(b);
+    // Once an answer is in (and nothing's streaming), offer to save it into the note. The topic is
+    // the question that prompted this answer.
+    if (m.text && !state.noteChatBusy) {
+      const prev = state.noteChat[i - 1];
+      const q = prev && prev.role === 'user' ? prev.text : '';
+      const add = document.createElement('button');
+      add.className = 'add-to-note'; add.type = 'button';
+      add.textContent = '➕ Add to note';
+      add.addEventListener('click', () => augmentNote(q, m.text, add));
+      wrap.appendChild(add);
+    }
+    thread.appendChild(wrap);
+  });
+  thread.scrollTop = thread.scrollHeight;
+}
+
+async function sendNoteChat(text) {
+  const q = (text || '').trim();
+  if (!q || state.noteChatBusy || !state.readerPath) return;
+  state.noteChat.push({ role: 'user', text: q });
+  const ai = { role: 'ai', text: '' };
+  state.noteChat.push(ai);
+  state.noteChatBusy = true;
+  $('#note-chat-input').value = '';
+  $('#note-chat-send').disabled = true;
+  renderNoteChat();
+  try {
+    const resp = await fetch('/api/note/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: state.readerPath,
+        messages: state.noteChat.filter((m) => m.text || m.role === 'user').map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
+      }),
+    });
+    if (!resp.ok || !resp.body) throw new Error('chat failed (' + resp.status + ')');
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      ai.text += dec.decode(value, { stream: true });
+      renderNoteChat();
+    }
+    if (!ai.text.trim()) ai.text = '_(no answer)_';
+  } catch (e) {
+    ai.text = '⚠️ ' + e.message;
+  } finally {
+    state.noteChatBusy = false;
+    $('#note-chat-send').disabled = false;
+    renderNoteChat();
+    $('#note-chat-input').focus();
+  }
+}
+$('#note-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendNoteChat($('#note-chat-input').value); });
+
+// Ask the AI to write an overview of `topic` into the open note, then reload it in place.
+// Drives the SSE directly (no console sheet — it'd render behind the z-55 reader); progress shows
+// on the button itself and the note refreshes under the chat dock when done.
+function augmentNote(topic, context, btn) {
+  if (!state.readerPath || !topic) { toast('Ask a question first'); return; }
+  const path = state.readerPath;
+  if (btn) { btn.disabled = true; btn.textContent = '✍️ Adding…'; }
+  const reset = () => { if (btn) { btn.disabled = false; btn.textContent = '➕ Add to note'; } };
+  const es = new EventSource('/api/note/augment/stream?path=' + encodeURIComponent(path)
+    + '&topic=' + encodeURIComponent(topic)
+    + '&context=' + encodeURIComponent((context || '').slice(0, 4000)));
+  let finished = false;
+  es.addEventListener('status', (e) => {
+    try { if (JSON.parse(e.data).state === 'fallback-retry') toast('Primary hit a limit — trying fallback…'); } catch {}
+  });
+  es.addEventListener('done', async (e) => {
+    finished = true; es.close();
+    let code = 0; try { code = JSON.parse(e.data).code; } catch {}
+    if (code !== 0) { reset(); toast('Could not add to note'); return; }
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Added'; }
+    try {
+      const { content } = await api('/api/note?path=' + encodeURIComponent(path));
+      if (state.readerPath === path) { const body = $('#reader-body'); body.innerHTML = mdToHtml(content); bindWikilinks(body); }
+      state.notes = []; loadNotes(true);
+      toast('Overview added ✓');
+    } catch (err) { toast(err.message); }
+  });
+  es.addEventListener('error', (e) => {
+    if (finished) return;          // ignore the transport drop that follows a normal close
+    finished = true; es.close();
+    let msg = 'Add failed'; try { msg = JSON.parse(e.data).message || msg; } catch {}
+    reset(); toast(msg);
+  });
+}
+
 // Mirrors the server's protected list so we don't offer a delete that will just error.
 const RESERVED_DIRS = new Set(['.claude', '.git', '.obsidian', '.inbox-archive', 'node_modules', '.cache', 'attachments']);
 function isProtectedPath(path) {
@@ -761,7 +930,7 @@ function isProtectedPath(path) {
 // One handler closes only the topmost overlay (editor sits above reader).
 window.addEventListener('popstate', () => {
   if (editorOpen) { editorOpen = false; $('#editor').hidden = true; }
-  else if (readerOpen) { readerOpen = false; $('#reader').hidden = true; }
+  else if (readerOpen) { readerOpen = false; closeNoteChat(); $('#reader').hidden = true; }
 });
 
 async function openNote(path, name) {
@@ -1177,7 +1346,7 @@ async function openLog() {
 /* ---------- Settings ---------- */
 async function openSettings() {
   try {
-    const { config, vaultDir } = await api('/api/config');
+    const { config, vaultDir, docTools } = await api('/api/config');
     $('#cfg-vaultPath').value = config.vaultPath;
     $('#cfg-timezone').value = config.timezone;
     $('#cfg-languages').value = config.languages;
@@ -1187,8 +1356,21 @@ async function openSettings() {
     $('#cfg-fb-apiKey').value = fb.apiKey || '';
     $('#cfg-fb-model').value = fb.model || '';
     $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
+    renderDocTools(docTools || []);
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
+}
+// Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
+function renderDocTools(tools) {
+  const box = $('#cfg-doctools'); if (!box) return;
+  const anyOffice = tools.some((t) => t.found && t.cmd !== 'pdftotext');
+  const rows = tools.map((t) =>
+    `<div class="doctool-row"><span>${t.found ? '✅' : '⬜'}</span>
+      <code>${esc(t.label)}</code><span class="hint">${esc(t.handles)}</span></div>`).join('');
+  box.innerHTML = rows
+    + `<p class="hint">${anyOffice
+      ? 'Attached Office files (.docx/.pptx/.xlsx) can be extracted and summarized on processing.'
+      : '⚠ No Office-extraction tool found. PDFs still process (read natively); .docx/.pptx/.xlsx get parked <code>#needs-extraction</code> until you install one (e.g. <code>pandoc</code>).'}</p>`;
 }
 $('#btn-save-cfg').addEventListener('click', async () => {
   try {
@@ -1261,11 +1443,16 @@ function mdToHtml(md) {
       const src = '/vault-files/' + (ref.includes('/')
         ? ref.split('/').map(encodeURIComponent).join('/')
         : 'attachments/' + encodeURIComponent(ref));
-      return /\.(webm|m4a|mp3|wav|ogg)$/i.test(ref)
-        ? `<audio controls src="${src}"></audio>`
-        : `<img src="${src}" alt="${esc(ref)}" onerror="this.style.display='none'">`;
+      if (/\.(webm|m4a|mp3|wav|ogg)$/i.test(ref)) return `<audio controls src="${src}"></audio>`;
+      if (/\.(pdf|docx?|pptx?|xlsx?|csv|txt|odt|ods|key)$/i.test(ref)) {
+        const fname = ref.split('/').pop();
+        return `<a class="doc-link" href="${src}" target="_blank" rel="noopener">📎 ${fname}</a>`;
+      }
+      return `<img src="${src}" alt="${ref}" onerror="this.style.display='none'">`;
     })
-    .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${esc(name.trim())}">${esc(label || name)}</span>`)
+    // `name`/`label` are already HTML-escaped by the outer esc(t) above — do NOT escape again, or an
+    // `&` in a title becomes `&amp;amp;` and the data-link stops matching the note (breaking the click).
+    .replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, name, label) => `<span class="wikilink" data-link="${name.trim()}">${label || name}</span>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/==([^=]+)==/g, '<mark>$1</mark>')
     .replace(/(^|\s)\*([^*]+)\*/g, '$1<em>$2</em>')

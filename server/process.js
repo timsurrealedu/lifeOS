@@ -8,7 +8,7 @@ import { loadConfig, vaultDir } from './config.js';
 let writeRunning = false;
 export const isRunning = () => writeRunning;
 
-const READ_ONLY = new Set(['chat']);
+const READ_ONLY = new Set(['chat', 'notechat']);
 
 const ALLOWED = {
   process: [
@@ -20,6 +20,10 @@ const ALLOWED = {
   home: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
   // Read-only advisor: search/read notes + read the calendar. No Write/Edit/Bash on purpose.
   chat: ['Read', 'Glob', 'Grep', 'mcp__claude_ai_Google_Calendar__list_events'],
+  // Read-only tutor scoped to one open note. Reads related notes for context; never writes.
+  notechat: ['Read', 'Glob', 'Grep'],
+  // Augment ONE note: append an overview section the user asked for. Edits only that file.
+  noteaugment: ['Read', 'Edit', 'Glob', 'Grep'],
   // Pull calendar events into a local cache file. Reads the calendar, writes only .cache/calendar.json.
   calsync: ['Read', 'Write', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Propose a folder tidy-up. Reads structure, writes only the proposal to .cache/autosort.json.
@@ -77,6 +81,45 @@ const PROMPTS = {
       + 'tell them to use the relevant tab. Reply in plain Markdown, no preamble.\n\n'
       + `Conversation so far:\n${transcript}\n\nAnswer the latest message.`;
   },
+
+  // Tutor scoped to one open note. Gets the note's path + full content inline so it doesn't
+  // even need to read the file, and may Grep/Read *related* notes for extra context.
+  notechat: (cfg, notePath, noteContent, messages) => {
+    const recent = (messages || []).slice(-8);
+    const transcript = recent
+      .map((m) => `${m.role === 'assistant' ? 'Assistant' : 'You'}: ${String(m.text || '').trim()}`)
+      .join('\n');
+    return `You are ${cfg.ownerName}'s study tutor, helping them understand **one specific note** they `
+      + `have open in their Obsidian vault. Today's date is in context (timezone ${cfg.timezone}).\n\n`
+      + `The open note is \`${notePath}\`. Its full current content is:\n"""\n${noteContent}\n"""\n\n`
+      + 'Answer their follow-up questions about this note — explain concepts, work through the math '
+      + 'step by step, give intuition and examples. This is often technical/math material (e.g. '
+      + 'scientific computing): render all math as LaTeX — inline `$…$`, display `$$…$$` — so it '
+      + 'displays properly. You have **read-only** access to the rest of the vault (Read/Glob/Grep): '
+      + 'pull in a related note only if it genuinely helps, and cite it as a [[wikilink]]. Be warm, '
+      + 'concise and concrete; preserve the user\'s language(s), never translate. You cannot edit the '
+      + 'note here — if they want something saved into it, tell them to tap **➕ Add to note**. Reply '
+      + `in plain Markdown, no preamble.\n\nConversation so far:\n${transcript}\n\nAnswer the latest message.`;
+  },
+
+  // Write an overview of a topic the user felt weak on INTO their open note. The only run that
+  // edits a user note from the tutor flow — deliberately additive, never destructive.
+  noteaugment: (cfg, notePath, topic, context) =>
+    `You are editing **one note** in ${cfg.ownerName}'s Obsidian vault, launched from lifeOS with no `
+    + `interactive user. The note is \`${notePath}\`.\n\n`
+    + `${cfg.ownerName} was studying this note and asked their tutor about a topic they felt weak on. `
+    + `They want a clear overview of that topic added **into this note** for later revision.\n\n`
+    + `The topic / question:\n"""\n${topic}\n"""\n`
+    + (context ? `\nContext from the tutor conversation (use it, but write your own clean overview):\n"""\n${context}\n"""\n` : '')
+    + '\nDo this:\n'
+    + `1. Read \`${notePath}\`.\n`
+    + '2. **Append** a new section near the end (before any footer/links/source-embed block if present) '
+    + 'with an H2 heading like `## Overview — <topic>` (a `#weak-topic` tag on the heading line is fine). '
+    + 'Write a concise, self-contained overview: the core idea, key formulas as **LaTeX** (`$…$` / `$$…$$`), '
+    + 'and a short worked example or intuition where it helps.\n'
+    + '3. **Never delete or rewrite the user\'s existing content** — only add. Match the note\'s existing '
+    + 'language and style. Keep `[[wikilinks]]` title-only (no folder paths).\n'
+    + '4. Use the `Edit` tool on that one file only; touch nothing else. Finish with a one-line summary.',
 
   autosort: (cfg) =>
     `You are the "Auto-sort" job in ${cfg.ownerName}'s lifeOS vault, no interactive user. Your job is to `
@@ -209,6 +252,12 @@ export const runRefreshHome = (onEvent) =>
 
 export const runChat = (messages, onEvent) =>
   spawnClaude({ kind: 'chat', prompt: PROMPTS.chat(loadConfig(), messages) }, onEvent);
+
+export const runNoteChat = (notePath, noteContent, messages, onEvent) =>
+  spawnClaude({ kind: 'notechat', prompt: PROMPTS.notechat(loadConfig(), notePath, noteContent, messages) }, onEvent);
+
+export const runNoteAugment = (notePath, topic, context, onEvent) =>
+  spawnClaude({ kind: 'noteaugment', prompt: PROMPTS.noteaugment(loadConfig(), notePath, topic, context) }, onEvent);
 
 export const runCalSync = (onEvent) =>
   spawnClaude({ kind: 'calsync', prompt: PROMPTS.calsync(loadConfig()) }, onEvent);

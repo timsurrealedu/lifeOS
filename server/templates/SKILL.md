@@ -55,7 +55,7 @@ Go line by line. An item is one of:
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
 
-**B) Media embed** — a line with `![[…]]` (photo, handwriting, or audio).
+**B) Media embed** — a line with `![[…]]` (photo, handwriting, audio, or document).
   *Photo* (`.jpg/.png/…`): Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`. If it's a screenshot of a chat mentioning a date, treat that date like case A instead.
   *Handwriting* (image embedded from `attachments/handwriting/`, tagged `#handwriting` — written in the app's ink canvas):
     → **Read the handwriting and transcribe it into a clean typed note**, following the vault's writing style. This is the user's own notes, not a slide to summarize — keep their content and structure; tidy spelling/legibility, don't editorialize. Preserve the original language(s); never translate.
@@ -66,6 +66,11 @@ Go line by line. An item is one of:
     → **Transcribe it first** via Bash using whatever local speech-to-text CLI is installed (try in order: `whisper-ctranslate2`, `whisper`, `whisper-cpp`, `faster-whisper`) on the embedded file. These write a transcript file (e.g. `--output_format txt`); read that. Preserve the spoken language(s); never translate.
     → Then summarize the transcript into a note like a lecture/meeting note (per-topic; apply area inference + the "Area keywords always win" rule; add MOC links). Keep the source: embed the audio with `![[…]]` under a **Recording** heading at the bottom of the note.
     → **If no transcription tool is available**, do not discard it — create the note (or a `Captures/` entry) that embeds the audio, tag it `#needs-transcription`, and say so in the report. Never fail the whole run over one audio file.
+  *Document* (`.pdf/.docx/.pptx/.xlsx/.txt/.md/…`, usually tagged `#document`, embedded from `attachments/`):
+    → **Read its text first.** PDFs: open with the `Read` tool (it reads PDF pages). Office files (`.docx/.pptx/.xlsx`) and others the Read tool can't parse: extract text via Bash using whatever's installed — try in order `pandoc <file> -t plain`, `pdftotext` (PDFs), `libreoffice --headless --convert-to txt`, or unzip + read the XML (`.docx`→`word/document.xml`, `.pptx`→`ppt/slides/*.xml`) — then read the extracted text.
+    → Then summarize it into clean notes like a lecture/reading/slide deck: **one note per topic** (a long deck or paper usually splits into several), apply area inference + the "Area keywords always win" rule, format math as **LaTeX**, and add MOC links. This is reference material to digest, not the user's own words — summarize, don't transcribe verbatim.
+    → **Keep the source:** embed the original file with `![[…]]` under a **Source document** heading at the bottom of each note it fed, so the file is preserved next to its summary. Preserve the original language(s); never translate.
+    → **If no extraction tool works**, don't discard it — create a `Captures/` note that embeds the file, tag it `#needs-extraction`, and say so in the report. Never fail the whole run over one document.
 
   **Inferring which course/area a photo belongs to** (in order, stop at first confident match):
   1. **Explicit hint** — the same line or the line just above names/abbreviates an area. Trust it.

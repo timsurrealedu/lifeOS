@@ -4,16 +4,16 @@ import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { mkdirSync } from 'node:fs';
-import { loadConfig, saveConfig, vaultDir, PROJECT_ROOT } from './config.js';
+import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
-  addHandwritingItem, listNotes, readNote, createNote, updateNote, deleteNote, deleteFolder,
+  addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, deleteNote, deleteFolder,
   moveEntry, listFolders, createFolder, searchNotes, buildGraph, listTasks, toggleTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan,
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
-  isRunning,
+  runNoteChat, runNoteAugment, isRunning,
 } from './process.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -85,6 +85,15 @@ app.post('/api/capture/photo', upload.single('photo'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
     ok(res, { items: addPhotoItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
+  } catch (e) { fail(res, e); }
+});
+
+// Documents (PDF / PPTX / DOCX / …) ride the same attachments plumbing as photos, but embed
+// by bare filename and carry #document so process-inbox extracts & summarizes them.
+app.post('/api/capture/document', upload.single('document'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    ok(res, { items: addDocumentItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
   } catch (e) { fail(res, e); }
 });
 
@@ -172,6 +181,33 @@ app.post('/api/chat', (req, res) => {
   req.on('close', () => kill());
 });
 
+// ---- Per-note tutor chat (read-only, scoped to one open note) ----
+app.post('/api/note/chat', (req, res) => {
+  const path = String(req.body && req.body.path || '').trim();
+  const messages = Array.isArray(req.body && req.body.messages) ? req.body.messages : [];
+  if (!path || !messages.length) return fail(res, new Error('path and messages required'));
+  let content;
+  try { content = readNote(path); } catch (e) { return fail(res, e, 404); }
+  res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.flushHeaders?.();
+  const kill = runNoteChat(path, content, messages, (type, data) => {
+    if (type === 'log' && data.channel === 'out') res.write(data.line + '\n');
+    else if (type === 'error') { res.write('\n[error] ' + data.message); res.end(); }
+    else if (type === 'done') res.end();
+  });
+  req.on('close', () => kill());
+});
+
+// ---- Add an overview of a topic INTO an open note (writes that one file) ----
+app.get('/api/note/augment/stream', (req, res) => {
+  const path = String(req.query.path || '').trim();
+  const topic = String(req.query.topic || '').trim();
+  const context = String(req.query.context || '').trim();
+  if (!path || !topic) return sseRun(req, res, (on) => { on('error', { message: 'path and topic required.' }); return () => {}; });
+  try { readNote(path); } catch { return sseRun(req, res, (on) => { on('error', { message: 'note not found.' }); return () => {}; }); }
+  sseRun(req, res, (on) => runNoteAugment(path, topic, context, on));
+});
+
 // ---- Notes ----
 app.get('/api/notes', (_req, res) => ok(res, { notes: listNotes() }));
 app.get('/api/note', (req, res) => {
@@ -237,7 +273,7 @@ app.get('/api/calendar', (_req, res) => ok(res, { events: readCalendarCache() })
 // ---- Config ----
 app.get('/api/config', (_req, res) => {
   const c = loadConfig();
-  ok(res, { config: c, vaultDir: vaultDir(c) });
+  ok(res, { config: c, vaultDir: vaultDir(c), docTools: checkDocTools() });
 });
 app.post('/api/config', (req, res) => {
   try {
@@ -264,5 +300,18 @@ app.listen(port, host, () => {
   console.log(`\n  lifeOS running`);
   console.log(`  • local:   http://localhost:${port}`);
   for (const ip of lan) console.log(`  • network: http://${ip}:${port}   (open this on your phone)`);
-  console.log(`  • vault:   ${vaultDir(cfg)}\n`);
+  console.log(`  • vault:   ${vaultDir(cfg)}`);
+  // Surface document-extraction tooling so attached docx/pptx don't silently fail to process.
+  // PDFs are read natively by the claude Read tool, so only an *Office* tool (pandoc/libreoffice)
+  // actually unlocks .docx/.pptx/.xlsx.
+  const tools = checkDocTools();
+  const office = tools.filter((t) => t.found && t.cmd !== 'pdftotext');
+  if (office.length) {
+    console.log(`  • docs:    ${office.map((t) => t.label).join(', ')} ready (docx/pptx/xlsx → text)`);
+  } else {
+    console.log('  • docs:    ⚠ no Office-extraction tool found — PDFs still process (read natively), but');
+    console.log('             attached .docx/.pptx/.xlsx will be parked #needs-extraction until you');
+    console.log('             install one:  pandoc  ·  libreoffice  (poppler/pdftotext only covers PDFs)');
+  }
+  console.log('');
 });

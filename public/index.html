@@ -50,6 +50,7 @@
 e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" rows="4"></textarea>
           <div id="photo-preview" class="photo-preview hidden"></div>
           <div id="audio-preview" class="photo-preview hidden"></div>
+          <div id="doc-preview" class="photo-preview hidden"></div>
           <div class="capture-row">
             <button class="chip" id="btn-voice" type="button">🎤 <span>Voice</span></button>
             <button class="chip" id="btn-record" type="button">🔴 <span>Record</span></button>
@@ -57,6 +58,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             <button class="chip" id="btn-handwrite" type="button">✍️ <span>Write</span></button>
             <label class="chip" for="photo-input">🖼️ <span>Photo</span></label>
             <input id="photo-input" type="file" accept="image/*" hidden />
+            <label class="chip" for="doc-input">📎 <span>File</span></label>
+            <input id="doc-input" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
             <div class="spacer"></div>
             <button class="btn primary" id="btn-add">Add to inbox</button>
           </div>
@@ -231,6 +234,10 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
       <label>Languages<input id="cfg-languages" /></label>
       <label>claude binary<input id="cfg-claudePath" /></label>
 
+      <h4 class="settings-sub">Document tools</h4>
+      <p class="hint">CLIs used to turn attached PDFs/Office files into text when you process the inbox.</p>
+      <div id="cfg-doctools" class="doctools"></div>
+
       <h4 class="settings-sub">Fallback AI</h4>
       <p class="hint">Used only when a run hits its usage/rate limit. DeepSeek and GLM expose Anthropic-compatible endpoints, so the same workflow keeps running. Leave the key empty to disable.</p>
       <label>Base URL<input id="cfg-fb-baseUrl" placeholder="https://api.deepseek.com/anthropic" autocomplete="off" /></label>
@@ -331,10 +338,30 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     <header class="reader-head">
       <button class="icon-btn" id="reader-back" aria-label="Back">←</button>
       <h2 id="reader-title">Note</h2>
+      <button class="icon-btn" id="reader-chat" title="Ask the tutor about this note" aria-label="Ask about this note" hidden>💬</button>
       <button class="icon-btn" id="reader-del" title="Delete note" aria-label="Delete note" hidden>🗑</button>
       <button class="icon-btn" id="reader-edit" title="Edit note" aria-label="Edit note" hidden>✎</button>
     </header>
     <article id="reader-body" class="markdown reader-body"></article>
+
+    <!-- Per-note tutor chat dock (slides up over the bottom of the reader) -->
+    <div class="note-chat" id="note-chat" hidden>
+      <div class="note-chat-head">
+        <span class="note-chat-title">💬 Tutor</span>
+        <div class="spacer"></div>
+        <button class="chip" id="note-chat-clear">Clear</button>
+        <button class="icon-btn" id="note-chat-close" aria-label="Close chat">✕</button>
+      </div>
+      <div class="chat-thread" id="note-chat-thread">
+        <div class="chat-intro" id="note-chat-intro">
+          <p class="chat-hi">Ask anything about this note — I'll explain concepts and work through the math. When a topic clicks, tap <b>➕ Add to note</b> under my reply to save an overview into the note.</p>
+        </div>
+      </div>
+      <form class="chat-bar" id="note-chat-bar">
+        <input id="note-chat-input" class="chat-input" placeholder="Ask a follow-up about this note…" autocomplete="off" />
+        <button class="btn primary" id="note-chat-send" type="submit">Send</button>
+      </form>
+    </div>
   </div>
 
   <div id="toast" class="toast" hidden></div>

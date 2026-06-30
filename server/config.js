@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
 
@@ -57,4 +58,26 @@ export function saveConfig(patch) {
 /** Absolute path to the configured vault (relative paths resolve from project root). */
 export function vaultDir(cfg = loadConfig()) {
   return isAbsolute(cfg.vaultPath) ? cfg.vaultPath : resolve(PROJECT_ROOT, cfg.vaultPath);
+}
+
+// CLIs the process-inbox run uses to turn an attached document into text. PDFs are read natively by
+// the `claude` Read tool, so these only matter for Office files (docx/pptx/xlsx) — but a PDF tool is
+// still a useful fallback for scanned/odd PDFs.
+const DOC_TOOLS = [
+  { cmd: 'pandoc', label: 'pandoc', handles: 'docx · pptx · odt · html → text (best all-rounder)' },
+  { cmd: 'soffice', label: 'libreoffice', handles: 'docx · pptx · xlsx → text' },
+  { cmd: 'pdftotext', label: 'pdftotext (poppler)', handles: 'pdf → text (fallback; PDFs read natively too)' },
+];
+
+let _docToolsCache = null;
+/** Detect which document-extraction CLIs are on PATH. Cached (PATH doesn't change mid-process). */
+export function checkDocTools() {
+  if (_docToolsCache) return _docToolsCache;
+  const locate = process.platform === 'win32' ? 'where' : 'which';
+  _docToolsCache = DOC_TOOLS.map((t) => {
+    let found = false;
+    try { found = spawnSync(locate, [t.cmd], { windowsHide: true }).status === 0; } catch { /* noop */ }
+    return { ...t, found };
+  });
+  return _docToolsCache;
 }

@@ -117,6 +117,26 @@ body {
   border-radius: 999px; padding: 6px 13px; font: inherit; font-size: 13px; cursor: pointer; transition: color .15s, border-color .15s;
 }
 .preview-del:hover { color: var(--danger); border-color: var(--danger); }
+/* document-tools health (settings) */
+.doctools { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; }
+.doctool-row { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.doctool-row code { flex: none; }
+.doctool-row .hint { margin: 0; }
+/* document attachment chip (capture preview) */
+.doc-chip {
+  display: flex; align-items: center; gap: 10px; max-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 13px;
+}
+.doc-chip .doc-ico { font-size: 22px; line-height: 1; }
+.doc-chip .doc-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-chip .doc-size { margin-left: auto; font-size: 12px; color: var(--muted); flex: none; }
+/* rendered document embed inside notes / chat */
+a.doc-link {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 10px;
+  padding: 6px 11px; font-size: 14px; color: var(--text); margin: 4px 0;
+}
+a.doc-link:hover { border-color: var(--accent); }
 
 /* process card */
 .process-card {
@@ -363,6 +383,39 @@ body {
   flex: 1; overflow: auto; width: 100%; max-width: var(--max); margin: 0 auto;
   padding: 14px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
+
+/* ---- Per-note tutor chat sidebar (docks to the right; pushes the note left) ---- */
+.reader { transition: padding-right .24s cubic-bezier(.2,.9,.25,1); }
+.note-chat {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 56;
+  width: min(420px, 90vw);
+  display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -14px 0 34px rgba(0,0,0,.38);
+  padding: max(12px, env(safe-area-inset-top)) 14px calc(env(safe-area-inset-bottom) + 6px);
+  animation: dockin .24s cubic-bezier(.2,.9,.25,1);
+}
+@keyframes dockin { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+.note-chat-head { display: flex; align-items: center; gap: 8px; padding: 2px 0 8px; border-bottom: 1px solid var(--border-soft); }
+.note-chat-title { font-weight: 600; font-size: 14px; }
+.note-chat .chat-thread { flex: 1; height: auto; }
+.note-chat .chat-bar { margin-top: auto; }
+/* On wide screens the open sidebar shrinks the reader's content box, so the note slides left and
+   re-centers in the remaining space; closing it restores the full width. */
+@media (min-width: 760px) {
+  .reader.chat-open { padding-right: min(420px, 40vw); }
+}
+
+/* AI answer + ➕ add-to-note action */
+.bubble-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; max-width: 86%; align-self: flex-start; }
+.bubble-wrap .bubble { max-width: 100%; }
+.add-to-note {
+  align-self: flex-start; background: transparent; border: 1px solid var(--border);
+  color: var(--accent); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.add-to-note:hover { border-color: var(--accent); background: var(--accent-soft); }
+.add-to-note:disabled { opacity: .6; cursor: default; }
 
 /* ---- Note editor ---- */
 .editor {

@@ -184,6 +184,11 @@ export function addHandwritingItem(filename, hint) {
   return addInboxItem([hint, embed, '#handwriting'].filter(Boolean).join(' '));
 }
 
+export function addDocumentItem(filename, hint) {
+  const embed = `![[${filename}]]`;
+  return addInboxItem([hint, embed, '#document'].filter(Boolean).join(' '));
+}
+
 // ---------- Notes ----------
 
 function walk(dir, root, out) {

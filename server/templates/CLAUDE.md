@@ -61,6 +61,11 @@ Rules:
   - A note's folder is irrelevant to linking — `University/Calc/UAS/Limits.md` → `[[Limits]]`. The
     **subfolder doesn't get its own hub**; the course hub lists every note under it.
   - Before finishing, re-read every `[[link]]` you wrote and confirm none contains a `/`.
+- **🚨 Note titles must avoid the characters `[` `]` `|` `#` `/` `\`** — they break wikilink parsing or
+  file paths, so a note titled with them can never be linked or opened. When a topic name needs a
+  connector, **write the word `and` instead of `&`** (e.g. `Turunan Numerik and Richardson Extrapolation`,
+  not `Turunan Numerik & Richardson Extrapolation`). Keep titles to letters, numbers, spaces, and `-` `_`.
+  If you find an existing note whose title contains one of these, rename it (and update its `[[links]]`).
 - Every note links **up** the chain: note → area hub → … → domain hub.
 - A monthly TODO file links up to a `[[TODO]]` hub (under the Personal domain).
 - **Never mix one domain's notes into another's tree.**
