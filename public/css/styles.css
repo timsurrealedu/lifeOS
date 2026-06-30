@@ -414,6 +414,9 @@ a.doc-link:hover { border-color: var(--accent); }
 /* markdown */
 .markdown { padding: 16px 20px 40px; overflow: auto; }
 .markdown h1, .markdown h2, .markdown h3 { font-family: var(--serif); font-weight: 600; }
+/* Headers & subheaders take the theme accent (dark/light/cyberpunk) — like Obsidian's themed titles. */
+.markdown h1, .markdown h2 { color: var(--accent); }
+.markdown h3 { color: var(--text); }
 .markdown h1 { font-size: 22px; margin: 6px 0 12px; }
 .markdown h2 { font-size: 18px; margin: 20px 0 8px; }
 .markdown h3 { font-size: 16px; margin: 16px 0 6px; }
@@ -583,6 +586,24 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .editor-body::placeholder { color: var(--faint); }
 .editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
+
+/* ---- Live preview editor (Obsidian-style: render blocks, click one to edit its source) ---- */
+.lp-editor {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  width: 100%; max-width: var(--max); margin: 0 auto;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 48px);
+}
+.lp-block { border-radius: 8px; padding: 1px 8px; margin: 1px 0; cursor: text; transition: background .1s; }
+.lp-block:hover { background: var(--surface-2); }
+.lp-block.editing { background: var(--surface-2); cursor: auto; box-shadow: inset 0 0 0 1px var(--border-soft); }
+.lp-block > :first-child { margin-top: .25em; }
+.lp-block > :last-child { margin-bottom: .25em; }
+.lp-block .wikilink { cursor: text; }          /* in the editor, links are text, not navigation */
+.lp-empty { color: var(--faint); font-style: italic; margin: .25em 0; }
+.lp-edit {
+  display: block; width: 100%; resize: none; border: none; outline: none; background: transparent;
+  color: var(--text); font-family: var(--mono); font-size: 15px; line-height: 1.65; padding: 0; overflow: hidden;
+}
 
 /* Line-number gutter (toggle in Settings). Numbers ride along with the textarea's scroll. */
 .gutter { flex: none; width: 0; overflow: hidden; position: relative; }

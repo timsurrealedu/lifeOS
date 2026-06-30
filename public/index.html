@@ -260,8 +260,9 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             <button class="seg-btn" type="button" data-theme-opt="cyberpunk">⚡ Cyber</button>
           </div>
         </div>
-        <label class="switch-row"><span>Vim keybindings <small>(note editor)</small></span><input type="checkbox" id="cfg-vim" /></label>
-        <label class="switch-row"><span>Line numbers <small>(note editor)</small></span><input type="checkbox" id="cfg-lineno" /></label>
+        <label class="switch-row"><span>Live preview <small>(Obsidian-style — click a block to edit)</small></span><input type="checkbox" id="cfg-livepreview" /></label>
+        <label class="switch-row"><span>Vim keybindings <small>(source mode)</small></span><input type="checkbox" id="cfg-vim" /></label>
+        <label class="switch-row"><span>Line numbers <small>(source mode)</small></span><input type="checkbox" id="cfg-lineno" /></label>
       </div>
 
       <h4 class="settings-sub">Document tools</h4>
@@ -364,6 +365,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX — without deleting anything you wrote."></textarea>
     </div>
     <article id="editor-preview" class="markdown editor-preview" hidden></article>
+    <!-- Obsidian-style live preview: blocks render formatted; click a block to edit its source -->
+    <div id="lp-editor" class="markdown lp-editor" hidden></div>
     <div class="vim-status" id="vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="vim-pending"></span></div>
   </div>
 

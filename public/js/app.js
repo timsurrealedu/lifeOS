@@ -23,6 +23,7 @@ const prefs = {
   get theme() { return localStorage.getItem('lifeos.theme') || 'dark'; },
   get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
   get lineno() { return localStorage.getItem('lifeos.lineno') === '1'; },
+  get livepreview() { return localStorage.getItem('lifeos.livepreview') !== '0'; }, // default on
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
@@ -1215,20 +1216,101 @@ function editorMarkdown() {
   const title = edTitle.value.trim();
   return (title && !/^#\s/.test(body.trim())) ? `# ${title}\n\n${body}` : body;
 }
-function showEditorSource() {
-  edPreviewing = false;
-  $('#editor-area').hidden = false; $('#editor-preview').hidden = true; $('#editor-toolbar').hidden = false;
-  $('#vim-status').hidden = !prefs.vim;
-  $('#editor-preview-toggle').querySelector('span').textContent = 'Preview';
+/* ---- Editor surfaces: 'live' (Obsidian-style block render) ↔ 'source' (raw textarea) ---- */
+// edBody (the textarea) stays the single source of truth — Live renders from it and writes back to it.
+let edSurface = 'source';
+let lpActiveIdx = -1; // index of the block currently open for source editing (-1 = none)
+
+// Split markdown into editable blocks: blank-line-separated groups, with headings and fenced
+// code each kept whole. Mirrors how a block renders so indices line up with the rendered DOM.
+function splitBlocks(md) {
+  const lines = String(md || '').replace(/\r/g, '').split('\n');
+  const blocks = []; let cur = []; let inFence = false;
+  const flush = () => { if (cur.length) { blocks.push(cur.join('\n')); cur = []; } };
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) { if (!inFence) { flush(); inFence = true; cur.push(line); } else { cur.push(line); inFence = false; flush(); } continue; }
+    if (inFence) { cur.push(line); continue; }
+    if (line.trim() === '') { flush(); continue; }
+    if (/^#{1,6}\s/.test(line)) { flush(); blocks.push(line); continue; } // headings are their own block
+    cur.push(line);
+  }
+  flush();
+  return blocks;
 }
-function showEditorPreview() {
-  edPreviewing = true;
-  $('#editor-preview').innerHTML = mdToHtml(editorMarkdown());
-  $('#editor-preview').hidden = false; $('#editor-area').hidden = true; $('#editor-toolbar').hidden = true;
-  $('#vim-status').hidden = true;
-  $('#editor-preview-toggle').querySelector('span').textContent = 'Edit';
+const lpHost = () => $('#lp-editor');
+function autosizeTA(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+
+// Render every block as formatted HTML (themed). Clicking a block opens its source (see delegation).
+function renderLive() {
+  lpActiveIdx = -1;
+  const host = lpHost(); host.innerHTML = '';
+  const blocks = splitBlocks(edBody.value);
+  if (!blocks.length) blocks.push('');
+  blocks.forEach((b, i) => {
+    const div = document.createElement('div');
+    div.className = 'lp-block'; div.dataset.i = i;
+    const isFm = /^---\r?\n[\s\S]*\n---\s*$/.test(b);
+    if (isFm) {
+      const tags = noteTags(b + '\n');
+      div.innerHTML = `<p class="lp-empty">🏷 ${tags.length ? tags.map((t) => '#' + esc(t)).join(' ') : 'properties'} — click to edit</p>`;
+    } else {
+      div.innerHTML = b.trim() ? mdToHtml(b) : '<p class="lp-empty">Empty line — click to write…</p>';
+    }
+    host.appendChild(div);
+  });
 }
-$('#editor-preview-toggle').addEventListener('click', () => (edPreviewing ? showEditorSource() : showEditorPreview()));
+// Commit the block being edited back into edBody, then re-render.
+function commitLiveEdit() {
+  const div = lpHost().querySelector('.lp-block.editing');
+  if (!div || lpActiveIdx < 0) { lpActiveIdx = -1; return; }
+  const ta = div.querySelector('.lp-edit');
+  const blocks = splitBlocks(edBody.value);
+  if (lpActiveIdx < blocks.length) blocks[lpActiveIdx] = ta.value; else blocks.push(ta.value);
+  edBody.value = blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
+  lpActiveIdx = -1;
+  renderLive();
+}
+// Open one block for raw-source editing (commits any other open block first).
+function enterBlockEdit(idx) {
+  commitLiveEdit();
+  const blocks = splitBlocks(edBody.value);
+  if (!blocks.length) blocks.push('');
+  idx = Math.max(0, Math.min(idx, blocks.length - 1));
+  const div = lpHost().querySelector(`.lp-block[data-i="${idx}"]`);
+  if (!div) return;
+  lpActiveIdx = idx;
+  const ta = document.createElement('textarea');
+  ta.className = 'lp-edit'; ta.value = blocks[idx];
+  div.innerHTML = ''; div.classList.add('editing'); div.appendChild(ta);
+  autosizeTA(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.addEventListener('input', () => autosizeTA(ta));
+  ta.addEventListener('blur', commitLiveEdit);
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); ta.blur(); } });
+}
+// Click a rendered block to edit its source. (When another block is mid-edit, its blur fires first
+// and commits + re-renders; this click then lands on the fresh DOM and reads the right index.)
+// preventDefault keeps embedded links/wikilinks from navigating away inside the editor.
+lpHost().addEventListener('click', (e) => {
+  const blk = e.target.closest('.lp-block');
+  if (!blk || blk.classList.contains('editing')) return;
+  e.preventDefault();
+  enterBlockEdit(+blk.dataset.i);
+});
+
+// Switch editing surface. Live = formatted blocks; Source = raw textarea (with vim/line numbers).
+function setEditorSurface(surface) {
+  if (surface === 'source') commitLiveEdit(); // flush any pending live edit into edBody first
+  edSurface = surface;
+  const live = surface === 'live';
+  lpHost().hidden = !live;
+  $('#editor-area').hidden = live;
+  $('#editor-preview').hidden = true;
+  $('#editor-toolbar').hidden = live;                 // toolbar is for source mode; type markdown in live
+  $('#vim-status').hidden = live || !prefs.vim;
+  $('#editor-preview-toggle').querySelector('span').textContent = live ? 'Source' : 'Live';
+  if (live) renderLive(); else { edBody.focus(); if (prefs.lineno) renderGutter(); }
+}
+$('#editor-preview-toggle').addEventListener('click', () => setEditorSurface(edSurface === 'live' ? 'source' : 'live'));
 
 // Edit mode hides the folder picker (path is fixed). The title stays editable so it can be
 // renamed; on save we rename the file when it changed.
@@ -1240,10 +1322,10 @@ function setEditorMode(mode) {
   $('.editor-folder-label').hidden = editing;
 }
 function showEditor() {
-  showEditorSource();
   if (!editorOpen) { history.pushState({ editor: true }, ''); editorOpen = true; }
   $('#editor').hidden = false;
   applyEditorPrefs();
+  setEditorSurface(prefs.livepreview ? 'live' : 'source');
 }
 
 // New note (create mode).
@@ -1282,6 +1364,7 @@ $('#btn-new-note').addEventListener('click', openEditor);
 $('#editor-cancel').addEventListener('click', closeEditor);
 
 $('#editor-save').addEventListener('click', async () => {
+  if (edSurface === 'live') commitLiveEdit(); // flush the block being edited into edBody
   if (!edBody.value.trim()) { toast('Write something first'); return; }
   try {
     let path, name, hub;
@@ -1352,7 +1435,7 @@ function applyEditorPrefs() {
   editorEl.classList.toggle('lineno', prefs.lineno);
   if (prefs.lineno) renderGutter(); else edGutterInner.textContent = '';
   editorVim.setEnabled(prefs.vim);
-  $('#vim-status').hidden = !prefs.vim;
+  $('#vim-status').hidden = (edSurface === 'live') || !prefs.vim; // vim/line-numbers are source-mode only
 }
 edBody.addEventListener('input', () => { if (prefs.lineno) renderGutter(); });
 
@@ -1615,12 +1698,14 @@ async function openSettings() {
     renderDocTools(docTools || []);
     // Appearance / editor prefs (client-side, localStorage).
     applyTheme(prefs.theme);
+    $('#cfg-livepreview').checked = prefs.livepreview;
     $('#cfg-vim').checked = prefs.vim;
     $('#cfg-lineno').checked = prefs.lineno;
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
 }
 // Editor preference toggles (live — apply to the editor immediately if it's open).
+$('#cfg-livepreview').addEventListener('change', (e) => { prefs.set('livepreview', e.target.checked ? '1' : '0'); if (editorOpen) setEditorSurface(e.target.checked ? 'live' : 'source'); });
 $('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
 $('#cfg-lineno').addEventListener('change', (e) => { prefs.set('lineno', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
 // Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
