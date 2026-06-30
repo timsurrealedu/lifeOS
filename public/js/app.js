@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'cyberpunk'];
@@ -91,7 +91,7 @@ textEl.addEventListener('input', autoGrow);
 
 // Preview helpers (shared by photo / camera / recording)
 function resetCapture() {
-  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingAudio = null; state.pendingDoc = null;
+  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingStrokes = null; state.pendingAudio = null; state.pendingDoc = null;
   for (const id of ['#photo-preview', '#audio-preview', '#doc-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
   $('#photo-input').value = ''; $('#doc-input').value = '';
   $('#btn-add').textContent = 'Add to inbox';
@@ -223,6 +223,7 @@ async function uploadPhoto(hint) {
   const fd = new FormData();
   fd.append('photo', photo, fname);
   if (hint) fd.append('hint', hint);
+  if (handwriting && state.pendingStrokes) fd.append('strokes', JSON.stringify(state.pendingStrokes)); // re-edit sidecar
   try {
     const { items } = await api(url, { method: 'POST', body: fd });
     state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
@@ -267,9 +268,10 @@ $('#cam-shot').addEventListener('click', () => {
 // Opens the full-screen vector canvas. On Done it hands back a cropped PNG of the drawing,
 // which rides the normal photo plumbing into the inbox, tagged so the skill transcribes it.
 $('#btn-handwrite').addEventListener('click', () => {
-  window.InkPad.open((blob) => {
+  window.InkPad.open(({ blob, strokes }) => {
     showPhotoPreview(blob);
     state.pendingPhotoKind = 'handwriting';
+    state.pendingStrokes = strokes;           // saved alongside the PNG so the page stays re-editable
     $('#btn-add').textContent = 'Add note to inbox';
     toast('Handwriting ready — add a hint (optional)');
   });
@@ -1337,10 +1339,11 @@ function edInsertAtCursor(text) {
 // Open the ink canvas (math / practice handwriting); on Done, store the PNG in the vault and
 // embed it at the caret. history:false so the InkPad back-handling leaves the editor overlay alone.
 function edInsertHandwriting() {
-  window.InkPad.open(async (blob) => {
+  window.InkPad.open(async ({ blob, strokes }) => {
     try {
       const fd = new FormData();
       fd.append('photo', blob, 'handwriting.png');
+      fd.append('strokes', JSON.stringify(strokes || [])); // sidecar → re-editable later
       const { ref } = await api('/api/upload/handwriting', { method: 'POST', body: fd });
       edInsertAtCursor(`\n\n![[${ref}]]\n\n`);
       toast('Handwriting added');
@@ -2050,11 +2053,51 @@ function bindImages(root) {
     tx += (cx - r.left) * (1 - k); ty += (cy - r.top) * (1 - k);
     s = ns; if (s === 1) { tx = 0; ty = 0; } apply();
   };
+  const editBtn = $('#imgview-edit');
   window.openImageViewer = (src) => {
     if (!src) return;
     img.src = src; reset(); view.hidden = false;
     history.pushState({ imgview: true }, '');
+    // Offer "Edit ink" only for handwriting images that have a saved stroke sidecar (re-editable).
+    editBtn.hidden = true;
+    const u = new URL(src, location.href);
+    if (/\/vault-files\/attachments\/handwriting\/.+\.png$/i.test(u.pathname)) {
+      const ref = decodeURIComponent(u.pathname.replace('/vault-files/', ''));
+      fetch(u.pathname.replace(/\.png$/i, '.ink.json'))
+        .then((r) => (r.ok ? r.json() : null))
+        .then((strokes) => {
+          if (Array.isArray(strokes) && strokes.length) {
+            editBtn.hidden = false;
+            editBtn.onclick = () => editHandwriting(ref, strokes);
+          }
+        })
+        .catch(() => {});
+    }
   };
+  // Reopen a handwriting page in the ink canvas (over the viewer), then overwrite it in place.
+  function editHandwriting(ref, strokes) {
+    window.InkPad.open(({ blob, strokes: out }) => saveHandwritingEdit(ref, blob, out), { history: false, strokes });
+  }
+  async function saveHandwritingEdit(ref, blob, strokes) {
+    try {
+      const fd = new FormData();
+      fd.append('photo', blob, 'handwriting.png');
+      fd.append('ref', ref);
+      fd.append('strokes', JSON.stringify(strokes || []));
+      await api('/api/handwriting/update', { method: 'POST', body: fd });
+      close();                                   // back to the note
+      bustHandwritingImg(ref);                   // force the (same-URL) image to reload
+      toast('Handwriting updated ✓');
+    } catch (e) { toast(e.message); }
+  }
+  // The overwritten PNG keeps its filename, so the browser would show the cached old one — re-fetch.
+  function bustHandwritingImg(ref) {
+    const file = ref.split('/').pop();
+    const base = '/vault-files/' + ref.split('/').map(encodeURIComponent).join('/');
+    $$('#reader-body img.md-img').forEach((im) => {
+      try { if (new URL(im.src, location.href).pathname.endsWith('/' + file)) im.src = base + '?t=' + Date.now(); } catch {}
+    });
+  }
   const close = () => {
     if (view.hidden) return;
     if (history.state && history.state.imgview) history.back();   // popstate hides it (closes topmost)

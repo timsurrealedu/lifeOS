@@ -1,9 +1,9 @@
 import express from 'express';
 import multer from 'multer';
-import { join, dirname, extname } from 'node:path';
+import { join, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
@@ -75,8 +75,20 @@ const uploadAudio = multer({
   limits: { fileSize: 200 * 1024 * 1024 },
 });
 
+// In-memory upload for re-editing a handwriting page in place (we write the buffer to a known path).
+const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
 const ok = (res, data) => res.json({ ok: true, ...data });
 const fail = (res, err, code = 400) => res.status(code).json({ ok: false, error: String(err.message || err) });
+
+// Persist the ink canvas's vector strokes next to a saved handwriting PNG, so the page can be
+// reopened and re-edited later. `pngPath` is the absolute PNG path; sidecar is `<base>.ink.json`.
+// Only valid JSON is written — a missing/corrupt field is ignored, never failing the upload.
+function saveInkSidecar(pngPath, strokesField) {
+  if (!pngPath || !strokesField) return;
+  try { JSON.parse(strokesField); } catch { return; }
+  try { writeFileSync(pngPath.replace(/\.png$/i, '') + '.ink.json', strokesField); } catch { /* noop */ }
+}
 
 // ---- Inbox / capture ----
 app.get('/api/inbox', (_req, res) => ok(res, { items: readInboxItems() }));
@@ -104,6 +116,7 @@ app.post('/api/capture/document', upload.single('document'), (req, res) => {
 app.post('/api/capture/handwriting', uploadHandwriting.single('photo'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
+    saveInkSidecar(req.file.path, req.body.strokes);   // vector source → re-editable later
     ok(res, { items: addHandwritingItem(req.file.filename, (req.body.hint || '').trim()), filename: req.file.filename });
   } catch (e) { fail(res, e); }
 });
@@ -112,7 +125,26 @@ app.post('/api/capture/handwriting', uploadHandwriting.single('photo'), (req, re
 app.post('/api/upload/handwriting', uploadHandwriting.single('photo'), (req, res) => {
   try {
     if (!req.file) throw new Error('no file');
+    saveInkSidecar(req.file.path, req.body.strokes);   // vector source → re-editable later
     ok(res, { ref: `attachments/handwriting/${req.file.filename}`, filename: req.file.filename });
+  } catch (e) { fail(res, e); }
+});
+
+// Re-edit: overwrite an existing handwriting page in place (same filename → the note's embed keeps
+// resolving), replacing both the PNG and its stroke sidecar with the edited version.
+app.post('/api/handwriting/update', uploadMem.single('photo'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    const ref = String(req.body.ref || '');
+    // Strict: only a bare filename inside attachments/handwriting (no slashes, no traversal).
+    if (!/^attachments\/handwriting\/[A-Za-z0-9._-]+\.png$/.test(ref)) throw new Error('bad ref');
+    const dir = vaultDir(loadConfig());
+    const hwDir = join(dir, 'attachments', 'handwriting');
+    const abs = join(dir, ref);
+    if (!abs.startsWith(hwDir + sep)) throw new Error('bad path');
+    writeFileSync(abs, req.file.buffer);
+    saveInkSidecar(abs, req.body.strokes);
+    ok(res, { ref });
   } catch (e) { fail(res, e); }
 });
 

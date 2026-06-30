@@ -331,7 +331,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .camera-actions .btn.primary { flex: 2; }
 
 /* ---- Infinite ink canvas (InkPad) ---- */
-.inkpad { position: fixed; inset: 0; z-index: 60; background: #fff; overflow: hidden; animation: fade .18s; }
+.inkpad { position: fixed; inset: 0; z-index: 85; background: #fff; overflow: hidden; animation: fade .18s; }
 #ink-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
 
 .ink-top {
@@ -445,6 +445,10 @@ a.doc-link:hover { border-color: var(--accent); }
 .imgview-close {
   position: absolute; top: max(12px, env(safe-area-inset-top)); right: 14px; z-index: 1;
   background: rgba(0,0,0,.45); color: #fff;
+}
+.imgview-edit {
+  position: absolute; bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px)); left: 50%;
+  transform: translateX(-50%); z-index: 1;
 }
 .markdown audio { width: 100%; margin: 8px 0; }
 .markdown blockquote { border-left: 2px solid var(--accent); margin: 8px 0; padding: 2px 14px; color: var(--muted); }

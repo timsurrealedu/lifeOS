@@ -122,7 +122,8 @@ content**, then drops the `#draft` tag. This step runs even when the inbox is em
 Endpoints behind this: `POST /api/notes` (create), `POST /api/note/save` (edit),
 `DELETE /api/note` / `DELETE /api/folder` (delete, guarded), `GET /api/folders` (picker) /
 `POST /api/folders` (create folder), `GET /api/search` (plain-text Find),
-`POST /api/upload/handwriting` (embed a drawing, no inbox item). Chat: `POST /api/chat` (streams a
+`POST /api/upload/handwriting` (embed a drawing, no inbox item) / `POST /api/handwriting/update`
+(re-edit a saved ink page in place). Chat: `POST /api/chat` (streams a
 read-only answer). Calendar: `GET /api/calendar` (cached events) / `GET /api/calsync/stream` (pull from
 Google Calendar into `.cache/calendar.json`).
 
@@ -151,12 +152,18 @@ arrow), and undo / redo. It's vector under the hood, so strokes stay crisp at an
 The same canvas is reachable two ways:
 - **Capture tab → ✍️ Write:** on **Done** the drawing is cropped to a PNG in
   `attachments/handwriting/` and dropped in the inbox tagged `#handwriting`. On the next **Process**
-  run the engine *reads the handwriting with vision and transcribes it into a clean typed note*
-  (your spelling tidied, never translated), keeping the original ink page embedded under a
-  **Handwritten source** heading.
+  run the engine *reads the handwriting with vision and turns it into a clean note built as an
+  **outline*** (headings + bullets, your spelling tidied, never translated), keeping the original ink
+  page embedded under a **Handwritten source** heading.
 - **Note editor → ✍️ button:** the drawing is embedded directly into the note you're writing as
   `![[…]]` (no inbox round-trip, no auto-transcription) — for keeping math working or practice
   problems as ink alongside typed text.
+
+**Re-editable ink.** Every saved page keeps its **vector strokes** in a sidecar `*.ink.json` next to
+the PNG, so a flattened image is never the end of the line. Tap any embedded ink image in the reader
+to open the full-screen viewer (pinch / wheel zoom, drag to pan, Flexcil-style); if strokes are
+present, an **✎ Edit ink** button reopens the page in the canvas. Editing overwrites the PNG **and**
+the strokes in place — same filename, so the note's `![[…]]` keeps resolving and no link breaks.
 
 Any math — from handwriting, a whiteboard/slide photo, or typed/dictated text — is written as
 **LaTeX** (`$…$` inline, `$$…$$` display), so notes render real symbols: integrals, fractions,

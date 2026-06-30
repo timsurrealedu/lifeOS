@@ -3,7 +3,9 @@
    Pan/zoom (pinch + wheel + hand tool), pen colours & sizes, object eraser, ruler (straight
    line with axis snap), shapes (rectangle / ellipse / arrow), undo/redo. Strokes are stored in
    world coordinates so they survive pan/zoom; "Done" rasterises the drawn content (cropped, on a
-   white page) to a PNG and hands it back via the onDone callback. */
+   white page) to a PNG and hands back `{ blob, strokes }` via the onDone callback — the strokes are
+   the editable vector source, saved alongside the PNG so the page can be reopened and edited later.
+   open(cb, { strokes }) reloads a saved drawing for re-editing. */
 window.InkPad = (function () {
   const COLORS = ['#15171c', '#1f6feb', '#e5484d', '#2a9d5c', '#e2914f', '#8a5cf6'];
 
@@ -28,17 +30,22 @@ window.InkPad = (function () {
   /* ---------- lifecycle ---------- */
   // opts.history:false → caller owns the history stack (e.g. opened over the note editor, whose
   // own overlay entry must not be disturbed). Default true keeps the capture-tab behavior.
+  // opts.strokes → reopen an existing drawing for editing (the saved vector strokes); the page
+  // starts fitted to that content. Without it, a fresh blank page (the normal capture/embed flow).
   function open(cb, opts = {}) {
     onDone = cb;
     manageHistory = opts.history !== false;
     canvas = el('ink-canvas'); ctx = canvas.getContext('2d');
     if (!built) { build(); built = true; }
-    // Fresh page each time Write is tapped (last note was already exported on Done).
-    strokes = []; undoStack = []; redoStack = []; live = null; pinch = null; panning = false; pointers.clear();
+    // Fresh page each time Write is tapped (last note was already exported on Done), unless we were
+    // handed existing strokes to re-edit — clone them so the caller's copy isn't mutated as we draw.
+    strokes = Array.isArray(opts.strokes) ? JSON.parse(JSON.stringify(opts.strokes)) : [];
+    undoStack = []; redoStack = []; live = null; pinch = null; panning = false; pointers.clear();
     el('inkpad').hidden = false;
     if (manageHistory && !pushedState) { history.pushState({ inkpad: true }, ''); pushedState = true; }
     resize();
     view = { scale: 1, x: cssW / 2, y: cssH / 2 }; // (0,0) world at mid-screen
+    if (strokes.length) fit();                     // reopened drawing → frame it
     render(); updateUI();
   }
   function hide() {
@@ -48,8 +55,11 @@ window.InkPad = (function () {
   }
   function done() {
     const blob = exportPNG();
+    // Hand back the vector strokes too (deep-copied → JSON-safe) so the drawing can be reopened and
+    // re-edited later, not just the flattened PNG.
+    const inkStrokes = JSON.parse(JSON.stringify(strokes));
     hide();
-    if (blob) onDone && onDone(blob);
+    if (blob) onDone && onDone({ blob, strokes: inkStrokes });
   }
 
   window.addEventListener('popstate', () => {
