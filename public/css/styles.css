@@ -162,6 +162,9 @@
   pointer-events: none;
 }
 :root[data-hud="cp"] .topbar { position: relative; }
+/* Theme-switch button: geometric glyph instead of the 🎨 emoji, to match the HUD */
+:root[data-hud="cp"] .icon-btn[data-action="cycle-theme"] { font-size: 0; }
+:root[data-hud="cp"] .icon-btn[data-action="cycle-theme"]::before { content: "◐"; font-size: 17px; }
 
 /* ---- Panels: sharp edges + corner brackets (the CP2077 signature) ---- */
 :root[data-hud="cp"] .card,
