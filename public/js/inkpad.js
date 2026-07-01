@@ -1,7 +1,9 @@
 'use strict';
 /* InkPad — a full-screen, infinite vector canvas for handwriting & sketching.
-   Pan/zoom (pinch + wheel + hand tool), pen colours & sizes, object eraser, ruler (straight
-   line with axis snap), shapes (rectangle / ellipse / arrow), undo/redo. Strokes are stored in
+   Pan/zoom (pinch + wheel + hand tool), pen colours & sizes, object eraser, select tool (lasso
+   then drag to move strokes), ruler (straight line with axis snap), shapes (rectangle / ellipse /
+   arrow), undo/redo — including a two-finger-tap-twice gesture for undo. A stylus pointer suppresses
+   touch pointers (palm) while it's down and briefly after it lifts. Strokes are stored in
    world coordinates so they survive pan/zoom; "Done" rasterises the drawn content (cropped, on a
    white page) to a PNG and hands back `{ blob, strokes }` via the onDone callback — the strokes are
    the editable vector source, saved alongside the PNG so the page can be reopened and edited later.
@@ -22,7 +24,10 @@ window.InkPad = (function () {
   let panning = false, panLast = null;
   let eraseSnapshot = null;        // strokes before an erase drag (for a single undo entry)
   const pointers = new Map();      // active pointers for multi-touch
-  let pinch = null;
+  let pinch = null, pinchStart = null, lastTwoTap = 0;
+  let selected = new Set();        // strokes currently selected (lasso tool)
+  let lasso = null, moveDrag = null;
+  let activePenId = null, penUpAt = 0; // palm rejection: ignore touch while a stylus is down (+ brief grace after lift)
   let raf = null, built = false, pushedState = false, manageHistory = true;
 
   const el = (id) => document.getElementById(id);
@@ -40,7 +45,8 @@ window.InkPad = (function () {
     // Fresh page each time Write is tapped (last note was already exported on Done), unless we were
     // handed existing strokes to re-edit — clone them so the caller's copy isn't mutated as we draw.
     strokes = Array.isArray(opts.strokes) ? JSON.parse(JSON.stringify(opts.strokes)) : [];
-    undoStack = []; redoStack = []; live = null; pinch = null; panning = false; pointers.clear();
+    undoStack = []; redoStack = []; live = null; pinch = null; pinchStart = null; panning = false; pointers.clear();
+    selected = new Set(); lasso = null; moveDrag = null; activePenId = null; penUpAt = 0; lastTwoTap = 0;
     el('inkpad').hidden = false;
     if (manageHistory && !pushedState) { history.pushState({ inkpad: true }, ''); pushedState = true; }
     resize();
@@ -79,7 +85,11 @@ window.InkPad = (function () {
       cwrap.appendChild(b);
     }
     el('ink-toolset').querySelectorAll('.ink-t').forEach((b) =>
-      b.addEventListener('click', () => { tool = b.dataset.tool; updateUI(); }));
+      b.addEventListener('click', () => {
+        tool = b.dataset.tool;
+        if (tool !== 'select') { selected = new Set(); lasso = null; moveDrag = null; }
+        render(); updateUI();
+      }));
     el('ink-sizes').querySelectorAll('.ink-s').forEach((b) =>
       b.addEventListener('click', () => { size = parseFloat(b.dataset.size); if (tool === 'eraser' || tool === 'pan') tool = 'pen'; updateUI(); }));
     el('ink-undo').addEventListener('click', undo);
@@ -115,9 +125,13 @@ window.InkPad = (function () {
   }
 
   /* ---------- history ---------- */
-  function commit(next) { undoStack.push(strokes); redoStack = []; strokes = next; render(); updateUI(); }
-  function undo() { if (!undoStack.length) return; redoStack.push(strokes); strokes = undoStack.pop(); render(); updateUI(); }
-  function redo() { if (!redoStack.length) return; undoStack.push(strokes); strokes = redoStack.pop(); render(); updateUI(); }
+  // Selection is cleared on every commit; the move-drag finalizer re-selects the moved strokes
+  // right after calling commit(), so this only drops selection for the callers that don't.
+  function commit(next) { undoStack.push(strokes); redoStack = []; strokes = next; selected = new Set(); render(); updateUI(); }
+  // Selection may point at strokes that no longer exist in the restored array — drop it rather
+  // than risk a stale selection box / drag target.
+  function undo() { if (!undoStack.length) return; redoStack.push(strokes); strokes = undoStack.pop(); selected = new Set(); render(); updateUI(); }
+  function redo() { if (!redoStack.length) return; undoStack.push(strokes); strokes = redoStack.pop(); selected = new Set(); render(); updateUI(); }
 
   /* ---------- geometry ---------- */
   function resize() {
@@ -144,8 +158,35 @@ window.InkPad = (function () {
     ctx.clearRect(0, 0, cssW, cssH);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cssW, cssH); // the infinite page
     ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale);
-    for (const s of strokes) drawStroke(ctx, s);
+    const dx = moveDrag ? moveDrag.dx : 0, dy = moveDrag ? moveDrag.dy : 0;
+    for (const s of strokes) drawStroke(ctx, selected.has(s) ? withOffset(s, dx, dy) : s);
     if (live) drawStroke(ctx, live);
+    if (selected.size) drawSelectionBox(dx, dy);
+    if (lasso && lasso.length > 1) drawLasso();
+  }
+
+  // Shifted copy of a stroke (used to preview a drag before it's committed to history).
+  function withOffset(s, dx, dy) {
+    if (!dx && !dy) return s;
+    if (s.tool === 'pen') return { ...s, points: s.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
+    return { ...s, a: { x: s.a.x + dx, y: s.a.y + dy }, b: { x: s.b.x + dx, y: s.b.y + dy } };
+  }
+
+  function drawSelectionBox(dx, dy) {
+    const b = boundsOf(selected, 10);
+    if (!b) return;
+    ctx.save();
+    ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 1.5 / view.scale; ctx.setLineDash([6 / view.scale, 5 / view.scale]);
+    ctx.strokeRect(b.minX + dx, b.minY + dy, b.maxX - b.minX, b.maxY - b.minY);
+    ctx.restore();
+  }
+
+  function drawLasso() {
+    ctx.save();
+    ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 1.5 / view.scale; ctx.setLineDash([6 / view.scale, 5 / view.scale]);
+    ctx.beginPath(); ctx.moveTo(lasso[0].x, lasso[0].y);
+    for (let i = 1; i < lasso.length; i++) ctx.lineTo(lasso[i].x, lasso[i].y);
+    ctx.stroke(); ctx.restore();
   }
 
   // Draw one stroke in the current (world) transform.
@@ -192,15 +233,22 @@ window.InkPad = (function () {
 
   /* ---------- pointer interaction ---------- */
   function onDown(e) {
+    // Palm rejection: ignore touch pointers while a stylus is down, and briefly after it lifts
+    // (the palm often settles a beat after the pen tip does).
+    if (e.pointerType === 'touch' && (activePenId !== null || performance.now() - penUpAt < 150)) return;
+    if (e.pointerType === 'pen') activePenId = e.pointerId;
+
     canvas.setPointerCapture(e.pointerId);
     const p = screenPt(e);
     pointers.set(e.pointerId, p);
 
-    if (pointers.size === 2) { // start pinch — abandon any in-progress draw
-      live = null; panning = false;
+    if (pointers.size === 2) { // start pinch — abandon any in-progress draw/select
+      live = null; panning = false; moveDrag = null; lasso = null;
       const pts = [...pointers.values()];
-      pinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
-        mid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } };
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      pinch = { dist, mid };
+      pinchStart = { dist, mid, time: performance.now() }; // for two-finger-tap (undo) detection
       render();
       return;
     }
@@ -210,6 +258,13 @@ window.InkPad = (function () {
     if (tool === 'eraser') { eraseSnapshot = null; eraseAt(toWorld(p.x, p.y)); return; }
 
     const w = toWorld(p.x, p.y);
+    if (tool === 'select') {
+      const hit = [...selected].find((s) => strokeHit(s, w, Math.max(8, s.size * 2.2) / view.scale + 2));
+      if (hit) moveDrag = { start: w, dx: 0, dy: 0 };
+      else { selected = new Set(); lasso = [w]; }
+      render();
+      return;
+    }
     if (tool === 'pen') live = { tool: 'pen', color, size, points: [w] };
     else live = { tool, color, size, a: w, b: w };
     render();
@@ -232,6 +287,11 @@ window.InkPad = (function () {
     }
     if (panning && panLast) { view.x += p.x - panLast.x; view.y += p.y - panLast.y; panLast = p; render(); updateUI(); return; }
     if (tool === 'eraser' && pointers.size === 1) { eraseAt(toWorld(p.x, p.y)); return; }
+    if (tool === 'select' && pointers.size === 1) {
+      const w = toWorld(p.x, p.y);
+      if (moveDrag) { moveDrag.dx = w.x - moveDrag.start.x; moveDrag.dy = w.y - moveDrag.start.y; requestRender(); return; }
+      if (lasso) { lasso.push(w); requestRender(); return; }
+    }
     if (!live) return;
 
     const w = toWorld(p.x, p.y);
@@ -242,11 +302,44 @@ window.InkPad = (function () {
   }
 
   function onUp(e) {
+    if (e.pointerType === 'pen' && activePenId === e.pointerId) { activePenId = null; penUpAt = performance.now(); }
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
     pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
+    if (pointers.size < 2) {
+      // A two-finger gesture that barely moved and barely zoomed was a tap, not a pinch;
+      // two of those in quick succession is the "undo" gesture.
+      if (pinch && pinchStart) {
+        const dt = performance.now() - pinchStart.time;
+        const moved = Math.hypot(pinch.mid.x - pinchStart.mid.x, pinch.mid.y - pinchStart.mid.y);
+        const zoomed = Math.abs(pinch.dist - pinchStart.dist);
+        if (dt < 300 && moved < 12 && zoomed < 12) {
+          const now = performance.now();
+          if (lastTwoTap && now - lastTwoTap < 400) { undo(); lastTwoTap = 0; } else lastTwoTap = now;
+        }
+      }
+      pinch = null; pinchStart = null;
+    }
     if (pointers.size === 0) {
       panning = false; panLast = null;
+      if (tool === 'select') {
+        if (moveDrag) {
+          const { dx, dy } = moveDrag; moveDrag = null;
+          if (dx || dy) {
+            const next = [], newSelected = new Set();
+            for (const s of strokes) {
+              if (selected.has(s)) { const t = withOffset(s, dx, dy); newSelected.add(t); next.push(t); }
+              else next.push(s);
+            }
+            commit(next); selected = newSelected;
+          } else render();
+        } else if (lasso) {
+          const path = lasso; lasso = null;
+          selected = path.length > 2 ? new Set(strokes.filter((s) => strokeInLasso(s, path))) : new Set();
+          render();
+        }
+        updateUI();
+        return;
+      }
       if (live) {
         const s = live; live = null;
         const empty = s.tool === 'pen' ? s.points.length === 0
@@ -290,6 +383,21 @@ window.InkPad = (function () {
     return false;
   }
 
+  // Ray-casting point-in-polygon test, used to decide which strokes a lasso captured.
+  function pointInPolygon(pt, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      if ((yi > pt.y) !== (yj > pt.y) && pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function strokeInLasso(s, poly) {
+    if (s.tool === 'pen') return s.points.some((p) => pointInPolygon(p, poly));
+    return pointInPolygon(s.a, poly) || pointInPolygon(s.b, poly) ||
+      pointInPolygon({ x: (s.a.x + s.b.x) / 2, y: (s.a.y + s.b.y) / 2 }, poly);
+  }
+
   function distToSeg(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay;
     const l2 = dx * dx + dy * dy;
@@ -299,16 +407,17 @@ window.InkPad = (function () {
   }
 
   /* ---------- fit / export ---------- */
-  function contentBounds(pad) {
+  function boundsOf(strokeList, pad) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const add = (x, y, m) => { minX = Math.min(minX, x - m); minY = Math.min(minY, y - m); maxX = Math.max(maxX, x + m); maxY = Math.max(maxY, y + m); };
-    for (const s of strokes) {
+    for (const s of strokeList) {
       const m = s.size / 2 + (pad || 0);
       if (s.tool === 'pen') for (const p of s.points) add(p.x, p.y, m);
       else { add(s.a.x, s.a.y, m); add(s.b.x, s.b.y, m); }
     }
     return isFinite(minX) ? { minX, minY, maxX, maxY } : null;
   }
+  function contentBounds(pad) { return boundsOf(strokes, pad); }
 
   function fit() {
     const b = contentBounds(20);

@@ -130,6 +130,14 @@ app.post('/api/upload/handwriting', uploadHandwriting.single('photo'), (req, res
   } catch (e) { fail(res, e); }
 });
 
+// Store a photo for embedding straight into a note (editor "attach image" tool) — no inbox item.
+app.post('/api/upload/image', upload.single('photo'), (req, res) => {
+  try {
+    if (!req.file) throw new Error('no file');
+    ok(res, { ref: `attachments/${req.file.filename}` });
+  } catch (e) { fail(res, e); }
+});
+
 // Re-edit: overwrite an existing handwriting page in place (same filename → the note's embed keeps
 // resolving), replacing both the PNG and its stroke sidecar with the edited version.
 app.post('/api/handwriting/update', uploadMem.single('photo'), (req, res) => {

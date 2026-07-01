@@ -1486,12 +1486,29 @@ function edInsertHandwriting() {
   }, { history: false });
 }
 
+// Attach an image: pick a file, upload it, embed at the caret. Same upload → ![[ref]] pattern as handwriting.
+async function edInsertImageFile(file) {
+  if (!file) return;
+  try {
+    const fd = new FormData();
+    fd.append('photo', file);
+    const { ref } = await api('/api/upload/image', { method: 'POST', body: fd });
+    edInsertAtCursor(`\n\n![[${ref}]]\n\n`);
+    toast('Image added');
+  } catch (e) { toast(e.message); }
+}
+
 // mousedown-preventDefault keeps the textarea selection alive when a toolbar button is tapped.
 $('#editor-toolbar').addEventListener('mousedown', (e) => { if (e.target.closest('.fmt')) e.preventDefault(); });
 $('#editor-toolbar').addEventListener('click', (e) => {
   const b = e.target.closest('.fmt'); if (!b) return;
   if (b.dataset.fmt === 'ink') { edInsertHandwriting(); return; }
+  if (b.dataset.fmt === 'img') { $('#editor-img-input').click(); return; }
   (edFmt[b.dataset.fmt] || (() => {}))();
+});
+$('#editor-img-input').addEventListener('change', (e) => {
+  edInsertImageFile(e.target.files[0]);
+  e.target.value = ''; // allow picking the same file again
 });
 
 // What gets previewed/saved. In edit mode the body is the full note (H1 included), so use it
