@@ -165,7 +165,7 @@ $('#btn-add').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount();
+    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount(); renderInbox();
     toast('Added to inbox');
   } catch (e) { toast(e.message); }
 });
@@ -193,7 +193,7 @@ async function uploadDocument(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/document', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast('File added to inbox');
   } catch (e) { toast(e.message); }
@@ -231,7 +231,7 @@ async function uploadPhoto(hint) {
   if (handwriting && state.pendingStrokes) fd.append('strokes', JSON.stringify(state.pendingStrokes)); // re-edit sidecar
   try {
     const { items } = await api(url, { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast(handwriting ? 'Handwritten note added' : 'Photo added to inbox');
   } catch (e) { toast(e.message); }
@@ -345,7 +345,7 @@ async function uploadAudio(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/audio', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast('Recording added to inbox');
   } catch (e) { toast(e.message); }
@@ -925,7 +925,8 @@ function renderReaderTreeInto(node, depth, ul) {
     });
     li.querySelector('.tw-add').addEventListener('click', stop(() => createInFolder(d.path)));
     li.querySelector('.tw-ren').addEventListener('click', stop(() => renameFolderFlow(d.path, d.name)));
-    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteFolderPath(d.path, d.files.length)));
+    const nested = state.notes.filter((n) => String(n.path).startsWith(d.path + '/')).length;
+    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteFolderPath(d.path, nested)));
     ul.appendChild(li);
     if (open) renderReaderTreeInto(d, depth + 1, ul);
   }
