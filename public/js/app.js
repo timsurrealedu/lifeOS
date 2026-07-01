@@ -906,6 +906,7 @@ function renderReaderTree() {
 }
 function renderReaderTreeInto(node, depth, ul) {
   const pad = depth * 14 + 10;
+  const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
   const dirs = [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const d of dirs) {
     const open = state.expandedFolders.has(d.path);
@@ -914,11 +915,17 @@ function renderReaderTreeInto(node, depth, ul) {
     li.style.paddingLeft = pad + 'px';
     li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
       <span class="li-emoji">${open ? '📂' : '📁'}</span>
-      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>`;
+      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>
+      <button class="tw-add" title="New note / subfolder here" aria-label="New here">＋</button>
+      <button class="tw-ren" title="Rename folder" aria-label="Rename folder">✎</button>
+      <button class="tw-del" title="Delete folder" aria-label="Delete folder">✕</button>`;
     li.addEventListener('click', () => {
       if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
       renderReaderTree();
     });
+    li.querySelector('.tw-add').addEventListener('click', stop(() => createInFolder(d.path)));
+    li.querySelector('.tw-ren').addEventListener('click', stop(() => renameFolderFlow(d.path, d.name)));
+    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteFolderPath(d.path, d.files.length)));
     ul.appendChild(li);
     if (open) renderReaderTreeInto(d, depth + 1, ul);
   }
@@ -929,13 +936,47 @@ function renderReaderTreeInto(node, depth, ul) {
     li.style.paddingLeft = pad + 'px';
     li.innerHTML = `<span class="tw-caret"></span>
       <span class="li-emoji">📄</span>
-      <div class="li-main"><div class="li-title">${esc(n.name)}</div></div>`;
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div></div>
+      <button class="tw-ren" title="Rename note" aria-label="Rename note">✎</button>
+      <button class="tw-del" title="Delete note" aria-label="Delete note">✕</button>`;
     li.addEventListener('click', () => {
       openNote(n.path, n.name);
       if (!window.matchMedia('(min-width: 760px)').matches) $('#reader').classList.remove('sidebar-open');
     });
+    li.querySelector('.tw-ren').addEventListener('click', stop(() => renameNoteFlow(n.path, n.name)));
+    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteNotePath(n.path, n.name)));
     ul.appendChild(li);
   }
+}
+
+// Rename flows (used by the reader sidebar tree). Notes reuse /api/note/rename (renames file + H1);
+// folders use the new /api/folder/rename. Both refresh the tree and keep the open note in sync.
+async function renameNoteFlow(path, curName) {
+  const t = prompt('Rename note', curName);
+  if (t == null) return;
+  const v = t.trim();
+  if (!v || v === curName) return;
+  try {
+    const { path: np } = await api('/api/note/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, title: v }),
+    });
+    if (state.readerPath === path) { state.readerPath = np; $('#reader-title').textContent = v; }
+    state.notes = []; await loadNotes(true); renderReaderTree();
+    toast('Renamed');
+  } catch (e) { toast(e.message); }
+}
+async function renameFolderFlow(path, curName) {
+  const t = prompt('Rename folder', curName);
+  if (t == null) return;
+  const v = t.trim();
+  if (!v || v === curName) return;
+  try {
+    await api('/api/folder/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, name: v }),
+    });
+    state.notes = []; state.folders = null; await loadNotes(true); renderReaderTree();
+    toast('Folder renamed');
+  } catch (e) { toast(e.message); }
 }
 // Apply the sidebar's open/collapsed state and (re)fill its tree. On first open we honour the saved
 // desktop-collapse preference and start the mobile drawer closed; switching notes just refreshes it.
@@ -960,6 +1001,54 @@ function toggleReaderSidebar() {
 }
 $('#reader-sidebar-toggle').addEventListener('click', toggleReaderSidebar);
 $('#reader-sidebar-collapse').addEventListener('click', toggleReaderSidebar);
+
+// New note / folder straight from the reader sidebar.
+$('#reader-new-note').addEventListener('click', () => openEditor());
+$('#reader-new-folder').addEventListener('click', async () => {
+  const name = prompt('New folder — use / for subfolders, e.g. University/UAS');
+  if (!name || !name.trim()) return;
+  try {
+    const { path } = await api('/api/folders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name.trim() }),
+    });
+    let acc = '';
+    for (const p of path.split('/')) { acc = acc ? acc + '/' + p : p; state.expandedFolders.add(acc); }
+    state.notes = []; state.folders = null; await loadNotes(true); renderReaderTree();
+    toast('Folder created');
+  } catch (e) { toast(e.message); }
+});
+
+// Drag the sidebar's right edge to resize; width persists (desktop only). Sets a CSS var the
+// sidebar reads, so reader-main (flex:1) reflows to fill the rest.
+(function setupReaderSidebarResize() {
+  const handle = $('#reader-sidebar-resize'), sidebar = $('#reader-sidebar');
+  if (!handle) return;
+  const saved = localStorage.getItem('lifeos.readerSidebarW');
+  if (saved) document.documentElement.style.setProperty('--reader-sidebar-w', saved + 'px');
+  let startX = 0, startW = 0, dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    let w = startW + (e.clientX - startX);
+    w = Math.max(180, Math.min(w, 560, window.innerWidth - 300));
+    document.documentElement.style.setProperty('--reader-sidebar-w', Math.round(w) + 'px');
+  };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; sidebar.classList.remove('resizing');
+    const w = document.documentElement.style.getPropertyValue('--reader-sidebar-w').replace('px', '').trim();
+    if (w) localStorage.setItem('lifeos.readerSidebarW', Math.round(parseFloat(w)));
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', end);
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    if (!window.matchMedia('(min-width: 760px)').matches) return;
+    dragging = true; startX = e.clientX; startW = sidebar.getBoundingClientRect().width;
+    sidebar.classList.add('resizing');
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', end);
+    e.preventDefault();
+  });
+})();
 // Mobile: swipe right from the left edge opens the file drawer; swipe left closes it.
 (function setupReaderSwipe() {
   const reader = $('#reader');

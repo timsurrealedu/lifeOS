@@ -194,6 +194,10 @@
 }
 :root[data-hud="cp"] .list-item:hover,
 :root[data-hud="cp"] .task:hover { border-color: var(--cyan); box-shadow: inset 0 0 22px -10px var(--cyan), 0 0 14px -6px var(--cyan); }
+/* CP2077 main-menu row feel (ref image): bold left accent edge + bright slab fill on hover */
+:root[data-hud="cp"] .list-item,
+:root[data-hud="cp"] .suggest { border-left: 3px solid var(--accent); }
+:root[data-hud="cp"] .list-item:hover { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--surface); }
 
 /* Process-card = highlighted action tile */
 :root[data-hud="cp"] .process-card { border-color: var(--accent); box-shadow: inset 0 0 30px -16px var(--accent); }
@@ -217,7 +221,7 @@
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
   box-shadow: 0 0 20px -5px var(--accent);
 }
-:root[data-hud="cp"] .btn.primary:hover { background: #fff45a; box-shadow: 0 0 26px -3px var(--accent); }
+:root[data-hud="cp"] .btn.primary:hover { background: var(--accent); filter: brightness(1.12); box-shadow: 0 0 26px -3px var(--accent); }
 /* animated shine sweep across buttons */
 :root[data-hud="cp"] .btn::after {
   content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
@@ -327,7 +331,9 @@
 ============================================================================ */
 
 /* --- Move the nav to the TOP as a segmented HUD tab strip (order reflow, no JS) --- */
-:root[data-hud="cp"] #app { max-width: 100%; }
+/* Keep the console centered + constrained on desktop (full-bleed felt too stretched); the HUD
+   frame overlay stays full-viewport around it. */
+:root[data-hud="cp"] #app { max-width: 760px; }
 :root[data-hud="cp"] .topbar { order: 0; padding: 8px 14px 7px; }
 :root[data-hud="cp"] .tabbar  { order: 1; }
 :root[data-hud="cp"] #views   { order: 2; }
@@ -436,16 +442,6 @@
 }
 :root[data-hud="cp"] #cp-hud .cp-samurai::after { content: "SAMURAI"; font-size: 13px; }
 :root[data-hud="cp"][data-theme="arasaka"] #cp-hud .cp-samurai::after { content: "ARASAKA"; }
-/* Silverhand mark = glowing diamond outline; Arasaka mark = segmented diamond (its logo) */
-:root[data-hud="cp"] #cp-hud .cp-samurai::before {
-  content: ""; width: 12px; height: 12px; transform: rotate(45deg);
-  border: 2px solid var(--accent); box-shadow: 0 0 8px var(--accent);
-}
-:root[data-hud="cp"][data-theme="arasaka"] #cp-hud .cp-samurai::before {
-  width: 15px; height: 15px; transform: none; border: none; box-shadow: none;
-  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff1e3c' d='M12 1 L15 9 L12 12 L9 9 Z M23 12 L15 15 L12 12 L15 9 Z M12 23 L9 15 L12 12 L15 15 Z M1 12 L9 9 L12 12 L9 15 Z'/%3E%3C/svg%3E");
-  filter: drop-shadow(0 0 6px var(--accent));
-}
 @keyframes cpPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 /* Mobile: drop the keyboard-prompt keycaps (TAB/ENTER/ESC), keep JACKED IN + wordmark */
 @media (max-width: 760px) {
@@ -882,9 +878,20 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* ---- Reader file sidebar (Obsidian-style left dock) ---- */
 .reader-sidebar {
-  flex: none; width: 280px; display: flex; flex-direction: column;
+  flex: none; width: var(--reader-sidebar-w, 280px); display: flex; flex-direction: column; position: relative;
   background: var(--surface); border-right: 1px solid var(--border); overflow: hidden;
 }
+/* Drag the right edge to resize; the reader-main (flex:1) takes the remaining space. Desktop only. */
+.reader-sidebar-resize {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; touch-action: none;
+}
+.reader-sidebar-resize::before {
+  content: ""; position: absolute; top: 50%; right: 2px; width: 3px; height: 42px; margin-top: -21px;
+  border-radius: 3px; background: var(--border); transition: background .15s;
+}
+.reader-sidebar-resize:hover::before, .reader-sidebar.resizing .reader-sidebar-resize::before { background: var(--accent); }
+.reader-sidebar.resizing { user-select: none; }
+@media (max-width: 759px) { .reader-sidebar-resize { display: none; } }
 .reader-sidebar-head {
   flex: none; display: flex; align-items: center; gap: 8px;
   padding: max(14px, env(safe-area-inset-top)) 8px 10px 14px;
@@ -1118,8 +1125,15 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .tree-row:hover .tw-add, .tree-row:focus-within .tw-add { opacity: 1; }
 .tw-add:hover { color: var(--accent); background: var(--surface-3); }
+/* Rename button on tree rows — same quiet reveal as add/delete. */
+.tw-ren {
+  flex: none; border: none; background: none; color: var(--faint); font-size: 13px;
+  padding: 4px 7px; border-radius: 8px; cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.tree-row:hover .tw-ren, .tree-row:focus-within .tw-ren { opacity: 1; }
+.tw-ren:hover { color: var(--accent); background: var(--surface-3); }
 /* On touch (no hover) keep the row actions visible but quiet. */
-@media (hover: none) { .tw-del, .tw-add { opacity: .5; } }
+@media (hover: none) { .tw-del, .tw-add, .tw-ren { opacity: .5; } }
 
 /* ---- Segmented toggle (Plan list/calendar) ---- */
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }

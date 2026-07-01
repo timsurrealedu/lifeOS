@@ -636,6 +636,27 @@ export function renameNote(relPath, newTitle) {
   return relative(root, target).split(sep).join('/');
 }
 
+/** Rename a folder in place (basename only). Guards reserved infra + lifeOS system folders; links are
+ *  title-based so `[[wikilinks]]` survive. Collisions auto-suffix. Returns the new relative path. */
+export function renameFolder(relPath, newName) {
+  const root = vaultDir();
+  const clean = String(relPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!clean) throw new Error('bad folder');
+  const dir = join(root, clean);
+  if (!dir.startsWith(root) || dir === root) throw new Error('bad folder');
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new Error('not found');
+  if (RESERVED_DIRS.has(topSegment(clean))) throw new Error('that folder is protected');
+  if (SYSTEM_FOLDERS.has(basename(clean))) throw new Error('that folder is part of lifeOS and can\'t be renamed');
+  const name = String(newName || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+  if (!name) throw new Error('name required');
+  const parent = dirname(dir);
+  let target = join(parent, name), i = 2;
+  if (target === dir) return clean;
+  while (existsSync(target)) { target = join(parent, `${name} ${i++}`); }
+  renameSync(dir, target);
+  return relative(root, target).split(sep).join('/');
+}
+
 /** First path segment (e.g. ".claude" from ".claude/skills/x.md"), for the reserved-dir guard. */
 function topSegment(relPath) {
   return String(relPath || '').replace(/\\/g, '/').split('/').filter(Boolean)[0] || '';

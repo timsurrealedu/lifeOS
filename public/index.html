@@ -53,7 +53,7 @@
         <div class="cap-toggle">
           <div class="seg" id="capture-seg">
             <button class="seg-btn active" data-cap="capture">✎ Capture</button>
-            <button class="seg-btn" data-cap="chat">💬 Chat</button>
+            <button class="seg-btn" data-cap="chat">◈ Chat</button>
           </div>
           <div class="spacer"></div>
           <button class="chip" id="chat-clear" hidden>Clear chat</button>
@@ -216,8 +216,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
     <!-- Bottom nav -->
     <nav class="tabbar">
       <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
-      <button class="tab" data-tab="discover"><span class="ti">💡</span><span>Discover</span></button>
-      <button class="tab" data-tab="notes"><span class="ti">📄</span><span>Notes</span></button>
+      <button class="tab" data-tab="discover"><span class="ti">◎</span><span>Discover</span></button>
+      <button class="tab" data-tab="notes"><span class="ti">▤</span><span>Notes</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="graph"><span class="ti">⌘</span><span>Graph</span></button>
     </nav>
@@ -412,9 +412,12 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     <aside class="reader-sidebar" id="reader-sidebar">
       <div class="reader-sidebar-head">
         <span class="reader-sidebar-title">Files</span>
+        <button class="icon-btn" id="reader-new-note" title="New note" aria-label="New note">✎</button>
+        <button class="icon-btn" id="reader-new-folder" title="New folder" aria-label="New folder">📁</button>
         <button class="icon-btn" id="reader-sidebar-collapse" title="Hide files" aria-label="Hide files">⟨</button>
       </div>
       <ul class="tree reader-tree" id="reader-tree"></ul>
+      <div class="reader-sidebar-resize" id="reader-sidebar-resize" title="Drag to resize"></div>
     </aside>
 
     <div class="reader-main" id="reader-main">

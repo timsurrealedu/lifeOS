@@ -8,7 +8,7 @@ import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from '.
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
-  moveEntry, listFolders, createFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
+  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
   clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
@@ -345,6 +345,11 @@ app.post('/api/note/save', (req, res) => {
 // Rename a note (change its title → renames the file + syncs the H1).
 app.post('/api/note/rename', (req, res) => {
   try { ok(res, { path: renameNote(req.body && req.body.path, req.body && req.body.title) }); }
+  catch (e) { fail(res, e); }
+});
+// Rename a folder (basename only; guards reserved/system folders).
+app.post('/api/folder/rename', (req, res) => {
+  try { ok(res, { path: renameFolder(req.body && req.body.path, req.body && req.body.name) }); }
   catch (e) { fail(res, e); }
 });
 // Delete a note / a folder (path-guarded; protected system files & infra dirs are refused).
