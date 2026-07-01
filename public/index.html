@@ -11,12 +11,18 @@
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/icon.svg" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+  <!-- Cyberpunk theme display/mono type (progressive: only used under [data-theme="cyberpunk"]) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" />
   <link rel="stylesheet" href="/css/styles.css" />
   <script>
     // Apply the saved theme before first paint so there's no flash of the default.
     try {
       var t = localStorage.getItem('lifeos.theme') || 'dark';
+      if (t === 'cyberpunk') t = 'silverhand';                 // migrate the old single cyberpunk value
       if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
+      if (t === 'silverhand' || t === 'arasaka') document.documentElement.setAttribute('data-hud', 'cp');
     } catch (e) {}
   </script>
 </head>
@@ -27,6 +33,11 @@
       <div class="brand">
         <span class="brand-mark">◇</span>
         <span class="brand-name">life<b>OS</b></span>
+      </div>
+      <!-- CP2077 status rail (cyberpunk themes only): current date + live clock -->
+      <div class="cp-status" aria-hidden="true">
+        <span class="cp-stat date"><b id="cp-date">—</b></span>
+        <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
       </div>
       <div class="topbar-actions">
         <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">🎨</button>
@@ -42,7 +53,7 @@
         <div class="cap-toggle">
           <div class="seg" id="capture-seg">
             <button class="seg-btn active" data-cap="capture">✎ Capture</button>
-            <button class="seg-btn" data-cap="chat">💬 Chat</button>
+            <button class="seg-btn" data-cap="chat">◈ Chat</button>
           </div>
           <div class="spacer"></div>
           <button class="chip" id="chat-clear" hidden>Clear chat</button>
@@ -119,10 +130,10 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         </div>
 
         <div class="card tool-card">
-          <h3 class="tool-title">🔍 Find</h3>
-          <p class="tool-desc">Instant text search across your notes — no AI, no tokens. Type a word or phrase.</p>
-          <input id="find-input" class="tool-input" placeholder="graph theory" />
-          <button class="btn primary tool-btn" id="btn-find">Search vault →</button>
+          <h3 class="tool-title">🔮 AI Search</h3>
+          <p class="tool-desc">Describe what you're after in plain words — like searching photos by description. The AI reads your vault and surfaces notes that match the <em>meaning</em>, not just the words. <span class="hint" style="display:inline">Plain keyword search now lives in the <b>Notes</b> tab.</span></p>
+          <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
+          <button class="btn primary tool-btn" id="btn-find">Search by meaning →</button>
           <ul id="find-results" class="list find-results"></ul>
         </div>
 
@@ -152,7 +163,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             <button class="btn primary sm" id="btn-new-note" title="New note">✎ New</button>
           </div>
         </div>
-        <input id="notes-search" class="search" type="search" placeholder="Search notes or #tags…" />
+        <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
         <ul id="notes-list" class="list"></ul>
         <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
       </section>
@@ -205,8 +216,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
     <!-- Bottom nav -->
     <nav class="tabbar">
       <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
-      <button class="tab" data-tab="discover"><span class="ti">💡</span><span>Discover</span></button>
-      <button class="tab" data-tab="notes"><span class="ti">📄</span><span>Notes</span></button>
+      <button class="tab" data-tab="discover"><span class="ti">◎</span><span>Discover</span></button>
+      <button class="tab" data-tab="notes"><span class="ti">▤</span><span>Notes</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="graph"><span class="ti">⌘</span><span>Graph</span></button>
     </nav>
@@ -257,7 +268,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
           <div class="seg seg-theme" id="theme-seg">
             <button class="seg-btn" type="button" data-theme-opt="dark">🌙 Dark</button>
             <button class="seg-btn" type="button" data-theme-opt="light">☀️ Light</button>
-            <button class="seg-btn" type="button" data-theme-opt="cyberpunk">⚡ Cyber</button>
+            <button class="seg-btn" type="button" data-theme-opt="silverhand">⚡ Silverhand</button>
+            <button class="seg-btn" type="button" data-theme-opt="arasaka">🔻 Arasaka</button>
           </div>
         </div>
         <label class="switch-row"><span>Live preview <small>(Obsidian-style — click a block to edit)</small></span><input type="checkbox" id="cfg-livepreview" /></label>
@@ -400,9 +412,12 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     <aside class="reader-sidebar" id="reader-sidebar">
       <div class="reader-sidebar-head">
         <span class="reader-sidebar-title">Files</span>
+        <button class="icon-btn" id="reader-new-note" title="New note" aria-label="New note">✎</button>
+        <button class="icon-btn" id="reader-new-folder" title="New folder" aria-label="New folder">📁</button>
         <button class="icon-btn" id="reader-sidebar-collapse" title="Hide files" aria-label="Hide files">⟨</button>
       </div>
       <ul class="tree reader-tree" id="reader-tree"></ul>
+      <div class="reader-sidebar-resize" id="reader-sidebar-resize" title="Drag to resize"></div>
     </aside>
 
     <div class="reader-main" id="reader-main">
@@ -463,6 +478,42 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <!-- ============ Cyberpunk 2077 HUD frame overlay (theme-only, pointer-events:none) ============ -->
+  <div id="cp-hud" aria-hidden="true">
+    <span class="cp-corner tl"></span><span class="cp-corner tr"></span>
+    <span class="cp-corner bl"></span><span class="cp-corner br"></span>
+    <div class="cp-rail cp-rail-l">
+      <span class="cp-barcode"></span>
+      <span class="cp-conn">CONNECTION 541.84.45</span>
+    </div>
+    <div class="cp-rail cp-rail-r">
+      <span class="cp-conn">NETWATCH // 985.20.54</span>
+      <span class="cp-barcode"></span>
+    </div>
+    <div class="cp-hints">
+      <span class="cp-hint"><b>TAB</b> NAVIGATE</span>
+      <span class="cp-hint"><b>ENTER</b> SELECT</span>
+      <span class="cp-hint"><b>ESC</b> BACK</span>
+      <span class="cp-hint jack">● JACKED IN</span>
+      <span class="cp-samurai">SAMURAI</span>
+    </div>
+  </div>
+
+  <script>
+    // Live HUD date + clock (harmless in any theme; only shown under the cyberpunk themes).
+    (function () {
+      var MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      function tick() {
+        var d = new Date();
+        var clk = document.getElementById('cp-clock');
+        if (clk) clk.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        var dt = document.getElementById('cp-date');
+        if (dt) dt.textContent = String(d.getDate()).padStart(2, '0') + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
+      }
+      tick(); setInterval(tick, 15000);
+    })();
+  </script>
 
   <script defer src="/vendor/katex/katex.min.js"></script>
   <script src="/js/graph.js"></script>

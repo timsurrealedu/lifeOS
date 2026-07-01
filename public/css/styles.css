@@ -54,36 +54,407 @@
   color-scheme: light;
 }
 
-/* ---- Cyberpunk theme: neon night ---- */
-:root[data-theme="cyberpunk"] {
-  --bg: #08040f;
-  --bg-tint: radial-gradient(1000px 540px at 82% -10%, #240a4a 0%, transparent 58%),
-             radial-gradient(820px 420px at 8% 112%, #05283f 0%, transparent 58%);
-  --surface: #120a24;
-  --surface-2: #1a1036;
-  --surface-3: #251747;
-  --border: #3c2275;
-  --border-soft: #2a1858;
-  --text: #e9f8ff;
-  --muted: #a596e6;
-  --faint: #6f63ad;
-  --accent: #ff2bd6;
-  --accent-ink: #18001c;
-  --accent-soft: rgba(255,43,214,.16);
-  --sage: #21f5d4;
-  --sage-ink: #00211b;
-  --danger: #ff4d6d;
-  --shadow: 0 10px 36px -10px rgba(255,43,214,.36);
-  --graph-bg: #0a0518;
+/* ============================================================================
+   CYBERPUNK 2077 HUD — full redesign (Night City netrunner UI)
+   Scoped to [data-hud="cp"] (a shared skeleton) so it drives BOTH variants:
+     • Silverhand  = [data-theme="silverhand"]  → SAMURAI yellow + blue (default below)
+     • Arasaka     = [data-theme="arasaka"]      → Arasaka red + blue (override block)
+   Warm/light themes are untouched; the whole look is reversible by switching theme.
+============================================================================ */
+:root[data-hud="cp"] {
+  --bg: #04060a;
+  /* layered: teal + magenta glow, a faint tech grid, and CRT scanlines */
+  --bg-tint:
+    radial-gradient(1100px 560px at 84% -12%, rgba(255,0,60,.20) 0%, transparent 58%),
+    radial-gradient(900px 460px at 6% 114%, rgba(0,240,255,.16) 0%, transparent 58%),
+    repeating-linear-gradient(0deg, rgba(0,240,255,.045) 0 1px, transparent 1px 3px),
+    linear-gradient(rgba(3,7,12,0) 0, rgba(3,7,12,0) 0),
+    repeating-linear-gradient(0deg, transparent 0 46px, rgba(0,240,255,.05) 46px 47px),
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(0,240,255,.05) 46px 47px);
+  --surface: rgba(9,17,24,.86);
+  --surface-2: rgba(13,24,33,.9);
+  --surface-3: rgba(18,32,44,.95);
+  --border: #124a5c;
+  --border-soft: #0c2f3b;
+  --text: #d7f7ff;
+  --muted: #6fb6c9;
+  --faint: #4a7f8f;
+  --accent: #fcee0a;          /* SAMURAI yellow — primary */
+  --accent-ink: #0a0d02;      /* dark ink on yellow */
+  --accent-soft: rgba(252,238,10,.12);
+  --cyan: #00f0ff;            /* interactive / links */
+  --cyan-soft: rgba(0,240,255,.12);
+  --sage: #00f0ff;           /* "positive/done" reads as cyan here */
+  --sage-ink: #001b1f;
+  --danger: #ff003c;
+  --radius: 0px; --radius-sm: 0px;
+  --shadow: 0 0 0 1px rgba(0,240,255,.06), 0 14px 40px -18px rgba(0,240,255,.35);
+  --graph-bg: #04080c;
+  --font: 'Rajdhani', 'Chakra Petch', -apple-system, system-ui, sans-serif;
+  --serif: 'Chakra Petch', 'Rajdhani', system-ui, sans-serif;
+  --mono: 'Share Tech Mono', ui-monospace, 'JetBrains Mono', monospace;
   color-scheme: dark;
 }
-/* Neon glow accents — cyberpunk only */
-:root[data-theme="cyberpunk"] .brand-name b,
-:root[data-theme="cyberpunk"] .brand-mark { text-shadow: 0 0 12px var(--accent); }
-:root[data-theme="cyberpunk"] .tab.active { text-shadow: 0 0 10px var(--accent); }
-:root[data-theme="cyberpunk"] .btn.primary { box-shadow: 0 0 18px -4px var(--accent); }
-:root[data-theme="cyberpunk"] .chip.live,
-:root[data-theme="cyberpunk"] .tag { text-shadow: 0 0 8px currentColor; }
+
+/* --- Arasaka variant: swap the yellow primary for corporate red (blue stays) --- */
+:root[data-hud="cp"][data-theme="arasaka"] {
+  --accent: #ff1e3c;          /* Arasaka red */
+  --accent-ink: #fff2f3;      /* light ink on red */
+  --accent-soft: rgba(255,30,60,.14);
+  --bg-tint:
+    radial-gradient(1100px 560px at 84% -12%, rgba(255,30,60,.26) 0%, transparent 58%),
+    radial-gradient(900px 460px at 6% 114%, rgba(0,240,255,.14) 0%, transparent 58%),
+    repeating-linear-gradient(0deg, rgba(0,240,255,.04) 0 1px, transparent 1px 3px),
+    linear-gradient(rgba(3,7,12,0) 0, rgba(3,7,12,0) 0),
+    repeating-linear-gradient(0deg, transparent 0 46px, rgba(255,30,60,.05) 46px 47px),
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(255,30,60,.05) 46px 47px);
+}
+/* On red, the filled-yellow-slab active tab becomes red with light ink */
+:root[data-hud="cp"][data-theme="arasaka"] .tab.active,
+:root[data-hud="cp"][data-theme="arasaka"] .tab.active .ti { color: var(--accent-ink); }
+
+/* CRT scanline sweep + faint global flicker overlay */
+:root[data-hud="cp"] body::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: auto; pointer-events: none; z-index: 25;
+  background: linear-gradient(rgba(0,240,255,0) 0%, rgba(0,240,255,.06) 50%, rgba(0,240,255,0) 100%);
+  height: 140px; top: -140px; opacity: .7;
+  animation: cpScan 7s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes cpScan { 0% { top: -140px; } 100% { top: 100%; } }
+
+/* ---- Typography: uppercase HUD labels, glowing headers ---- */
+:root[data-hud="cp"] body { letter-spacing: .01em; }
+:root[data-hud="cp"] .brand { font-family: var(--serif); text-transform: uppercase; letter-spacing: .14em; font-weight: 700; }
+:root[data-hud="cp"] .brand-mark { color: var(--cyan); text-shadow: 0 0 12px var(--cyan); }
+:root[data-hud="cp"] .brand-name { color: var(--text); }
+:root[data-hud="cp"] .brand-name b { color: var(--accent); text-shadow: 0 0 14px var(--accent); animation: cpFlicker 4.5s infinite steps(1); }
+@keyframes cpFlicker { 0%,96%,100% { opacity: 1; } 97% { opacity: .35; } 98% { opacity: 1; } 99% { opacity: .55; } }
+
+:root[data-hud="cp"] .view-head h2,
+:root[data-hud="cp"] .hero-title {
+  font-family: var(--serif); text-transform: uppercase; letter-spacing: .06em; font-weight: 700;
+  color: var(--text); position: relative; padding-left: 14px; text-shadow: 0 0 18px rgba(0,240,255,.25);
+}
+/* neon "▍" tick before each section/hero title */
+:root[data-hud="cp"] .view-head h2::before,
+:root[data-hud="cp"] .hero-title::before {
+  content: ""; position: absolute; left: 0; top: .12em; bottom: .12em; width: 4px;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
+}
+:root[data-hud="cp"] .hero-sub { color: var(--cyan); font-family: var(--mono); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+:root[data-hud="cp"] .view-head.sub h3,
+:root[data-hud="cp"] .sheet-head h3,
+:root[data-hud="cp"] .reader-head h2,
+:root[data-hud="cp"] .tool-title { font-family: var(--serif); text-transform: uppercase; letter-spacing: .05em; }
+:root[data-hud="cp"] .muted-sm,
+:root[data-hud="cp"] .li-sub,
+:root[data-hud="cp"] .plan-group h3 { font-family: var(--mono); letter-spacing: .05em; }
+
+/* ---- Topbar as a HUD header rail ---- */
+:root[data-hud="cp"] .topbar {
+  border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, rgba(4,10,14,.96), rgba(4,10,14,.4));
+}
+:root[data-hud="cp"] .topbar::after {
+  content: "// SYS.ONLINE"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .28em; color: var(--cyan); opacity: .35;
+  pointer-events: none;
+}
+:root[data-hud="cp"] .topbar { position: relative; }
+
+/* ---- Panels: sharp edges + corner brackets (the CP2077 signature) ---- */
+:root[data-hud="cp"] .card,
+:root[data-hud="cp"] .list-item,
+:root[data-hud="cp"] .task,
+:root[data-hud="cp"] .process-card,
+:root[data-hud="cp"] .cal-event,
+:root[data-hud="cp"] .doc-chip,
+:root[data-hud="cp"] .suggest {
+  position: relative; border-color: var(--border);
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.03), transparent 40%),
+    var(--surface);
+  box-shadow: inset 0 0 24px -14px var(--cyan);
+}
+/* L-shaped neon corner brackets (top-left + bottom-right) — safe, no reflow */
+:root[data-hud="cp"] .card::before,
+:root[data-hud="cp"] .process-card::before,
+:root[data-hud="cp"] .list-item::before,
+:root[data-hud="cp"] .task::before {
+  content: ""; position: absolute; top: -1px; left: -1px; width: 11px; height: 11px;
+  border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); pointer-events: none;
+}
+:root[data-hud="cp"] .card::after,
+:root[data-hud="cp"] .process-card::after,
+:root[data-hud="cp"] .list-item::after,
+:root[data-hud="cp"] .task::after {
+  content: ""; position: absolute; bottom: -1px; right: -1px; width: 11px; height: 11px;
+  border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); pointer-events: none;
+}
+:root[data-hud="cp"] .list-item:hover,
+:root[data-hud="cp"] .task:hover { border-color: var(--cyan); box-shadow: inset 0 0 22px -10px var(--cyan), 0 0 14px -6px var(--cyan); }
+/* CP2077 main-menu row feel (ref image): bold left accent edge + bright slab fill on hover */
+:root[data-hud="cp"] .list-item,
+:root[data-hud="cp"] .suggest { border-left: 3px solid var(--accent); }
+:root[data-hud="cp"] .list-item:hover { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--surface); }
+
+/* Process-card = highlighted action tile */
+:root[data-hud="cp"] .process-card { border-color: var(--accent); box-shadow: inset 0 0 30px -16px var(--accent); }
+:root[data-hud="cp"] .process-icon {
+  background: var(--accent); color: var(--accent-ink); border-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  box-shadow: 0 0 16px -2px var(--accent);
+}
+:root[data-hud="cp"] .process-title { text-transform: uppercase; letter-spacing: .04em; font-family: var(--serif); }
+:root[data-hud="cp"] .process-sub { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* ---- Buttons: chamfered, neon, hover-sweep ---- */
+:root[data-hud="cp"] .btn {
+  border-radius: 0; text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+  font-family: var(--serif); border: 1px solid var(--cyan); background: var(--cyan-soft); color: var(--cyan);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  position: relative; overflow: hidden; transition: color .15s, background .15s, box-shadow .15s;
+}
+:root[data-hud="cp"] .btn:hover { background: var(--cyan); color: #041014; box-shadow: 0 0 18px -3px var(--cyan); }
+:root[data-hud="cp"] .btn.primary {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  box-shadow: 0 0 20px -5px var(--accent);
+}
+:root[data-hud="cp"] .btn.primary:hover { background: var(--accent); filter: brightness(1.12); box-shadow: 0 0 26px -3px var(--accent); }
+/* animated shine sweep across buttons */
+:root[data-hud="cp"] .btn::after {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent);
+  transform: skewX(-20deg); transition: left .5s;
+}
+:root[data-hud="cp"] .btn:hover::after { left: 120%; }
+
+/* ---- Chips / badges / tags: angular HUD pills ---- */
+:root[data-hud="cp"] .chip,
+:root[data-hud="cp"] .seg,
+:root[data-hud="cp"] .preview-del,
+:root[data-hud="cp"] .prop-tag,
+:root[data-hud="cp"] .prop-add,
+:root[data-hud="cp"] .add-to-note { border-radius: 0; font-family: var(--mono); text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+:root[data-hud="cp"] .chip { border-color: var(--border); color: var(--muted); background: var(--surface-2);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+:root[data-hud="cp"] .chip:hover { color: var(--cyan); border-color: var(--cyan); }
+:root[data-hud="cp"] .chip.live { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px -4px var(--accent); text-shadow: 0 0 8px var(--accent); }
+:root[data-hud="cp"] .badge {
+  background: var(--accent); color: var(--accent-ink); border-radius: 0; font-family: var(--mono); font-weight: 700;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+}
+:root[data-hud="cp"] .markdown .tag,
+:root[data-hud="cp"] .tag { color: var(--cyan); text-shadow: 0 0 8px currentColor; }
+
+/* ---- Segmented toggles ---- */
+:root[data-hud="cp"] .seg-btn { border-radius: 0; text-transform: uppercase; letter-spacing: .06em; font-family: var(--serif); }
+:root[data-hud="cp"] .seg-btn.active { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 14px -4px var(--accent); }
+
+/* ---- Inputs / search / textareas: dark field, cyan focus glow ---- */
+:root[data-hud="cp"] .search,
+:root[data-hud="cp"] .tool-input,
+:root[data-hud="cp"] .settings input,
+:root[data-hud="cp"] .settings-select,
+:root[data-hud="cp"] .chat-input,
+:root[data-hud="cp"] .editor-folder-label input {
+  border-radius: 0; border-color: var(--border); background: rgba(2,10,14,.6);
+  font-family: var(--mono); letter-spacing: .02em;
+}
+:root[data-hud="cp"] .search:focus,
+:root[data-hud="cp"] .tool-input:focus,
+:root[data-hud="cp"] .settings input:focus,
+:root[data-hud="cp"] .chat-input:focus,
+:root[data-hud="cp"] .tool-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 16px -6px var(--cyan); }
+:root[data-hud="cp"] #capture-text { caret-color: var(--cyan); }
+
+/* ---- Icon buttons ---- */
+:root[data-hud="cp"] .icon-btn { border-radius: 0; border-color: var(--border); background: var(--surface-2); color: var(--cyan);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)); }
+:root[data-hud="cp"] .icon-btn:active { background: var(--cyan-soft); }
+
+/* ---- Tab bar: bottom HUD nav ---- */
+:root[data-hud="cp"] .tabbar {
+  background: linear-gradient(0deg, rgba(2,8,12,.98), rgba(6,14,20,.92));
+  border-top: 1px solid var(--cyan); box-shadow: 0 -6px 24px -14px var(--cyan);
+}
+:root[data-hud="cp"] .tab { text-transform: uppercase; letter-spacing: .06em; font-family: var(--mono); font-size: 9.5px; color: var(--faint); }
+:root[data-hud="cp"] .tab.active { color: var(--accent); text-shadow: 0 0 10px var(--accent); }
+:root[data-hud="cp"] .tab.active::before { background: var(--accent); box-shadow: 0 0 10px var(--accent); width: 34px; height: 3px; }
+:root[data-hud="cp"] .tab .dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+/* ---- Sheets / reader / editor / toast: framed HUD panels ---- */
+:root[data-hud="cp"] .sheet,
+:root[data-hud="cp"] .toast {
+  border-radius: 0; border: 1px solid var(--cyan); background: var(--surface-3);
+  box-shadow: 0 0 0 1px rgba(0,240,255,.15), 0 -10px 50px -14px rgba(0,240,255,.4);
+}
+:root[data-hud="cp"] .toast { clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+:root[data-hud="cp"] .sheet-grab { background: var(--cyan); }
+:root[data-hud="cp"] .console { font-family: var(--mono); color: var(--cyan); text-shadow: 0 0 6px rgba(0,240,255,.35); }
+:root[data-hud="cp"] .reader-sidebar,
+:root[data-hud="cp"] .note-chat { border-color: var(--border); }
+:root[data-hud="cp"] .reader-tree .tree-row.active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+:root[data-hud="cp"] .reader-tree .tree-row.active .li-title { color: var(--accent); }
+
+/* ---- Markdown / links ---- */
+:root[data-hud="cp"] .markdown h1, :root[data-hud="cp"] .markdown h2 { color: var(--accent); text-transform: uppercase; letter-spacing: .03em; text-shadow: 0 0 16px rgba(252,238,10,.3); }
+:root[data-hud="cp"] .markdown a, :root[data-hud="cp"] .wikilink { color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,.4); }
+:root[data-hud="cp"] .markdown blockquote { border-left-color: var(--cyan); }
+:root[data-hud="cp"] .markdown code { background: rgba(0,240,255,.08); color: var(--cyan); border: 1px solid var(--border-soft); }
+
+/* ---- Chat bubbles ---- */
+:root[data-hud="cp"] .bubble { border-radius: 0; }
+:root[data-hud="cp"] .bubble.me { background: var(--accent); color: var(--accent-ink); clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
+:root[data-hud="cp"] .bubble.ai { background: var(--surface-2); border-color: var(--border); clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px); }
+
+/* ---- Task checkbox = HUD marker ---- */
+:root[data-hud="cp"] .task .box { border-radius: 0; border-color: var(--cyan); }
+:root[data-hud="cp"] .task.done .box { background: var(--cyan); border-color: var(--cyan); color: #041014; box-shadow: 0 0 10px -2px var(--cyan); }
+:root[data-hud="cp"] .task.overdue .box { border-color: var(--danger); box-shadow: 0 0 10px -2px var(--danger); }
+
+/* ---- Calendar ---- */
+:root[data-hud="cp"] .cal-cell { border-radius: 0; border-color: var(--border-soft); background: var(--surface); }
+:root[data-hud="cp"] .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 14px -8px var(--accent); }
+:root[data-hud="cp"] .cal-cell.today .cal-num { color: var(--accent); }
+:root[data-hud="cp"] .cal-dot { background: var(--accent); }
+:root[data-hud="cp"] .cal-dot.ev { background: var(--cyan); }
+
+/* ---- Graph frame ---- */
+:root[data-hud="cp"] .graph-wrap { border-color: var(--cyan); box-shadow: inset 0 0 40px -20px var(--cyan); }
+:root[data-hud="cp"] .graph-label { border-radius: 0; border-color: var(--cyan); font-family: var(--mono); text-transform: uppercase; }
+
+/* ============================================================================
+   CYBERPUNK LAYOUT — cramped Night City HUD: top tab rail, status bar,
+   viewport frame, side rails, bottom hint bar, and a global density pass.
+============================================================================ */
+
+/* --- Move the nav to the TOP as a segmented HUD tab strip (order reflow, no JS) --- */
+/* Keep the console centered + constrained on desktop (full-bleed felt too stretched); the HUD
+   frame overlay stays full-viewport around it. */
+:root[data-hud="cp"] #app { max-width: 760px; }
+:root[data-hud="cp"] .topbar { order: 0; padding: 8px 14px 7px; }
+:root[data-hud="cp"] .tabbar  { order: 1; }
+:root[data-hud="cp"] #views   { order: 2; }
+
+:root[data-hud="cp"] .tabbar {
+  height: 42px; padding-bottom: 0;
+  border-top: none; border-bottom: 1px solid var(--cyan);
+  box-shadow: 0 6px 22px -14px var(--cyan);
+  background: linear-gradient(180deg, rgba(6,14,20,.96), rgba(3,9,13,.9));
+}
+:root[data-hud="cp"] .tab {
+  flex-direction: row; gap: 7px; font-size: 10px; height: 100%;
+  border-right: 1px solid var(--border-soft);
+  clip-path: none;
+}
+:root[data-hud="cp"] .tab:last-child { border-right: none; }
+:root[data-hud="cp"] .tab .ti { font-size: 13px; }
+:root[data-hud="cp"] .tab.active { background: var(--accent); color: var(--accent-ink); text-shadow: none; }
+:root[data-hud="cp"] .tab.active::before { display: none; }   /* drop underline, use the filled slab */
+:root[data-hud="cp"] .tab.active .ti { color: var(--accent-ink); }
+:root[data-hud="cp"] .tab .dot { top: 6px; margin-right: -22px; }
+
+/* --- Status rail inside the topbar (LVL · STREET CRED · clock) --- */
+:root[data-hud="cp"] .topbar::after { content: none; }   /* replaced by real readouts */
+.cp-status { display: none; }
+:root[data-hud="cp"] .cp-status {
+  display: flex; align-items: center; gap: 14px; margin-left: auto; margin-right: 12px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--muted);
+}
+:root[data-hud="cp"] .cp-stat { display: inline-flex; align-items: center; gap: 6px; }
+:root[data-hud="cp"] .cp-stat i { color: var(--faint); font-style: normal; }
+:root[data-hud="cp"] .cp-stat b { color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+:root[data-hud="cp"] .cp-stat.date b { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+@media (max-width: 520px) {
+  :root[data-hud="cp"] .cp-status { gap: 9px; font-size: 10px; margin-right: 6px; }
+  :root[data-hud="cp"] .cp-status .cp-stat:not(.date) { display: none; }  /* keep the date on tiny screens */
+}
+
+/* --- Global density pass: tighter, edge-to-edge, cramped --- */
+:root[data-hud="cp"] #views { padding: 10px 12px 76px; }
+:root[data-hud="cp"] .hero { padding: 10px 2px 8px; }
+:root[data-hud="cp"] .hero-title { font-size: clamp(21px, 5.4vw, 26px); margin-bottom: 3px; }
+:root[data-hud="cp"] .view-head { margin: 4px 2px 10px; }
+:root[data-hud="cp"] .view-head.sub { margin: 16px 2px 8px; }
+:root[data-hud="cp"] .card { padding: 11px; }
+:root[data-hud="cp"] .capture-card { gap: 9px; }
+:root[data-hud="cp"] #capture-text { min-height: 74px; font-size: 15px; }
+:root[data-hud="cp"] .list { gap: 5px; }
+:root[data-hud="cp"] .list-item { padding: 9px 11px; }
+:root[data-hud="cp"] .li-title { font-size: 14px; }
+:root[data-hud="cp"] .task { padding: 9px 11px; margin-bottom: 5px; }
+:root[data-hud="cp"] .tool-card { margin-bottom: 10px; }
+:root[data-hud="cp"] .process-card { margin-top: 12px; padding: 12px 14px; }
+:root[data-hud="cp"] .tree-row { padding: 7px 10px; }
+:root[data-hud="cp"] .chip { padding: 7px 11px; }
+:root[data-hud="cp"] .search { padding: 10px 12px; margin-bottom: 10px; }
+/* mono micro-label prefixed on each card/list panel — the "connection id" motif */
+:root[data-hud="cp"] .list-item .li-sub::before { content: "◆ "; color: var(--cyan); }
+
+/* --- Viewport HUD frame overlay (decorative, non-blocking) --- */
+#cp-hud { display: none; }
+:root[data-hud="cp"] #cp-hud { display: block; position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+:root[data-hud="cp"] #cp-hud .cp-corner { position: absolute; width: 26px; height: 26px; }
+:root[data-hud="cp"] #cp-hud .cp-corner.tl { top: 6px; left: 6px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+:root[data-hud="cp"] #cp-hud .cp-corner.tr { top: 6px; right: 6px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+:root[data-hud="cp"] #cp-hud .cp-corner.bl { bottom: 6px; left: 6px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+:root[data-hud="cp"] #cp-hud .cp-corner.br { bottom: 6px; right: 6px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+/* side rails (barcode + rotated connection id) — hidden on narrow phones */
+:root[data-hud="cp"] #cp-hud .cp-rail {
+  position: absolute; top: 84px; bottom: 84px; width: 22px; display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between; gap: 12px;
+}
+:root[data-hud="cp"] #cp-hud .cp-rail-l { left: 8px; }
+:root[data-hud="cp"] #cp-hud .cp-rail-r { right: 8px; }
+:root[data-hud="cp"] #cp-hud .cp-barcode {
+  flex: 1; width: 6px;
+  background: repeating-linear-gradient(180deg, var(--cyan) 0 2px, transparent 2px 4px, var(--cyan) 4px 5px, transparent 5px 10px);
+  opacity: .5;
+}
+:root[data-hud="cp"] #cp-hud .cp-conn {
+  writing-mode: vertical-rl; font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
+  color: var(--faint); white-space: nowrap;
+}
+@media (max-width: 900px) { :root[data-hud="cp"] #cp-hud .cp-rail { display: none; } }
+
+/* bottom hint bar (button prompts + SAMURAI wordmark) */
+:root[data-hud="cp"] #cp-hud .cp-hints {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 7px 18px calc(env(safe-area-inset-bottom) + 7px);
+  background: linear-gradient(0deg, rgba(3,8,12,.96), rgba(3,8,12,0));
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--muted);
+}
+:root[data-hud="cp"] #cp-hud .cp-hint { display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; }
+:root[data-hud="cp"] #cp-hud .cp-hint b {
+  color: var(--cyan); border: 1px solid var(--border); padding: 1px 6px; font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+}
+:root[data-hud="cp"] #cp-hud .cp-hint.jack { color: var(--sage); text-shadow: 0 0 8px var(--sage); animation: cpPulse 1.8s ease-in-out infinite; }
+/* Corp wordmark: text swaps SAMURAI ⇄ ARASAKA by variant, with a glowing logo mark */
+:root[data-hud="cp"] #cp-hud .cp-samurai {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--serif); font-weight: 700; letter-spacing: .12em;
+  color: var(--accent); text-shadow: 0 0 10px var(--accent); transform: skewX(-8deg); font-size: 0;
+}
+:root[data-hud="cp"] #cp-hud .cp-samurai::after { content: "SAMURAI"; font-size: 13px; }
+:root[data-hud="cp"][data-theme="arasaka"] #cp-hud .cp-samurai::after { content: "ARASAKA"; }
+@keyframes cpPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+/* Mobile: drop the keyboard-prompt keycaps (TAB/ENTER/ESC), keep JACKED IN + wordmark */
+@media (max-width: 760px) {
+  :root[data-hud="cp"] #cp-hud .cp-hints { gap: 10px; font-size: 9px; padding-left: 12px; padding-right: 12px; }
+  :root[data-hud="cp"] #cp-hud .cp-hint:not(.jack) { display: none; }
+}
+
+/* Respect reduced motion: kill the scanline sweep, shine, flicker, jack-pulse */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-hud="cp"] body::after,
+  :root[data-hud="cp"] .brand-name b,
+  :root[data-hud="cp"] #cp-hud .cp-hint.jack { animation: none; }
+}
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; }
@@ -507,9 +878,20 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* ---- Reader file sidebar (Obsidian-style left dock) ---- */
 .reader-sidebar {
-  flex: none; width: 280px; display: flex; flex-direction: column;
+  flex: none; width: var(--reader-sidebar-w, 280px); display: flex; flex-direction: column; position: relative;
   background: var(--surface); border-right: 1px solid var(--border); overflow: hidden;
 }
+/* Drag the right edge to resize; the reader-main (flex:1) takes the remaining space. Desktop only. */
+.reader-sidebar-resize {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; touch-action: none;
+}
+.reader-sidebar-resize::before {
+  content: ""; position: absolute; top: 50%; right: 2px; width: 3px; height: 42px; margin-top: -21px;
+  border-radius: 3px; background: var(--border); transition: background .15s;
+}
+.reader-sidebar-resize:hover::before, .reader-sidebar.resizing .reader-sidebar-resize::before { background: var(--accent); }
+.reader-sidebar.resizing { user-select: none; }
+@media (max-width: 759px) { .reader-sidebar-resize { display: none; } }
 .reader-sidebar-head {
   flex: none; display: flex; align-items: center; gap: 8px;
   padding: max(14px, env(safe-area-inset-top)) 8px 10px 14px;
@@ -743,8 +1125,15 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .tree-row:hover .tw-add, .tree-row:focus-within .tw-add { opacity: 1; }
 .tw-add:hover { color: var(--accent); background: var(--surface-3); }
+/* Rename button on tree rows — same quiet reveal as add/delete. */
+.tw-ren {
+  flex: none; border: none; background: none; color: var(--faint); font-size: 13px;
+  padding: 4px 7px; border-radius: 8px; cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.tree-row:hover .tw-ren, .tree-row:focus-within .tw-ren { opacity: 1; }
+.tw-ren:hover { color: var(--accent); background: var(--surface-3); }
 /* On touch (no hover) keep the row actions visible but quiet. */
-@media (hover: none) { .tw-del, .tw-add { opacity: .5; } }
+@media (hover: none) { .tw-del, .tw-add, .tw-ren { opacity: .5; } }
 
 /* ---- Segmented toggle (Plan list/calendar) ---- */
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }

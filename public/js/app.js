@@ -17,8 +17,8 @@ const toast = (msg) => {
 const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
-const THEMES = ['dark', 'light', 'cyberpunk'];
-const THEME_BG = { dark: '#15110d', light: '#f6f2ea', cyberpunk: '#08040f' };
+const THEMES = ['dark', 'light', 'silverhand', 'arasaka'];
+const THEME_BG = { dark: '#15110d', light: '#f6f2ea', silverhand: '#04060a', arasaka: '#04060a' };
 const prefs = {
   get theme() { return localStorage.getItem('lifeos.theme') || 'dark'; },
   get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
@@ -27,10 +27,15 @@ const prefs = {
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
+  if (name === 'cyberpunk') name = 'silverhand';        // migrate the old single cyberpunk value
   if (!THEMES.includes(name)) name = 'dark';
   prefs.set('theme', name);
-  if (name === 'dark') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', name);
+  const root = document.documentElement;
+  if (name === 'dark') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', name);
+  // The two cyberpunk variants share the HUD skeleton via [data-hud="cp"]; colors come from data-theme.
+  if (name === 'silverhand' || name === 'arasaka') root.setAttribute('data-hud', 'cp');
+  else root.removeAttribute('data-hud');
   const meta = $('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', THEME_BG[name]);
   $$('#theme-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === name));
 }
@@ -160,7 +165,7 @@ $('#btn-add').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount();
+    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount(); renderInbox();
     toast('Added to inbox');
   } catch (e) { toast(e.message); }
 });
@@ -188,7 +193,7 @@ async function uploadDocument(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/document', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast('File added to inbox');
   } catch (e) { toast(e.message); }
@@ -226,7 +231,7 @@ async function uploadPhoto(hint) {
   if (handwriting && state.pendingStrokes) fd.append('strokes', JSON.stringify(state.pendingStrokes)); // re-edit sidecar
   try {
     const { items } = await api(url, { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast(handwriting ? 'Handwritten note added' : 'Photo added to inbox');
   } catch (e) { toast(e.message); }
@@ -340,7 +345,7 @@ async function uploadAudio(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/audio', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
     resetCapture();
     toast('Recording added to inbox');
   } catch (e) { toast(e.message); }
@@ -420,18 +425,24 @@ $('#btn-research').addEventListener('click', () => {
   });
 });
 
-// Find = instant local text search (no AI / no tokens). Hits server-side searchNotes.
+// Find = AI semantic search. Describe what you want ("that note about tax deadlines"), and the model
+// greps/reads the vault and returns the notes that match the *meaning*. (Plain text search now lives
+// in the Notes tab.) Hits POST /api/ai-search, which validates the returned paths against the vault.
 $('#btn-find').addEventListener('click', runFind);
 $('#find-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') runFind(); });
 async function runFind() {
   const q = $('#find-input').value.trim();
   const ul = $('#find-results');
-  if (!q) { ul.innerHTML = ''; toast('Type something to search'); return; }
-  ul.innerHTML = '<li class="empty small">Searching…</li>';
+  const btn = $('#btn-find');
+  if (!q) { ul.innerHTML = ''; toast('Describe what you’re looking for'); return; }
+  ul.innerHTML = '<li class="empty small">🔮 Searching your vault…</li>';
+  btn.disabled = true;
   try {
-    const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+    const { results } = await api('/api/ai-search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q }),
+    });
     ul.innerHTML = '';
-    if (!results.length) { ul.innerHTML = '<li class="empty small">No notes matched.</li>'; return; }
+    if (!results.length) { ul.innerHTML = '<li class="empty small">No relevant notes found.</li>'; return; }
     for (const n of results) {
       const li = document.createElement('li');
       li.className = 'list-item';
@@ -439,11 +450,12 @@ async function runFind() {
       li.innerHTML = `<span class="li-emoji">📄</span>
         <div class="li-main"><div class="li-title">${esc(n.name)}</div>
         <div class="li-sub">${esc(folder)}</div>
-        <div class="li-snip">${esc(n.snippet || '')}</div></div>`;
+        ${n.reason ? `<div class="li-snip">${esc(n.reason)}</div>` : ''}</div>`;
       li.addEventListener('click', () => openNote(n.path, n.name));
       ul.appendChild(li);
     }
   } catch (e) { ul.innerHTML = ''; toast(e.message); }
+  finally { btn.disabled = false; }
 }
 
 $('#btn-weekly').addEventListener('click', () =>
@@ -641,7 +653,40 @@ function renderTreeInto(node, depth, ul) {
     ul.appendChild(li);
   }
 }
-$('#notes-search').addEventListener('input', renderNotes);
+// Notes search is now full-text (same server search the old Discover "Find" used): empty → folder
+// tree, `#tag` → instant client-side tag filter, anything else → debounced server content search.
+let notesSearchTimer, notesSearchSeq = 0;
+function onNotesSearchInput() {
+  const q = $('#notes-search').value.trim();
+  clearTimeout(notesSearchTimer);
+  if (!q || q.startsWith('#')) { renderNotes(); return; }
+  notesSearchTimer = setTimeout(() => runNotesTextSearch(q), 220);
+}
+async function runNotesTextSearch(q) {
+  const ul = $('#notes-list');
+  const seq = ++notesSearchSeq;
+  ul.className = 'list';
+  $('#notes-empty').hidden = true;
+  ul.innerHTML = '<li class="empty small">Searching…</li>';
+  try {
+    const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+    if (seq !== notesSearchSeq) return;                       // a newer keystroke already fired
+    ul.innerHTML = '';
+    if (!results.length) { ul.innerHTML = '<li class="empty small">No notes matched.</li>'; return; }
+    for (const n of results) {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
+      li.innerHTML = `<span class="li-emoji">📄</span>
+        <div class="li-main"><div class="li-title">${esc(n.name)}</div>
+        <div class="li-sub">${esc(folder)}</div>
+        <div class="li-snip">${esc(n.snippet || '')}</div></div>`;
+      li.addEventListener('click', () => openNote(n.path, n.name));
+      ul.appendChild(li);
+    }
+  } catch (e) { if (seq === notesSearchSeq) { ul.innerHTML = ''; toast(e.message); } }
+}
+$('#notes-search').addEventListener('input', onNotesSearchInput);
 
 /* ---------- Drag-to-move (Obsidian-style, touch + mouse) ---------- */
 // Long-press a tree row to pick it up, drag onto a folder (or empty area = vault root) to move it.
@@ -861,6 +906,7 @@ function renderReaderTree() {
 }
 function renderReaderTreeInto(node, depth, ul) {
   const pad = depth * 14 + 10;
+  const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
   const dirs = [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const d of dirs) {
     const open = state.expandedFolders.has(d.path);
@@ -869,11 +915,18 @@ function renderReaderTreeInto(node, depth, ul) {
     li.style.paddingLeft = pad + 'px';
     li.innerHTML = `<span class="tw-caret">${open ? '▾' : '▸'}</span>
       <span class="li-emoji">${open ? '📂' : '📁'}</span>
-      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>`;
+      <div class="li-main"><div class="li-title">${esc(d.name)}</div></div>
+      <button class="tw-add" title="New note / subfolder here" aria-label="New here">＋</button>
+      <button class="tw-ren" title="Rename folder" aria-label="Rename folder">✎</button>
+      <button class="tw-del" title="Delete folder" aria-label="Delete folder">✕</button>`;
     li.addEventListener('click', () => {
       if (open) state.expandedFolders.delete(d.path); else state.expandedFolders.add(d.path);
       renderReaderTree();
     });
+    li.querySelector('.tw-add').addEventListener('click', stop(() => createInFolder(d.path)));
+    li.querySelector('.tw-ren').addEventListener('click', stop(() => renameFolderFlow(d.path, d.name)));
+    const nested = state.notes.filter((n) => String(n.path).startsWith(d.path + '/')).length;
+    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteFolderPath(d.path, nested)));
     ul.appendChild(li);
     if (open) renderReaderTreeInto(d, depth + 1, ul);
   }
@@ -884,13 +937,47 @@ function renderReaderTreeInto(node, depth, ul) {
     li.style.paddingLeft = pad + 'px';
     li.innerHTML = `<span class="tw-caret"></span>
       <span class="li-emoji">📄</span>
-      <div class="li-main"><div class="li-title">${esc(n.name)}</div></div>`;
+      <div class="li-main"><div class="li-title">${esc(n.name)}</div></div>
+      <button class="tw-ren" title="Rename note" aria-label="Rename note">✎</button>
+      <button class="tw-del" title="Delete note" aria-label="Delete note">✕</button>`;
     li.addEventListener('click', () => {
       openNote(n.path, n.name);
       if (!window.matchMedia('(min-width: 760px)').matches) $('#reader').classList.remove('sidebar-open');
     });
+    li.querySelector('.tw-ren').addEventListener('click', stop(() => renameNoteFlow(n.path, n.name)));
+    li.querySelector('.tw-del').addEventListener('click', stop(() => deleteNotePath(n.path, n.name)));
     ul.appendChild(li);
   }
+}
+
+// Rename flows (used by the reader sidebar tree). Notes reuse /api/note/rename (renames file + H1);
+// folders use the new /api/folder/rename. Both refresh the tree and keep the open note in sync.
+async function renameNoteFlow(path, curName) {
+  const t = prompt('Rename note', curName);
+  if (t == null) return;
+  const v = t.trim();
+  if (!v || v === curName) return;
+  try {
+    const { path: np } = await api('/api/note/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, title: v }),
+    });
+    if (state.readerPath === path) { state.readerPath = np; $('#reader-title').textContent = v; }
+    state.notes = []; await loadNotes(true); renderReaderTree();
+    toast('Renamed');
+  } catch (e) { toast(e.message); }
+}
+async function renameFolderFlow(path, curName) {
+  const t = prompt('Rename folder', curName);
+  if (t == null) return;
+  const v = t.trim();
+  if (!v || v === curName) return;
+  try {
+    await api('/api/folder/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, name: v }),
+    });
+    state.notes = []; state.folders = null; await loadNotes(true); renderReaderTree();
+    toast('Folder renamed');
+  } catch (e) { toast(e.message); }
 }
 // Apply the sidebar's open/collapsed state and (re)fill its tree. On first open we honour the saved
 // desktop-collapse preference and start the mobile drawer closed; switching notes just refreshes it.
@@ -915,6 +1002,54 @@ function toggleReaderSidebar() {
 }
 $('#reader-sidebar-toggle').addEventListener('click', toggleReaderSidebar);
 $('#reader-sidebar-collapse').addEventListener('click', toggleReaderSidebar);
+
+// New note / folder straight from the reader sidebar.
+$('#reader-new-note').addEventListener('click', () => openEditor());
+$('#reader-new-folder').addEventListener('click', async () => {
+  const name = prompt('New folder — use / for subfolders, e.g. University/UAS');
+  if (!name || !name.trim()) return;
+  try {
+    const { path } = await api('/api/folders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name.trim() }),
+    });
+    let acc = '';
+    for (const p of path.split('/')) { acc = acc ? acc + '/' + p : p; state.expandedFolders.add(acc); }
+    state.notes = []; state.folders = null; await loadNotes(true); renderReaderTree();
+    toast('Folder created');
+  } catch (e) { toast(e.message); }
+});
+
+// Drag the sidebar's right edge to resize; width persists (desktop only). Sets a CSS var the
+// sidebar reads, so reader-main (flex:1) reflows to fill the rest.
+(function setupReaderSidebarResize() {
+  const handle = $('#reader-sidebar-resize'), sidebar = $('#reader-sidebar');
+  if (!handle) return;
+  const saved = localStorage.getItem('lifeos.readerSidebarW');
+  if (saved) document.documentElement.style.setProperty('--reader-sidebar-w', saved + 'px');
+  let startX = 0, startW = 0, dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    let w = startW + (e.clientX - startX);
+    w = Math.max(180, Math.min(w, 560, window.innerWidth - 300));
+    document.documentElement.style.setProperty('--reader-sidebar-w', Math.round(w) + 'px');
+  };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; sidebar.classList.remove('resizing');
+    const w = document.documentElement.style.getPropertyValue('--reader-sidebar-w').replace('px', '').trim();
+    if (w) localStorage.setItem('lifeos.readerSidebarW', Math.round(parseFloat(w)));
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', end);
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    if (!window.matchMedia('(min-width: 760px)').matches) return;
+    dragging = true; startX = e.clientX; startW = sidebar.getBoundingClientRect().width;
+    sidebar.classList.add('resizing');
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', end);
+    e.preventDefault();
+  });
+})();
 // Mobile: swipe right from the left edge opens the file drawer; swipe left closes it.
 (function setupReaderSwipe() {
   const reader = $('#reader');
