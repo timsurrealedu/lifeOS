@@ -32,6 +32,12 @@
         <span class="brand-mark">◇</span>
         <span class="brand-name">life<b>OS</b></span>
       </div>
+      <!-- CP2077 status rail (cyberpunk theme only) -->
+      <div class="cp-status" aria-hidden="true">
+        <span class="cp-stat"><i>LVL</i><b id="cp-level">12</b></span>
+        <span class="cp-stat cred"><i>◆ STREET CRED</i></span>
+        <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
+      </div>
       <div class="topbar-actions">
         <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">🎨</button>
         <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
@@ -467,6 +473,40 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <!-- ============ Cyberpunk 2077 HUD frame overlay (theme-only, pointer-events:none) ============ -->
+  <div id="cp-hud" aria-hidden="true">
+    <span class="cp-corner tl"></span><span class="cp-corner tr"></span>
+    <span class="cp-corner bl"></span><span class="cp-corner br"></span>
+    <div class="cp-rail cp-rail-l">
+      <span class="cp-barcode"></span>
+      <span class="cp-conn">CONNECTION 541.84.45</span>
+    </div>
+    <div class="cp-rail cp-rail-r">
+      <span class="cp-conn">NETWATCH // 985.20.54</span>
+      <span class="cp-barcode"></span>
+    </div>
+    <div class="cp-hints">
+      <span class="cp-hint"><b>TAB</b> NAVIGATE</span>
+      <span class="cp-hint"><b>ENTER</b> SELECT</span>
+      <span class="cp-hint"><b>ESC</b> BACK</span>
+      <span class="cp-hint jack">● JACKED IN</span>
+      <span class="cp-samurai">SAMURAI</span>
+    </div>
+  </div>
+
+  <script>
+    // Live HUD clock (harmless in any theme; only shown under cyberpunk).
+    (function () {
+      function tick() {
+        var el = document.getElementById('cp-clock');
+        if (!el) return;
+        var d = new Date();
+        el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+      tick(); setInterval(tick, 15000);
+    })();
+  </script>
 
   <script defer src="/vendor/katex/katex.min.js"></script>
   <script src="/js/graph.js"></script>

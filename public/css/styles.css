@@ -304,10 +304,126 @@
 :root[data-theme="cyberpunk"] .graph-wrap { border-color: var(--cyan); box-shadow: inset 0 0 40px -20px var(--cyan); }
 :root[data-theme="cyberpunk"] .graph-label { border-radius: 0; border-color: var(--cyan); font-family: var(--mono); text-transform: uppercase; }
 
-/* Respect reduced motion: kill the scanline sweep, shine and flicker */
+/* ============================================================================
+   CYBERPUNK LAYOUT — cramped Night City HUD: top tab rail, status bar,
+   viewport frame, side rails, bottom hint bar, and a global density pass.
+============================================================================ */
+
+/* --- Move the nav to the TOP as a segmented HUD tab strip (order reflow, no JS) --- */
+:root[data-theme="cyberpunk"] #app { max-width: 100%; }
+:root[data-theme="cyberpunk"] .topbar { order: 0; padding: 8px 14px 7px; }
+:root[data-theme="cyberpunk"] .tabbar  { order: 1; }
+:root[data-theme="cyberpunk"] #views   { order: 2; }
+
+:root[data-theme="cyberpunk"] .tabbar {
+  height: 42px; padding-bottom: 0;
+  border-top: none; border-bottom: 1px solid var(--cyan);
+  box-shadow: 0 6px 22px -14px var(--cyan);
+  background: linear-gradient(180deg, rgba(6,14,20,.96), rgba(3,9,13,.9));
+}
+:root[data-theme="cyberpunk"] .tab {
+  flex-direction: row; gap: 7px; font-size: 10px; height: 100%;
+  border-right: 1px solid var(--border-soft);
+  clip-path: none;
+}
+:root[data-theme="cyberpunk"] .tab:last-child { border-right: none; }
+:root[data-theme="cyberpunk"] .tab .ti { font-size: 13px; }
+:root[data-theme="cyberpunk"] .tab.active { background: var(--accent); color: var(--accent-ink); text-shadow: none; }
+:root[data-theme="cyberpunk"] .tab.active::before { display: none; }   /* drop underline, use the filled slab */
+:root[data-theme="cyberpunk"] .tab.active .ti { color: var(--accent-ink); }
+:root[data-theme="cyberpunk"] .tab .dot { top: 6px; margin-right: -22px; }
+
+/* --- Status rail inside the topbar (LVL · STREET CRED · clock) --- */
+:root[data-theme="cyberpunk"] .topbar::after { content: none; }   /* replaced by real readouts */
+.cp-status { display: none; }
+:root[data-theme="cyberpunk"] .cp-status {
+  display: flex; align-items: center; gap: 14px; margin-left: auto; margin-right: 12px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--muted);
+}
+:root[data-theme="cyberpunk"] .cp-stat { display: inline-flex; align-items: center; gap: 6px; }
+:root[data-theme="cyberpunk"] .cp-stat i { color: var(--faint); font-style: normal; }
+:root[data-theme="cyberpunk"] .cp-stat b { color: var(--accent); text-shadow: 0 0 8px var(--accent); }
+:root[data-theme="cyberpunk"] .cp-stat.cred i { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+@media (max-width: 640px) { :root[data-theme="cyberpunk"] .cp-status .cred { display: none; } }
+@media (max-width: 460px) { :root[data-theme="cyberpunk"] .cp-status { gap: 9px; font-size: 10px; margin-right: 6px; } }
+
+/* --- Global density pass: tighter, edge-to-edge, cramped --- */
+:root[data-theme="cyberpunk"] #views { padding: 10px 12px 76px; }
+:root[data-theme="cyberpunk"] .hero { padding: 10px 2px 8px; }
+:root[data-theme="cyberpunk"] .hero-title { font-size: clamp(21px, 5.4vw, 26px); margin-bottom: 3px; }
+:root[data-theme="cyberpunk"] .view-head { margin: 4px 2px 10px; }
+:root[data-theme="cyberpunk"] .view-head.sub { margin: 16px 2px 8px; }
+:root[data-theme="cyberpunk"] .card { padding: 11px; }
+:root[data-theme="cyberpunk"] .capture-card { gap: 9px; }
+:root[data-theme="cyberpunk"] #capture-text { min-height: 74px; font-size: 15px; }
+:root[data-theme="cyberpunk"] .list { gap: 5px; }
+:root[data-theme="cyberpunk"] .list-item { padding: 9px 11px; }
+:root[data-theme="cyberpunk"] .li-title { font-size: 14px; }
+:root[data-theme="cyberpunk"] .task { padding: 9px 11px; margin-bottom: 5px; }
+:root[data-theme="cyberpunk"] .tool-card { margin-bottom: 10px; }
+:root[data-theme="cyberpunk"] .process-card { margin-top: 12px; padding: 12px 14px; }
+:root[data-theme="cyberpunk"] .tree-row { padding: 7px 10px; }
+:root[data-theme="cyberpunk"] .chip { padding: 7px 11px; }
+:root[data-theme="cyberpunk"] .search { padding: 10px 12px; margin-bottom: 10px; }
+/* mono micro-label prefixed on each card/list panel — the "connection id" motif */
+:root[data-theme="cyberpunk"] .list-item .li-sub::before { content: "◆ "; color: var(--cyan); }
+
+/* --- Viewport HUD frame overlay (decorative, non-blocking) --- */
+#cp-hud { display: none; }
+:root[data-theme="cyberpunk"] #cp-hud { display: block; position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-corner { position: absolute; width: 26px; height: 26px; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-corner.tl { top: 6px; left: 6px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+:root[data-theme="cyberpunk"] #cp-hud .cp-corner.tr { top: 6px; right: 6px; border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+:root[data-theme="cyberpunk"] #cp-hud .cp-corner.bl { bottom: 6px; left: 6px; border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+:root[data-theme="cyberpunk"] #cp-hud .cp-corner.br { bottom: 6px; right: 6px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+/* side rails (barcode + rotated connection id) — hidden on narrow phones */
+:root[data-theme="cyberpunk"] #cp-hud .cp-rail {
+  position: absolute; top: 84px; bottom: 84px; width: 22px; display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between; gap: 12px;
+}
+:root[data-theme="cyberpunk"] #cp-hud .cp-rail-l { left: 8px; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-rail-r { right: 8px; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-barcode {
+  flex: 1; width: 6px;
+  background: repeating-linear-gradient(180deg, var(--cyan) 0 2px, transparent 2px 4px, var(--cyan) 4px 5px, transparent 5px 10px);
+  opacity: .5;
+}
+:root[data-theme="cyberpunk"] #cp-hud .cp-conn {
+  writing-mode: vertical-rl; font-family: var(--mono); font-size: 9px; letter-spacing: .22em;
+  color: var(--faint); white-space: nowrap;
+}
+@media (max-width: 900px) { :root[data-theme="cyberpunk"] #cp-hud .cp-rail { display: none; } }
+
+/* bottom hint bar (button prompts + SAMURAI wordmark) */
+:root[data-theme="cyberpunk"] #cp-hud .cp-hints {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: 16px;
+  padding: 7px 18px calc(env(safe-area-inset-bottom) + 7px);
+  background: linear-gradient(0deg, rgba(3,8,12,.96), rgba(3,8,12,0));
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--muted);
+}
+:root[data-theme="cyberpunk"] #cp-hud .cp-hint { display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-hint b {
+  color: var(--cyan); border: 1px solid var(--border); padding: 1px 6px; font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+}
+:root[data-theme="cyberpunk"] #cp-hud .cp-hint.jack { color: var(--sage); text-shadow: 0 0 8px var(--sage); animation: cpPulse 1.8s ease-in-out infinite; }
+:root[data-theme="cyberpunk"] #cp-hud .cp-samurai {
+  margin-left: auto; font-family: var(--serif); font-weight: 700; font-size: 13px; letter-spacing: .12em;
+  color: var(--accent); text-shadow: 0 0 10px var(--accent); transform: skewX(-8deg);
+}
+@keyframes cpPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+@media (max-width: 560px) {
+  :root[data-theme="cyberpunk"] #cp-hud .cp-hints { gap: 10px; font-size: 9px; padding-left: 12px; padding-right: 12px; }
+  :root[data-theme="cyberpunk"] #cp-hud .cp-hint:nth-child(3) { display: none; }
+}
+
+/* Respect reduced motion: kill the scanline sweep, shine, flicker, jack-pulse */
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme="cyberpunk"] body::after,
-  :root[data-theme="cyberpunk"] .brand-name b { animation: none; }
+  :root[data-theme="cyberpunk"] .brand-name b,
+  :root[data-theme="cyberpunk"] #cp-hud .cp-hint.jack { animation: none; }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
