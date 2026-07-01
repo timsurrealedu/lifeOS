@@ -20,7 +20,9 @@
     // Apply the saved theme before first paint so there's no flash of the default.
     try {
       var t = localStorage.getItem('lifeos.theme') || 'dark';
+      if (t === 'cyberpunk') t = 'silverhand';                 // migrate the old single cyberpunk value
       if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
+      if (t === 'silverhand' || t === 'arasaka') document.documentElement.setAttribute('data-hud', 'cp');
     } catch (e) {}
   </script>
 </head>
@@ -32,10 +34,9 @@
         <span class="brand-mark">◇</span>
         <span class="brand-name">life<b>OS</b></span>
       </div>
-      <!-- CP2077 status rail (cyberpunk theme only) -->
+      <!-- CP2077 status rail (cyberpunk themes only): current date + live clock -->
       <div class="cp-status" aria-hidden="true">
-        <span class="cp-stat"><i>LVL</i><b id="cp-level">12</b></span>
-        <span class="cp-stat cred"><i>◆ STREET CRED</i></span>
+        <span class="cp-stat date"><b id="cp-date">—</b></span>
         <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
       </div>
       <div class="topbar-actions">
@@ -129,10 +130,10 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         </div>
 
         <div class="card tool-card">
-          <h3 class="tool-title">🔍 Find</h3>
-          <p class="tool-desc">Instant text search across your notes — no AI, no tokens. Type a word or phrase.</p>
-          <input id="find-input" class="tool-input" placeholder="graph theory" />
-          <button class="btn primary tool-btn" id="btn-find">Search vault →</button>
+          <h3 class="tool-title">🔮 AI Search</h3>
+          <p class="tool-desc">Describe what you're after in plain words — like searching photos by description. The AI reads your vault and surfaces notes that match the <em>meaning</em>, not just the words. <span class="hint" style="display:inline">Plain keyword search now lives in the <b>Notes</b> tab.</span></p>
+          <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
+          <button class="btn primary tool-btn" id="btn-find">Search by meaning →</button>
           <ul id="find-results" class="list find-results"></ul>
         </div>
 
@@ -162,7 +163,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             <button class="btn primary sm" id="btn-new-note" title="New note">✎ New</button>
           </div>
         </div>
-        <input id="notes-search" class="search" type="search" placeholder="Search notes or #tags…" />
+        <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
         <ul id="notes-list" class="list"></ul>
         <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
       </section>
@@ -267,7 +268,8 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
           <div class="seg seg-theme" id="theme-seg">
             <button class="seg-btn" type="button" data-theme-opt="dark">🌙 Dark</button>
             <button class="seg-btn" type="button" data-theme-opt="light">☀️ Light</button>
-            <button class="seg-btn" type="button" data-theme-opt="cyberpunk">⚡ Cyber</button>
+            <button class="seg-btn" type="button" data-theme-opt="silverhand">⚡ Silverhand</button>
+            <button class="seg-btn" type="button" data-theme-opt="arasaka">🔻 Arasaka</button>
           </div>
         </div>
         <label class="switch-row"><span>Live preview <small>(Obsidian-style — click a block to edit)</small></span><input type="checkbox" id="cfg-livepreview" /></label>
@@ -496,13 +498,15 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
   </div>
 
   <script>
-    // Live HUD clock (harmless in any theme; only shown under cyberpunk).
+    // Live HUD date + clock (harmless in any theme; only shown under the cyberpunk themes).
     (function () {
+      var MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
       function tick() {
-        var el = document.getElementById('cp-clock');
-        if (!el) return;
         var d = new Date();
-        el.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        var clk = document.getElementById('cp-clock');
+        if (clk) clk.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        var dt = document.getElementById('cp-date');
+        if (dt) dt.textContent = String(d.getDate()).padStart(2, '0') + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
       }
       tick(); setInterval(tick, 15000);
     })();

@@ -12,7 +12,7 @@ export const isRunning = () => writeRunning;
 // after Qwen and before DeepSeek). `noteaugment` is here
 // too — it now only *generates* the overview text (the server does the actual file insertion), so
 // it needs no edit tools and can fall back to Gemini/DeepSeek exactly like the chats.
-const READ_ONLY = new Set(['chat', 'notechat', 'noteaugment']);
+const READ_ONLY = new Set(['chat', 'notechat', 'noteaugment', 'search']);
 
 // Separator the augment run prints between its placement anchor and the markdown body. Kept rare so
 // it won't collide with note content; the server splits on it (see parseAugment + the augment route).
@@ -33,6 +33,8 @@ const ALLOWED = {
   // Augment ONE note: the model only *writes the overview text* (read-only — server inserts it),
   // so it may read related notes for context but never edits anything.
   noteaugment: ['Read', 'Glob', 'Grep'],
+  // Semantic "describe what you want" search — greps/reads to find relevant notes, prints a path list.
+  search: ['Read', 'Glob', 'Grep'],
   // Pull calendar events into a local cache file. Reads the calendar, writes only .cache/calendar.json.
   calsync: ['Read', 'Write', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Propose a folder tidy-up. Reads structure, writes only the proposal to .cache/autosort.json.
@@ -151,6 +153,22 @@ const PROMPTS = {
     + '`[{ "src": "<current relative path>", "dest": "<destination folder>", "reason": "<short why>" }]`. '
     + 'Use vault-relative paths with forward slashes. **Write ONLY that file; move nothing.** If nothing '
     + 'needs sorting, write `[]`. Finish with a one-line count of proposed moves.',
+
+  // Semantic vault search: the user describes what they're after in natural language (like searching
+  // Google Photos by description). The model greps/reads to find the notes that genuinely match the
+  // *intent* — synonyms, related concepts, not just literal keywords — then prints a plain path list.
+  search: (cfg, query) =>
+    `You are the semantic search engine for ${cfg.ownerName}'s Obsidian vault (read-only: Glob/Grep/Read). `
+    + `Today's date is in context (timezone ${cfg.timezone}).\n\n`
+    + `The user is looking for notes matching this description:\n"""\n${query}\n"""\n\n`
+    + 'Find the notes that best match the *meaning* of that description — think of synonyms, related '
+    + 'concepts and topics, not just literal word matches. Glob to see the vault, Grep for candidate '
+    + 'terms (try several phrasings), and Read a few promising notes to confirm relevance.\n\n'
+    + 'Then output ONLY the results, nothing else — no preamble, no summary, no code fences. One note '
+    + 'per line, most relevant first, at most 12 lines, in EXACTLY this format:\n'
+    + '`<vault-relative/path/to/note.md> :: <one short line on why it matches>`\n'
+    + 'Use real paths that exist in the vault (forward slashes). If nothing matches, output the single '
+    + 'line `NONE`.',
 
   calsync: (cfg) =>
     `You are the "Sync Google Calendar" job in ${cfg.ownerName}'s lifeOS, no interactive user. `
@@ -474,6 +492,17 @@ export const runChat = (messages, onEvent) =>
 
 export const runNoteChat = (notePath, noteContent, messages, onEvent) =>
   spawnClaude({ kind: 'notechat', prompt: PROMPTS.notechat(loadConfig(), notePath, noteContent, messages) }, onEvent);
+
+// Semantic search: streams nothing to the client — the route collects the model's plain-text path
+// list and hands it back on `done` as `raw` (so the route can validate the paths against the vault).
+export function runAiSearch(query, onEvent) {
+  let out = '';
+  return spawnClaude({ kind: 'search', prompt: PROMPTS.search(loadConfig(), query) }, (type, data) => {
+    if (type === 'log' && data.channel === 'out') out += data.line + '\n';
+    else if (type === 'done') onEvent('done', { ...data, raw: out });
+    else onEvent(type, data);                              // status (incl. fallback) + error
+  });
+}
 
 /** Split the augment run's raw output into a placement anchor + the markdown body to insert. */
 export function parseAugment(raw) {

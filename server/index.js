@@ -14,7 +14,7 @@ import {
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
-  runNoteChat, runNoteAugment, isRunning,
+  runNoteChat, runNoteAugment, runAiSearch, isRunning,
 } from './process.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -301,9 +301,38 @@ app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders(), systemF
 app.post('/api/folders', (req, res) => {
   try { ok(res, { path: createFolder(req.body && req.body.path) }); } catch (e) { fail(res, e); }
 });
-// Plain-text vault search (no AI) — powers the Find tool.
+// Plain-text vault search (no AI) — powers the Notes tab search box.
 app.get('/api/search', (req, res) => {
   try { ok(res, { results: searchNotes(String(req.query.q || '')) }); } catch (e) { fail(res, e); }
+});
+
+// AI semantic search — "describe what you're looking for" (Discover). Runs the read-only `search`
+// claude kind (Gemini/DeepSeek fallback), then validates the returned paths against the real vault so
+// a hallucinated path can't leak through. Returns ranked { path, name, reason }.
+app.post('/api/ai-search', (req, res) => {
+  const q = String(req.body && req.body.q || '').trim();
+  if (!q) return fail(res, new Error('describe what to search for'));
+  const notes = listNotes();
+  const byPath = new Map(notes.map((n) => [n.path.toLowerCase(), n]));
+  const byBase = new Map(notes.map((n) => [n.name.toLowerCase(), n])); // fallback: match on title
+  const kill = runAiSearch(q, (type, data) => {
+    if (type !== 'done') return;                             // (status/error events are internal here)
+    if (data.code !== 0 && !data.raw) return fail(res, new Error(`search run didn't finish (exit ${data.code}).`));
+    const results = [];
+    const seen = new Set();
+    for (const line of String(data.raw || '').split('\n')) {
+      const s = line.trim();
+      if (!s || /^none$/i.test(s)) continue;
+      const [rawPath, ...why] = s.split('::');
+      let p = rawPath.trim().replace(/\\/g, '/').replace(/[`"'\[\]]/g, '').replace(/^[-*\s]+/, '').replace(/^\.?\//, '');
+      let n = byPath.get(p.toLowerCase()) || byBase.get(p.replace(/\.md$/i, '').toLowerCase());
+      if (!n || seen.has(n.path)) continue;
+      seen.add(n.path);
+      results.push({ path: n.path, name: n.name, reason: why.join('::').trim() });
+    }
+    ok(res, { results });
+  });
+  res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 // Write your own note (in-app editor). Tagged #draft so process-inbox optimizes it later.
 app.post('/api/notes', (req, res) => {
