@@ -58,16 +58,13 @@
         <div class="card capture-card">
           <textarea id="capture-text" placeholder="Capture anything — sort it later." rows="3"></textarea>
           <div id="photo-preview" class="photo-preview hidden"></div>
-          <div id="audio-preview" class="photo-preview hidden"></div>
           <div id="doc-preview" class="photo-preview hidden"></div>
           <div class="capture-row">
-            <button class="chip" id="btn-camera" type="button">📸 <span>Camera</span></button>
-            <button class="chip" id="btn-record" type="button">🎙️ <span>Audio</span></button>
-            <button class="chip" id="btn-handwrite" type="button">✍️ <span>Ink</span></button>
-            <label class="chip" for="attach-input">📎 <span>Attach</span></label>
+            <button class="chip" id="btn-camera" type="button" title="Camera" aria-label="Camera">📸</button>
+            <button class="chip" id="btn-handwrite" type="button" title="Ink" aria-label="Ink">✍️</button>
+            <label class="chip" for="attach-input" title="Attach" aria-label="Attach">📎</label>
             <input id="attach-input" type="file" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
-            <div class="spacer"></div>
-            <button class="btn primary" id="btn-add">Add to inbox</button>
+            <button class="btn primary sm" id="btn-add" title="Send" aria-label="Send">➤</button>
           </div>
         </div>
 

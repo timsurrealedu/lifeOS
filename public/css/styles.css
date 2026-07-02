@@ -115,8 +115,6 @@
 
 /* ---- Topbar ---- */
 :root[data-theme="netrunner"] .topbar { border-bottom: 1px solid var(--border-soft); }
-:root[data-theme="netrunner"] .icon-btn[data-action="cycle-theme"] { font-size: 0; }
-:root[data-theme="netrunner"] .icon-btn[data-action="cycle-theme"]::before { content: "◐"; font-size: 17px; }
 :root[data-theme="netrunner"] .cp-status {
   display: flex; align-items: center; gap: 14px; margin-left: auto; margin-right: 12px;
   font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--muted);
@@ -124,7 +122,7 @@
 :root[data-theme="netrunner"] .cp-stat { display: inline-flex; align-items: center; gap: 6px; }
 :root[data-theme="netrunner"] .cp-stat i { color: var(--faint); font-style: normal; }
 :root[data-theme="netrunner"] .cp-stat b { color: var(--accent); }
-:root[data-theme="netrunner"] .cp-stat.date b { color: var(--cyan); }
+:root[data-theme="netrunner"] .cp-stat.date { display: none; }   /* date readout removed — clutter */
 @media (max-width: 520px) {
   :root[data-theme="netrunner"] .cp-status { gap: 9px; font-size: 10px; margin-right: 6px; }
   :root[data-theme="netrunner"] .cp-status .cp-stat:not(.date) { display: none; }
@@ -181,6 +179,22 @@
 :root[data-theme="netrunner"] .markdown .tag,
 :root[data-theme="netrunner"] .tag { color: var(--cyan); }
 :root[data-theme="netrunner"] .seg-btn { text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---- Sharp edges: kill the rounded pills/squares, chamfer the controls (CP motif) ---- */
+:root[data-theme="netrunner"] .icon-btn,
+:root[data-theme="netrunner"] .chip,
+:root[data-theme="netrunner"] .btn,
+:root[data-theme="netrunner"] .seg,
+:root[data-theme="netrunner"] .preview-del,
+:root[data-theme="netrunner"] .add-to-note,
+:root[data-theme="netrunner"] .prop-add,
+:root[data-theme="netrunner"] .prop-tag {
+  border-radius: 0;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+/* Segmented toggle: square container + square pills so the active fill stays flush */
+:root[data-theme="netrunner"] .seg-btn { border-radius: 0; }
+:root[data-theme="netrunner"] .badge { border-radius: 0; }
 
 /* ---- Inputs / search / textareas ---- */
 :root[data-theme="netrunner"] .search,
@@ -312,6 +326,9 @@ body {
 #capture-text::placeholder { color: var(--faint); }
 
 .capture-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Icon-only capture controls: square chips + a square Send, pushed to the right edge */
+.capture-row .chip { padding: 10px; font-size: 17px; line-height: 1; }
+#btn-add { margin-left: auto; padding: 10px 14px; font-size: 16px; line-height: 1; }
 .spacer { flex: 1; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 9px 13px;
@@ -709,7 +726,7 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* ---- Reader properties / tags header (Obsidian-style, collapsible) ---- */
 .props {
-  width: 100%; max-width: var(--max); margin: 10px auto 0; flex: none;
+  width: min(var(--max), calc(100% - 40px)); margin: 10px auto 0; flex: none;
   border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2);
   overflow: hidden;
 }

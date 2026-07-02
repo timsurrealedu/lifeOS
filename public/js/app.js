@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
@@ -113,10 +113,9 @@ textEl.addEventListener('input', autoGrow);
 
 // Preview helpers (shared by photo / camera / recording)
 function resetCapture() {
-  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingStrokes = null; state.pendingAudio = null; state.pendingDoc = null;
-  for (const id of ['#photo-preview', '#audio-preview', '#doc-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
+  state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingStrokes = null; state.pendingDoc = null;
+  for (const id of ['#photo-preview', '#doc-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
   $('#attach-input').value = '';
-  $('#btn-add').textContent = 'Add to inbox';
 }
 function discardBtn() {
   const b = document.createElement('button');
@@ -130,29 +129,6 @@ function showPhotoPreview(blob) {
   const img = document.createElement('img'); img.src = URL.createObjectURL(blob); img.alt = 'preview';
   pv.append(img, discardBtn());
   pv.classList.remove('hidden');
-  $('#btn-add').textContent = 'Add photo to inbox';
-}
-// MediaRecorder webm/ogg blobs carry no duration → the seekbar is dead until we
-// force the browser to read to the end once to compute it.
-function fixAudioDuration(audio) {
-  audio.addEventListener('loadedmetadata', () => {
-    if (audio.duration === Infinity || Number.isNaN(audio.duration)) {
-      audio.currentTime = 1e101;
-      audio.addEventListener('timeupdate', function h() { audio.removeEventListener('timeupdate', h); audio.currentTime = 0; });
-    }
-  });
-}
-function showAudioPreview(blob, dur) {
-  state.pendingAudio = { blob, type: blob.type, dur };
-  const pv = $('#audio-preview'); pv.innerHTML = '';
-  const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'metadata';
-  audio.src = URL.createObjectURL(blob);
-  fixAudioDuration(audio);
-  const meta = document.createElement('div'); meta.className = 'hint';
-  meta.textContent = `Recording · ${fmtElapsed(dur)} — add a hint above (optional)`;
-  pv.append(audio, meta, discardBtn());
-  pv.classList.remove('hidden');
-  $('#btn-add').textContent = 'Add recording to inbox';
 }
 const fmtBytes = (n) => n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 const docEmoji = (name) => /\.pdf$/i.test(name) ? '📕'
@@ -168,13 +144,11 @@ function showDocPreview(file) {
     <span class="doc-size">${fmtBytes(file.size)}</span>`;
   pv.append(chip, discardBtn());
   pv.classList.remove('hidden');
-  $('#btn-add').textContent = 'Add file to inbox';
 }
 
 $('#btn-add').addEventListener('click', async () => {
   const text = textEl.value.trim();
   if (state.pendingPhoto) { await uploadPhoto(text); return; }
-  if (state.pendingAudio) { await uploadAudio(text); return; }
   if (state.pendingDoc) { await uploadDocument(text); return; }
   if (!text) { toast('Nothing to add'); return; }
   try {
@@ -291,57 +265,9 @@ $('#btn-handwrite').addEventListener('click', () => {
     showPhotoPreview(blob);
     state.pendingPhotoKind = 'handwriting';
     state.pendingStrokes = strokes;           // saved alongside the PNG so the page stays re-editable
-    $('#btn-add').textContent = 'Add note to inbox';
     toast('Handwriting ready — add a hint (optional)');
   });
 });
-
-// Live recording (MediaRecorder → audio file for later transcription).
-// ponytail: dropped the Web Speech dictation button — the record-and-transcribe path covers
-// "talk to capture" everywhere (Speech API was Chrome/online-only and duplicated Audio).
-const recBtn = $('#btn-record');
-let mediaRec = null, recChunks = [], recTimer = null, recStart = 0;
-const recMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']
-  .find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
-const fmtElapsed = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-
-recBtn.addEventListener('click', async () => {
-  if (!window.MediaRecorder) { toast('Recording not supported here'); return; }
-  if (mediaRec && mediaRec.state === 'recording') { mediaRec.stop(); return; }
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { toast('Mic permission needed'); return; }
-  const mime = recMime();
-  recChunks = [];
-  mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  mediaRec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
-  mediaRec.onstop = () => {
-    clearInterval(recTimer); recTimer = null;
-    recBtn.classList.remove('live'); recBtn.innerHTML = '🔴 <span>Record</span>';
-    stream.getTracks().forEach((t) => t.stop());
-    const type = mediaRec.mimeType || mime || 'audio/webm';
-    showAudioPreview(new Blob(recChunks, { type }), Date.now() - recStart);
-    toast('Recording ready');
-  };
-  mediaRec.start();
-  recStart = Date.now();
-  recBtn.classList.add('live');
-  recTimer = setInterval(() => { recBtn.innerHTML = `⏹ <span>${fmtElapsed(Date.now() - recStart)}</span>`; }, 500);
-});
-
-async function uploadAudio(hint) {
-  const { blob, type } = state.pendingAudio;
-  const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
-  const fd = new FormData();
-  fd.append('audio', blob, `recording.${ext}`);
-  if (hint) fd.append('hint', hint);
-  try {
-    const { items } = await api('/api/capture/audio', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
-    resetCapture();
-    toast('Recording added to inbox');
-  } catch (e) { toast(e.message); }
-}
 
 /* ---------- Claude runs (SSE) ---------- */
 $('#btn-process').addEventListener('click', () => startProcess());
@@ -1040,7 +966,8 @@ $('#reader-new-folder').addEventListener('click', async () => {
     e.preventDefault();
   });
 })();
-// Mobile: swipe right from the left edge opens the file drawer; swipe left closes it.
+// Mobile: swipe right (from a generous left-edge zone) opens the file drawer; swipe left closes it.
+// Tapping the note area while the drawer is open also closes it (tap-to-dismiss).
 (function setupReaderSwipe() {
   const reader = $('#reader');
   let sx = 0, sy = 0, tracking = false;
@@ -1051,11 +978,20 @@ $('#reader-new-folder').addEventListener('click', async () => {
   reader.addEventListener('touchend', (e) => {
     if (!tracking) return; tracking = false;
     const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.3) return;   // need a clear horizontal swipe
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.2) return;   // clear-ish horizontal swipe
     const open = reader.classList.contains('sidebar-open');
-    if (dx > 0 && !open && sx < 64) reader.classList.add('sidebar-open'); // from the left edge → open
-    else if (dx < 0 && open) reader.classList.remove('sidebar-open');     // → close
+    if (dx > 0 && !open && sx < 120) reader.classList.add('sidebar-open'); // wide left-edge zone → open
+    else if (dx < 0 && open) reader.classList.remove('sidebar-open');      // → close
   }, { passive: true });
+  // Tap the exposed note (outside the drawer) to slide back to it. Capture phase + stop so the
+  // dismissing tap doesn't also fire a wikilink/note click underneath.
+  reader.addEventListener('click', (e) => {
+    if (window.matchMedia('(min-width: 760px)').matches) return;
+    if (!reader.classList.contains('sidebar-open')) return;
+    if (e.target.closest('.reader-sidebar')) return;                       // taps inside the drawer act normally
+    reader.classList.remove('sidebar-open');
+    e.stopPropagation(); e.preventDefault();
+  }, true);
 })();
 
 /* ---- Reader properties / tags header (Obsidian-style) ---- */
