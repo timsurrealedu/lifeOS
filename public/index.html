@@ -19,7 +19,7 @@
   <script>
     // Apply the saved theme before first paint so there's no flash of the default.
     try {
-      var t = localStorage.getItem('lifeos.theme') || 'dark';
+      var t = localStorage.getItem('lifeos.theme') || 'light';
       if (t === 'cyberpunk' || t === 'silverhand' || t === 'arasaka') t = 'netrunner'; // migrate old values
       if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
@@ -33,13 +33,13 @@
         <span class="brand-mark">◇</span>
         <span class="brand-name">life<b>OS</b></span>
       </div>
-      <!-- CP2077 status rail (cyberpunk themes only): current date + live clock -->
+      <!-- CP2077 status rail (cyberpunk theme only): current date + live clock -->
       <div class="cp-status" aria-hidden="true">
         <span class="cp-stat date"><b id="cp-date">—</b></span>
         <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
       </div>
       <div class="topbar-actions">
-        <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">🎨</button>
+        <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">◐</button>
         <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
         <button class="icon-btn" data-action="open-settings" title="Settings" aria-label="Settings">⚙</button>
       </div>
@@ -47,37 +47,25 @@
 
     <!-- Views -->
     <main id="views">
-      <!-- CAPTURE -->
+      <!-- INBOX (capture) -->
       <section class="view" data-view="capture">
-        <div class="cap-toggle">
-          <div class="seg" id="capture-seg">
-            <button class="seg-btn active" data-cap="capture">✎ Capture</button>
-            <button class="seg-btn" data-cap="chat">◈ Chat</button>
-          </div>
-          <div class="spacer"></div>
-          <button class="chip" id="chat-clear" hidden>Clear chat</button>
+        <div class="view-head vhead">
+          <div class="crumb-row"><span class="crumb" id="cap-crumb">—</span></div>
+          <div class="title-row"><h2>Inbox</h2></div>
         </div>
 
         <div id="capture-main">
-        <div class="hero">
-          <h1 class="hero-title">What's on your mind?</h1>
-          <p class="hero-sub">Dump it. lifeOS sorts it later.</p>
-        </div>
         <div class="card capture-card">
-          <textarea id="capture-text" placeholder="Type or dictate… one thing per line.
-e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" rows="4"></textarea>
+          <textarea id="capture-text" placeholder="Capture anything — sort it later." rows="3"></textarea>
           <div id="photo-preview" class="photo-preview hidden"></div>
           <div id="audio-preview" class="photo-preview hidden"></div>
           <div id="doc-preview" class="photo-preview hidden"></div>
           <div class="capture-row">
-            <button class="chip" id="btn-voice" type="button">🎤 <span>Voice</span></button>
-            <button class="chip" id="btn-record" type="button">🔴 <span>Record</span></button>
             <button class="chip" id="btn-camera" type="button">📸 <span>Camera</span></button>
-            <button class="chip" id="btn-handwrite" type="button">✍️ <span>Write</span></button>
-            <label class="chip" for="photo-input">🖼️ <span>Photo</span></label>
-            <input id="photo-input" type="file" accept="image/*" hidden />
-            <label class="chip" for="doc-input">📎 <span>File</span></label>
-            <input id="doc-input" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+            <button class="chip" id="btn-record" type="button">🎙️ <span>Audio</span></button>
+            <button class="chip" id="btn-handwrite" type="button">✍️ <span>Ink</span></button>
+            <label class="chip" for="attach-input">📎 <span>Attach</span></label>
+            <input id="attach-input" type="file" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
             <div class="spacer"></div>
             <button class="btn primary" id="btn-add">Add to inbox</button>
           </div>
@@ -86,19 +74,26 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         <button class="process-card" id="btn-process">
           <div class="process-left">
             <div class="process-title">Process inbox</div>
-            <div class="process-sub"><span id="inbox-count">0</span> waiting · sort → notes, calendar, graph</div>
+            <div class="process-sub"><code>claude -p "process inbox"</code> · <span id="inbox-count">0</span> waiting</div>
           </div>
-          <div class="process-icon">▶</div>
+          <div class="process-icon">→</div>
         </button>
 
-        <!-- Inbox queue (lives on the same page as capture) -->
-        <div class="view-head sub"><h3>Inbox</h3><span class="badge" id="inbox-badge">0</span></div>
+        <!-- Inbox queue -->
+        <div class="view-head sub"><h3>Queue</h3><span class="badge" id="inbox-badge">0</span></div>
         <ul id="inbox-list" class="list"></ul>
         <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
         </div><!-- /capture-main -->
+      </section>
 
-        <!-- Chat (read-only advisor over the vault) — lives on the Capture page -->
-        <div id="capture-chat" class="chat-view" hidden>
+      <!-- CHAT (read-only advisor over the vault) -->
+      <section class="view" data-view="chat" hidden>
+        <div class="view-head vhead">
+          <div class="crumb-row"><span class="crumb">Advisor</span><span class="crumb-r"><span class="dot-live">●</span> Read-only</span></div>
+          <div class="title-row"><h2>Chat</h2><button class="chip" id="chat-clear">Clear</button></div>
+          <p class="vsub">reads your vault + calendar · never edits your notes</p>
+        </div>
+        <div id="capture-chat" class="chat-view">
           <div class="chat-thread" id="chat-thread">
             <div class="chat-intro" id="chat-intro">
               <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
@@ -111,7 +106,7 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
             </div>
           </div>
           <form class="chat-bar" id="chat-bar">
-            <input id="chat-input" class="chat-input" placeholder="Ask about your day, notes, tasks…" autocomplete="off" />
+            <input id="chat-input" class="chat-input" placeholder="Ask about your vault…" autocomplete="off" />
             <button class="btn primary" id="chat-send" type="submit">Send</button>
           </form>
         </div>
@@ -119,60 +114,96 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
 
       <!-- DISCOVER -->
       <section class="view" data-view="discover" hidden>
-        <div class="view-head"><h2>Discover</h2></div>
-
-        <div class="card tool-card">
-          <h3 class="tool-title">💡 Research an idea</h3>
-          <p class="tool-desc">Captures it + searches the web (taken? demand? feasible?) and writes a full note to <code>Ideas/</code>.</p>
-          <textarea id="research-input" class="tool-input" rows="2" placeholder="an app that reminds you to drink water"></textarea>
-          <button class="btn primary tool-btn" id="btn-research">Research idea →</button>
+        <div class="view-head vhead">
+          <div class="crumb-row"><span class="crumb"></span><span class="crumb-r">6 Tools</span></div>
+          <div class="title-row"><h2>Discover</h2></div>
+          <p class="vsub">tools that run over your vault</p>
         </div>
 
-        <div class="card tool-card">
-          <h3 class="tool-title">🔮 AI Search</h3>
-          <p class="tool-desc">Describe what you're after in plain words — like searching photos by description. The AI reads your vault and surfaces notes that match the <em>meaning</em>, not just the words. <span class="hint" style="display:inline">Plain keyword search now lives in the <b>Notes</b> tab.</span></p>
-          <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
-          <button class="btn primary tool-btn" id="btn-find">Search by meaning →</button>
+        <div class="card tool-hero">
+          <h3 class="tool-title">Research an idea</h3>
+          <p class="tool-desc">Web-searches demand, competition &amp; feasibility, then writes a full note to <code>Ideas/</code></p>
+          <div class="tool-hero-row">
+            <input id="research-input" class="tool-input" placeholder="flashcards from ink notes…" />
+            <button class="btn primary" id="btn-research">Run</button>
+          </div>
+        </div>
+
+        <div class="card tool-hero">
+          <h3 class="tool-title">Find</h3>
+          <p class="tool-desc">Search your vault by meaning — “that proof trick from week 3”.</p>
+          <div class="tool-hero-row">
+            <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
+            <button class="btn primary" id="btn-find">Search</button>
+          </div>
           <ul id="find-results" class="list find-results"></ul>
         </div>
 
-        <div class="view-head sub"><h3>Needs filing</h3><span class="badge" id="needs-badge">0</span></div>
-        <ul id="needs-list" class="list"></ul>
-        <div class="empty small" id="needs-empty" hidden>Nothing waiting to be filed. ✦</div>
-
-        <div class="view-head sub"><h3>Idea bank</h3><span class="badge" id="ideas-badge">0</span></div>
-        <ul id="ideas-list" class="list"></ul>
-        <div class="empty small" id="ideas-empty" hidden>No ideas yet — research one above.</div>
-
-        <div class="view-head sub"><h3>More</h3></div>
-        <div class="more-actions">
-          <button class="btn more-btn" id="btn-weekly">🗓 Weekly review</button>
-          <button class="btn more-btn" id="btn-home">🏠 Refresh Home note</button>
+        <div class="tool-grid">
+          <button class="tool-tile" id="btn-home" type="button">
+            <span class="tool-ico">↻</span>
+            <span class="tool-tname">Refresh Home note</span>
+            <span class="tool-tdesc">Rebuild your vault's Home dashboard from current state</span>
+          </button>
+          <button class="tool-tile" id="tile-ideas" type="button">
+            <span class="tool-ico">◆</span>
+            <span class="tool-tname">Idea bank</span>
+            <span class="tool-tdesc" id="ideas-sub">Ideas/ · 0 notes</span>
+          </button>
+          <button class="tool-tile" id="tile-needs" type="button">
+            <span class="tool-ico">▤</span>
+            <span class="tool-tname">Needs filing</span>
+            <span class="tool-tdesc" id="needs-sub">0 notes tagged #needs-filing await a home</span>
+          </button>
+          <button class="tool-tile" id="btn-weekly" type="button">
+            <span class="tool-ico">○</span>
+            <span class="tool-tname">Weekly review</span>
+            <span class="tool-tdesc">Summarize the week, surface loose ends</span>
+          </button>
         </div>
       </section>
 
-      <!-- NOTES -->
+      <!-- BROWSE (notes + graph, toggled) -->
       <section class="view" data-view="notes" hidden>
-        <div class="view-head notes-head">
-          <h2>Notes</h2>
-          <div class="spacer"></div>
-          <div class="notes-actions">
-            <button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button>
-            <button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button>
-            <button class="btn primary sm" id="btn-new-note" title="New note">✎ New</button>
+        <div class="view-head vhead">
+          <div class="crumb-row">
+            <span class="crumb" id="browse-crumb">Vault</span>
+            <span class="crumb-r">
+              <button class="crumb-btn" id="btn-new-note">+ New</button>
+              <span id="browse-nodes" hidden></span>
+            </span>
+          </div>
+          <div class="title-row">
+            <h2 id="browse-title">Browse</h2>
+            <div class="seg" id="browse-seg">
+              <button class="seg-btn active" data-browse="files">Files</button>
+              <button class="seg-btn" data-browse="graph">Graph</button>
+            </div>
           </div>
         </div>
-        <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
-        <ul id="notes-list" class="list"></ul>
-        <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
+
+        <div id="browse-files">
+          <div class="notes-actions"><button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button><button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button></div>
+          <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
+          <ul id="notes-list" class="list"></ul>
+          <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
+        </div>
+
+        <div id="browse-graph" hidden>
+          <div class="graph-wrap">
+            <canvas id="graph-canvas"></canvas>
+            <div class="graph-label" id="graph-label" hidden></div>
+          </div>
+          <span class="muted-sm" id="graph-stats"></span>
+        </div>
       </section>
 
       <!-- PLAN (tasks list + calendar) -->
       <section class="view" data-view="plan" hidden>
-        <div class="view-head">
-          <h2>Plan</h2>
-          <div class="spacer"></div>
-          <div class="seg" id="plan-seg">
+        <div class="view-head vhead">
+          <div class="crumb-row"><span class="crumb" id="plan-crumb">0 open tasks</span></div>
+          <div class="title-row"><h2>Plan</h2></div>
+          <div class="seg seg-wide" id="plan-seg">
             <button class="seg-btn active" data-plan-view="list">List</button>
             <button class="seg-btn" data-plan-view="calendar">Calendar</button>
           </div>
@@ -202,23 +233,15 @@ e.g. exam friday 3pm  ·  email Sarah re: budget  ·  idea for landing page" row
         </div>
       </section>
 
-      <!-- GRAPH -->
-      <section class="view" data-view="graph" hidden>
-        <div class="view-head"><h2>Graph</h2><span class="muted-sm" id="graph-stats"></span></div>
-        <div class="graph-wrap">
-          <canvas id="graph-canvas"></canvas>
-          <div class="graph-label" id="graph-label" hidden></div>
-        </div>
-      </section>
     </main>
 
     <!-- Bottom nav -->
     <nav class="tabbar">
-      <button class="tab active" data-tab="capture"><span class="ti">✎</span><span>Capture</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
+      <button class="tab active" data-tab="inbox"><span class="ti">◍</span><span>Inbox</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
       <button class="tab" data-tab="discover"><span class="ti">◎</span><span>Discover</span></button>
-      <button class="tab" data-tab="notes"><span class="ti">▤</span><span>Notes</span></button>
+      <button class="tab" data-tab="browse"><span class="ti">▤</span><span>Browse</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
-      <button class="tab" data-tab="graph"><span class="ti">⌘</span><span>Graph</span></button>
+      <button class="tab" data-tab="chat"><span class="ti">◈</span><span>Chat</span></button>
     </nav>
   </div>
 
@@ -484,12 +507,15 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     // Live HUD date + clock (harmless in any theme; only shown under the netrunner theme).
     (function () {
       var MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      var DOW = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
       function tick() {
         var d = new Date();
         var clk = document.getElementById('cp-clock');
         if (clk) clk.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
         var dt = document.getElementById('cp-date');
         if (dt) dt.textContent = String(d.getDate()).padStart(2, '0') + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
+        var cc = document.getElementById('cap-crumb');
+        if (cc) cc.textContent = DOW[d.getDay()] + ' · ' + MON[d.getMonth()] + ' ' + d.getDate();
       }
       tick(); setInterval(tick, 15000);
     })();

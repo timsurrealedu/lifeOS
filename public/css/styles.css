@@ -14,6 +14,9 @@
   --accent: #e2914f;          /* terracotta / lamplight */
   --accent-ink: #2a1606;      /* ink on accent */
   --accent-soft: rgba(226,145,79,.14);
+  /* --ink = the "primary CTA / active pill / my-bubble" color. Terracotta in dark,
+     charcoal in light (matches the mockup's dark buttons). */
+  --ink: #e2914f; --ink-fg: #2a1606;
   --sage: #9bb273;            /* positive / done */
   --sage-ink: #16210a;
   --danger: #e2705c;
@@ -31,26 +34,29 @@
   color-scheme: dark;
 }
 
-/* ---- Light theme: warm paper ---- */
+/* ---- Light theme: warm editorial paper (the mockup look) ---- */
 :root[data-theme="light"] {
-  --bg: #f6f2ea;
-  --bg-tint: radial-gradient(1100px 520px at 78% -8%, #ffe6cf 0%, transparent 60%);
+  --bg: #f7f4ee;
+  --bg-tint: none;
   --surface: #ffffff;
-  --surface-2: #f2ece2;
-  --surface-3: #e8e0d2;
-  --border: #d8cdba;
-  --border-soft: #e7ddcc;
-  --text: #2a2017;
-  --muted: #6d6151;
-  --faint: #9c8e79;
-  --accent: #c2641f;
-  --accent-ink: #fff5ea;
-  --accent-soft: rgba(194,100,31,.13);
+  --surface-2: #f3efe7;
+  --surface-3: #ebe5da;
+  --border: #e4ddce;
+  --border-soft: #ece7dc;
+  --text: #26221c;
+  --muted: #7c7263;
+  --faint: #a89c88;
+  --accent: #9c5a3c;          /* muted terracotta / rust — the one accent, matches the logo */
+  --accent-ink: #fff6ee;
+  --accent-soft: rgba(156,90,60,.12);
+  /* Consistent scheme: brown + black + white. Primary CTAs / active pills use the same
+     brown as the logo (not a separate charcoal), so nothing reads as a stray third color. */
+  --ink: #9c5a3c; --ink-fg: #fff6ee;
   --sage: #5f8a36;
   --sage-ink: #f2f8e8;
   --danger: #c0432c;
-  --shadow: 0 16px 40px -22px rgba(90,66,40,.34);
-  --graph-bg: #efe7d8;
+  --shadow: 0 18px 44px -26px rgba(70,55,35,.30);
+  --graph-bg: #ffffff;
   color-scheme: light;
 }
 
@@ -73,6 +79,7 @@
   --accent: #f5e003;          /* signal yellow — primary */
   --accent-ink: #07090d;
   --accent-soft: rgba(245,224,3,.12);
+  --ink: #f5e003; --ink-fg: #07090d;
   --cyan: #00e5ff;             /* interactive / links / info */
   --cyan-soft: rgba(0,229,255,.12);
   --sage: #00e5ff;             /* "done" reads as cyan here */
@@ -320,7 +327,7 @@ body {
   cursor: pointer; transition: transform .1s, background .15s; background: var(--surface-3); color: var(--text);
 }
 .btn:active { transform: scale(.96); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border: none; box-shadow: 0 6px 16px -8px var(--accent); }
+.btn.primary { background: var(--ink); color: var(--ink-fg); border: none; box-shadow: 0 6px 16px -10px var(--ink); }
 .btn.sm { padding: 8px 14px; font-size: 14px; flex: none; }
 .btn:disabled { opacity: .5; pointer-events: none; }
 
@@ -355,19 +362,20 @@ a.doc-link:hover { border-color: var(--accent); }
 
 /* process card */
 .process-card {
-  width: 100%; margin-top: 16px; display: flex; align-items: center; gap: 14px;
-  padding: 16px 18px; border-radius: var(--radius); cursor: pointer; text-align: left;
-  border: 1px solid var(--accent-soft); background: var(--surface-2);
-  color: var(--text); transition: transform .12s, border-color .15s;
+  width: 100%; margin-top: 18px; display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px; border-radius: var(--radius); cursor: pointer; text-align: left;
+  border: none; background: var(--ink); color: var(--ink-fg);
+  transition: transform .12s, filter .15s;
 }
-.process-card:hover { border-color: var(--accent); }
+.process-card:hover { filter: brightness(1.08); }
 .process-card:active { transform: scale(.985); }
 .process-left { flex: 1; }
-.process-title { font-size: 17px; font-weight: 700; }
-.process-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.process-title { font-size: 16px; font-weight: 700; }
+.process-sub { color: var(--ink-fg); opacity: .62; font-size: 12.5px; margin-top: 3px; }
+.process-sub code { font-family: var(--mono); background: rgba(255,255,255,.1); padding: 1px 5px; border-radius: 4px; }
 .process-icon {
-  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 15px;
-  background: var(--accent); color: var(--accent-ink);
+  width: 34px; height: 34px; display: grid; place-items: center; font-size: 16px;
+  color: var(--ink-fg); opacity: .8;
 }
 
 /* ---- Discover tools ---- */
@@ -920,7 +928,7 @@ a.doc-link:hover { border-color: var(--accent); }
   border: none; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600;
   padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s;
 }
-.seg-btn.active { background: var(--accent); color: var(--accent-ink); }
+.seg-btn.active { background: var(--ink); color: var(--ink-fg); }
 
 /* ---- Calendar ---- */
 .cal-head { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; }
@@ -981,7 +989,7 @@ body.dragging-tree .tree-row { touch-action: none; }
 }
 .suggest:hover { border-color: var(--accent); background: var(--surface-2); }
 .bubble { max-width: 86%; padding: 11px 14px; border-radius: 16px; font-size: 15px; line-height: 1.5; word-wrap: break-word; }
-.bubble.me { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 5px; }
+.bubble.me { align-self: flex-end; background: var(--ink); color: var(--ink-fg); border-bottom-right-radius: 5px; }
 .bubble.ai { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border-soft); border-bottom-left-radius: 5px; }
 .bubble.ai :first-child { margin-top: 0; } .bubble.ai :last-child { margin-bottom: 0; }
 .typing { color: var(--faint); letter-spacing: 2px; }
@@ -991,6 +999,69 @@ body.dragging-tree .tree-row { touch-action: none; }
   color: var(--text); font: inherit; font-size: 15px; outline: none;
 }
 .chat-input:focus { border-color: var(--accent); }
+
+/* ============================================================================
+   REDESIGN — editorial two-line view headers, minimal chrome (mockup look).
+   Structural; each theme still supplies its own palette via the vars above.
+============================================================================ */
+/* Top bar: logo left, actions right */
+.topbar { padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: 6px; }
+
+/* Two-line view header: crumb row (mono caps) over serif title + optional control */
+.view-head.vhead { flex-direction: column; align-items: stretch; gap: 6px; margin: 2px 2px 18px; }
+.crumb-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.crumb, .crumb-r {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.crumb-r { color: var(--muted); text-align: right; display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.crumb-btn {
+  font: inherit; letter-spacing: .12em; text-transform: uppercase; color: var(--accent);
+  background: none; border: none; padding: 2px 0; cursor: pointer;
+}
+.crumb-btn:hover { filter: brightness(1.1); text-decoration: underline; }
+.dot-live { color: var(--sage); font-size: 9px; }
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.title-row h2 { font-family: var(--serif); font-size: clamp(30px, 8vw, 40px); margin: 0; letter-spacing: -.02em; line-height: 1.05; }
+.vsub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.seg-wide { display: flex; width: 100%; margin-top: 12px; }
+.seg-wide .seg-btn { flex: 1; text-align: center; padding: 8px 0; }
+
+/* Browse: small quiet folder actions above the search */
+#browse-files .notes-actions { display: flex; gap: 7px; margin: 0 0 10px; }
+#browse-graph .graph-wrap { height: calc(100dvh - var(--tab-h) - 210px); }
+
+/* ---- Discover: launcher grid (mockup) ---- */
+.tool-hero { margin-bottom: 14px; }
+.tool-hero .tool-title { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+.tool-hero .tool-desc { margin: 0 0 14px; }
+.tool-hero-row { display: flex; gap: 10px; align-items: stretch; }
+.tool-hero-row .tool-input { flex: 1; margin: 0; }
+.tool-hero-row .btn { flex: none; padding: 11px 22px; }
+.tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tool-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius);
+  padding: 16px; cursor: pointer; transition: border-color .15s, transform .1s;
+}
+.tool-tile:hover { border-color: var(--border); }
+.tool-tile:active { transform: scale(.98); }
+.tool-ico { color: var(--accent); font-size: 16px; line-height: 1; }
+.tool-tname { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+.tool-tdesc { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+/* Mobile: no hamburger — the file drawer is gesture-only (swipe from the left edge) */
+@media (max-width: 759px) { #reader-sidebar-toggle { display: none !important; } }
+
+/* Chat is now its own tab: fill the scroll area so the input bar pins above the tab bar */
+.view[data-view="chat"] { display: flex; flex-direction: column; height: 100%; }
+.view[data-view="chat"] .view-head { flex: none; }
+.view[data-view="chat"] #capture-chat { flex: 1 1 auto; min-height: 0; }
+
+/* Bottom nav: quiet labels, small dot marker over the active tab (mockup) */
+.tab.active::before { top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.tab.active { color: var(--text); }
+.tab .ti { font-size: 17px; }
 
 /* respect reduced-motion */
 @media (prefers-reduced-motion: reduce) {

@@ -18,9 +18,9 @@ const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'c
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
-const THEME_BG = { dark: '#15110d', light: '#f6f2ea', netrunner: '#07090d' };
+const THEME_BG = { dark: '#15110d', light: '#f7f4ee', netrunner: '#07090d' };
 const prefs = {
-  get theme() { return localStorage.getItem('lifeos.theme') || 'dark'; },
+  get theme() { return localStorage.getItem('lifeos.theme') || 'light'; },
   get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
   get lineno() { return localStorage.getItem('lifeos.lineno') === '1'; },
   get livepreview() { return localStorage.getItem('lifeos.livepreview') !== '0'; }, // default on
@@ -42,18 +42,36 @@ function cycleTheme() {
   toast('Theme: ' + next[0].toUpperCase() + next.slice(1));
 }
 
-/* ---------- Navigation ---------- */
-function show(view) {
+/* ---------- Navigation ----------
+   Bottom tabs map to internal views. "browse" is the merged Notes+Graph view.
+   New notes are created from Browse's "+ New" or the reader sidebar. */
+const TAB_VIEW = { inbox: 'capture', browse: 'notes', plan: 'plan', chat: 'chat' };
+function show(tab) {
+  const view = TAB_VIEW[tab] || tab;                         // 'discover' passes through
   state.view = view;
   $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
-  $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === view));
+  $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
   if (view === 'capture') renderInbox();
   if (view === 'discover') loadDiscover();
   if (view === 'notes') loadNotes();
   if (view === 'plan') loadPlan();
-  if (view === 'graph') loadGraph();
+  if (view === 'chat') renderChat();
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+
+// Browse: Files ⇄ Graph toggle (same page, like the mockup).
+$('#browse-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  const g = b.dataset.browse === 'graph';
+  $$('#browse-seg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+  $('#browse-files').hidden = g;
+  $('#browse-graph').hidden = !g;
+  $('#btn-new-note').hidden = g;
+  $('#browse-nodes').hidden = !g;
+  $('#browse-title').textContent = g ? 'Graph' : 'Browse';
+  $('#browse-crumb').textContent = g ? 'Vault · Graph' : ('Vault · ' + state.notes.length + ' notes');
+  if (g) loadGraph();
+});
 
 /* ---------- Sheets ---------- */
 function openSheet(id) {
@@ -75,6 +93,8 @@ document.addEventListener('click', (e) => {
   if (act === 'open-log') openLog();
   if (act === 'open-settings') openSettings();
   if (act === 'cycle-theme') cycleTheme();
+  if (act === 'open-discover') show('discover');
+  if (act === 'open-inbox') show('inbox');
 });
 
 // Theme picker inside Settings.
@@ -95,7 +115,7 @@ textEl.addEventListener('input', autoGrow);
 function resetCapture() {
   state.pendingPhoto = null; state.pendingPhotoKind = null; state.pendingStrokes = null; state.pendingAudio = null; state.pendingDoc = null;
   for (const id of ['#photo-preview', '#audio-preview', '#doc-preview']) { const p = $(id); p.classList.add('hidden'); p.innerHTML = ''; }
-  $('#photo-input').value = ''; $('#doc-input').value = '';
+  $('#attach-input').value = '';
   $('#btn-add').textContent = 'Add to inbox';
 }
 function discardBtn() {
@@ -167,19 +187,16 @@ $('#btn-add').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
-// Photo (pick existing file)
-$('#photo-input').addEventListener('change', (e) => {
+// Attach (one picker for existing files — images ride the photo path, docs the document path).
+$('#attach-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  showPhotoPreview(file);
-  toast('Photo ready — add a hint above (optional)');
-});
-
-// Document (PDF / PPTX / DOCX / … pick existing file)
-$('#doc-input').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > 25 * 1024 * 1024) { toast('File too large (max 25 MB)'); $('#doc-input').value = ''; return; }
+  if ((file.type || '').startsWith('image/')) {
+    showPhotoPreview(file);
+    toast('Photo ready — add a hint above (optional)');
+    return;
+  }
+  if (file.size > 25 * 1024 * 1024) { toast('File too large (max 25 MB)'); $('#attach-input').value = ''; return; }
   showDocPreview(file);
   toast('File ready — add a hint above (optional)');
 });
@@ -279,31 +296,9 @@ $('#btn-handwrite').addEventListener('click', () => {
   });
 });
 
-// Voice (Web Speech API)
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voiceBtn = $('#btn-voice');
-if (SR) {
-  let rec = null, listening = false;
-  voiceBtn.addEventListener('click', () => {
-    if (listening) { rec && rec.stop(); return; }
-    rec = new SR();
-    rec.continuous = true; rec.interimResults = true; rec.lang = navigator.language || 'en-US';
-    let base = textEl.value ? textEl.value + ' ' : '';
-    rec.onresult = (ev) => {
-      let txt = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
-      textEl.value = base + txt; autoGrow();
-    };
-    rec.onend = () => { listening = false; voiceBtn.classList.remove('live'); };
-    rec.onerror = () => { listening = false; voiceBtn.classList.remove('live'); toast('Mic error'); };
-    rec.start(); listening = true; voiceBtn.classList.add('live');
-  });
-} else {
-  voiceBtn.title = 'Use your keyboard mic';
-  voiceBtn.addEventListener('click', () => { textEl.focus(); toast('Tap your keyboard 🎤 to dictate'); });
-}
-
-// Live recording (MediaRecorder → audio file for later transcription)
+// Live recording (MediaRecorder → audio file for later transcription).
+// ponytail: dropped the Web Speech dictation button — the record-and-transcribe path covers
+// "talk to capture" everywhere (Speech API was Chrome/online-only and duplicated Audio).
 const recBtn = $('#btn-record');
 let mediaRec = null, recChunks = [], recTimer = null, recStart = 0;
 const recMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']
@@ -463,24 +458,21 @@ $('#btn-home').addEventListener('click', () =>
 async function loadDiscover() {
   try {
     const [needs, ideas] = await Promise.all([api('/api/needs-filing'), api('/api/ideas')]);
-    renderDiscoverList('#needs-list', '#needs-empty', '#needs-badge', needs.items, '🗂️');
-    renderDiscoverList('#ideas-list', '#ideas-empty', '#ideas-badge', ideas.items, '💡');
+    state.ideas = ideas.items || [];
+    state.needs = needs.items || [];
+    const ni = state.needs.length;
+    $('#needs-sub').textContent = `${ni} note${ni === 1 ? '' : 's'} tagged #needs-filing await a home`;
+    const latest = state.ideas[0];
+    $('#ideas-sub').textContent = `Ideas/ · ${state.ideas.length} note${state.ideas.length === 1 ? '' : 's'}`
+      + (latest ? ` · latest: “${latest.name}”` : '');
   } catch (e) { toast(e.message); }
 }
-function renderDiscoverList(listSel, emptySel, badgeSel, items, emo) {
-  const ul = $(listSel); ul.innerHTML = '';
-  $(badgeSel).textContent = items.length;
-  $(emptySel).hidden = items.length > 0;
-  for (const n of items) {
-    const li = document.createElement('li');
-    li.className = 'list-item';
-    const folder = n.path.includes('/') ? n.path.split('/').slice(0, -1).join(' / ') : '·';
-    li.innerHTML = `<span class="li-emoji">${emo}</span>
-      <div class="li-main"><div class="li-title">${esc(n.name)}</div><div class="li-sub">${esc(folder)} · ${timeAgo(n.mtime)}</div></div>`;
-    li.addEventListener('click', () => openNote(n.path, n.name));
-    ul.appendChild(li);
-  }
-}
+// Idea bank → open the latest idea. Needs filing → Browse filtered to the #needs-filing tag.
+$('#tile-ideas').addEventListener('click', () => {
+  const latest = (state.ideas || [])[0];
+  if (latest) openNote(latest.path, latest.name); else toast('No ideas yet — research one above');
+});
+$('#tile-needs').addEventListener('click', () => searchByTag('needs-filing'));
 
 /* ---------- Inbox ---------- */
 async function refreshInbox() {
@@ -549,6 +541,7 @@ async function deleteFolderPath(path, count) {
   } catch (e) { toast(e.message); }
 }
 function renderNotes() {
+  if (!$('#browse-graph') || $('#browse-graph').hidden) $('#browse-crumb').textContent = 'Vault · ' + state.notes.length + ' notes';
   const q = $('#notes-search').value.toLowerCase().trim();
   const ul = $('#notes-list'); ul.innerHTML = '';
   $('#notes-empty').hidden = state.notes.length > 0;
@@ -1195,7 +1188,7 @@ $('#props-toggle').addEventListener('click', () => {
 // Jump to the Notes view filtered to a tag.
 function searchByTag(tag) {
   closeReader();
-  show('notes');
+  show('browse');
   const s = $('#notes-search'); s.value = '#' + tag; renderNotes();
 }
 // Persist an edited note body, refresh the open reader + tag header.
@@ -1806,6 +1799,8 @@ function taskRow(t) {
 
 function renderPlanList(tasks) {
   const wrap = $('#plan-groups'); wrap.innerHTML = '';
+  const open = tasks.filter((t) => !t.done).length;
+  $('#plan-crumb').textContent = open + ' open task' + (open === 1 ? '' : 's');
   $('#plan-empty').hidden = tasks.length > 0;
   const today = todayStr();
   const groups = { Overdue: [], Today: [], Upcoming: [], Undated: [], Done: [] };
@@ -1905,20 +1900,7 @@ $('#cal-sync').addEventListener('click', () => {
   });
 });
 
-/* ---------- Chat (read-only advisor — lives on the Capture page) ---------- */
-// Capture ⇄ Chat toggle.
-$('#capture-seg').addEventListener('click', (e) => {
-  const b = e.target.closest('.seg-btn'); if (!b) return;
-  const chat = b.dataset.cap === 'chat';
-  $$('#capture-seg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
-  $('#capture-main').hidden = chat;
-  $('#capture-chat').hidden = !chat;
-  $('#chat-clear').hidden = !chat;
-  // In chat mode the capture section becomes a flex column that fills the scroll area, so the
-  // input bar pins just above the tab bar instead of overflowing behind it.
-  document.querySelector('.view[data-view="capture"]').classList.toggle('chat-mode', chat);
-  if (chat) { renderChat(); setTimeout(() => $('#chat-input').focus(), 50); }
-});
+/* ---------- Chat (read-only advisor — its own tab) ---------- */
 function renderChat() {
   const thread = $('#chat-thread');
   $('#chat-intro').hidden = state.chat.length > 0;
@@ -1982,6 +1964,7 @@ async function loadGraph() {
   try {
     const data = await api('/api/graph');
     $('#graph-stats').textContent = `${data.nodes.length} notes · ${data.links.length} links`;
+    $('#browse-nodes').textContent = data.nodes.length + ' nodes';
     state.graph = data;
     window.LifeGraph.render($('#graph-canvas'), data, {
       onSelect: (name, exists) => {
@@ -2281,6 +2264,6 @@ function bindImages(root) {
   applyTheme(prefs.theme);
   await refreshInbox();
   await loadNotes(true);
-  show('capture');
+  show('inbox');
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();
