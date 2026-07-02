@@ -17,8 +17,8 @@ const toast = (msg) => {
 const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingAudio: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
-const THEMES = ['dark', 'light', 'silverhand', 'arasaka'];
-const THEME_BG = { dark: '#15110d', light: '#f6f2ea', silverhand: '#04060a', arasaka: '#04060a' };
+const THEMES = ['dark', 'light', 'netrunner'];
+const THEME_BG = { dark: '#15110d', light: '#f6f2ea', netrunner: '#07090d' };
 const prefs = {
   get theme() { return localStorage.getItem('lifeos.theme') || 'dark'; },
   get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
@@ -27,15 +27,12 @@ const prefs = {
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
-  if (name === 'cyberpunk') name = 'silverhand';        // migrate the old single cyberpunk value
+  if (name === 'cyberpunk' || name === 'silverhand' || name === 'arasaka') name = 'netrunner'; // migrate old values
   if (!THEMES.includes(name)) name = 'dark';
   prefs.set('theme', name);
   const root = document.documentElement;
   if (name === 'dark') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', name);
-  // The two cyberpunk variants share the HUD skeleton via [data-hud="cp"]; colors come from data-theme.
-  if (name === 'silverhand' || name === 'arasaka') root.setAttribute('data-hud', 'cp');
-  else root.removeAttribute('data-hud');
   const meta = $('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', THEME_BG[name]);
   $$('#theme-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.themeOpt === name));
 }
