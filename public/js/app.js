@@ -14,7 +14,7 @@ const toast = (msg) => {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, systemFolders: [], view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+const state = { inbox: [], notes: [], folders: null, systemFolders: [], stagingFolders: [], showStaging: false, view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
@@ -84,6 +84,35 @@ function closeSheets() {
   $$('.sheet').forEach((s) => (s.hidden = true));
 }
 $('#backdrop').addEventListener('click', closeSheets);
+
+/* ---------- In-app confirm/prompt (replaces window.confirm()/prompt() with the app's own chrome) ---------- */
+const appDialog = $('#app-dialog');
+const appDialogMsg = $('#app-dialog-msg');
+const appDialogInput = $('#app-dialog-input');
+const appDialogOk = $('#app-dialog-ok');
+appDialog.addEventListener('click', (e) => { if (e.target === appDialog) appDialog.close(); }); // click backdrop → cancel
+$('#app-dialog-cancel').addEventListener('click', () => appDialog.close());
+function showAppDialog(message, { input = false, value = '', okLabel = 'OK', danger = false } = {}) {
+  return new Promise((resolve) => {
+    appDialog.returnValue = '';  // dialog.close() with no arg keeps the LAST returnValue otherwise —
+                                 // without this reset, Cancel/Esc after a prior "ok" would resolve true.
+    appDialogMsg.textContent = message;
+    appDialogInput.hidden = !input;
+    appDialogInput.value = value;
+    appDialogOk.textContent = okLabel;
+    appDialogOk.classList.toggle('danger', danger);
+    appDialog.addEventListener('close', function onClose() {
+      appDialog.removeEventListener('close', onClose);
+      const ok = appDialog.returnValue === 'ok';
+      resolve(input ? (ok ? appDialogInput.value.trim() : null) : ok);
+    }, { once: true });
+    appDialog.showModal();
+    if (input) { appDialogInput.focus(); appDialogInput.select(); }
+    else appDialogOk.focus();
+  });
+}
+const appConfirm = (message, opts) => showAppDialog(message, opts);
+const appPrompt = (message, value = '') => showAppDialog(message, { input: true, value });
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-action]');
   if (!a) return;
@@ -110,6 +139,17 @@ const textEl = $('#capture-text');
 // `input` covers typing/paste; programmatic changes (voice, clearing) call it directly.
 function autoGrow() { textEl.style.height = 'auto'; textEl.style.height = textEl.scrollHeight + 'px'; }
 textEl.addEventListener('input', autoGrow);
+
+// Draft persistence: an interrupted capture (app backgrounded/reloaded mid-type) shouldn't lose the
+// text — the whole point of the inbox is that capturing never costs a second thought.
+const DRAFT_KEY = 'lifeos.captureDraft';
+textEl.value = localStorage.getItem(DRAFT_KEY) || '';
+if (textEl.value) autoGrow();
+textEl.addEventListener('input', () => {
+  if (textEl.value) localStorage.setItem(DRAFT_KEY, textEl.value);
+  else localStorage.removeItem(DRAFT_KEY);
+});
+function clearCaptureText() { textEl.value = ''; autoGrow(); localStorage.removeItem(DRAFT_KEY); }
 
 // Preview helpers (shared by photo / camera / recording)
 function resetCapture() {
@@ -156,7 +196,7 @@ $('#btn-add').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    state.inbox = items; textEl.value = ''; autoGrow(); updateInboxCount(); renderInbox();
+    state.inbox = items; clearCaptureText(); updateInboxCount(); renderInbox();
     toast('Added to inbox');
   } catch (e) { toast(e.message); }
 });
@@ -181,7 +221,7 @@ async function uploadDocument(hint) {
   if (hint) fd.append('hint', hint);
   try {
     const { items } = await api('/api/capture/document', { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); clearCaptureText();
     resetCapture();
     toast('File added to inbox');
   } catch (e) { toast(e.message); }
@@ -219,7 +259,7 @@ async function uploadPhoto(hint) {
   if (handwriting && state.pendingStrokes) fd.append('strokes', JSON.stringify(state.pendingStrokes)); // re-edit sidecar
   try {
     const { items } = await api(url, { method: 'POST', body: fd });
-    state.inbox = items; updateInboxCount(); renderInbox(); textEl.value = ''; autoGrow();
+    state.inbox = items; updateInboxCount(); renderInbox(); clearCaptureText();
     resetCapture();
     toast(handwriting ? 'Handwritten note added' : 'Photo added to inbox');
   } catch (e) { toast(e.message); }
@@ -291,7 +331,7 @@ function startStream(url, { title = 'Working…', onDone } = {}) {
     const d = JSON.parse(e.data);
     if (d.state === 'starting') append(`▸ claude started · ${d.model || 'default'} · ${d.cwd}`);
     else if (d.state === 'skipped') { append('• ' + (d.message || 'Nothing to do')); $('#process-status').textContent = 'Nothing to do'; }
-    else if (d.state === 'fallback-retry' || d.state === 'fallback') append('⤷ ' + (d.message || `via ${d.provider || 'fallback'}${d.model ? ' · ' + d.model : ''}`), 'err');
+    else if (d.state === 'fallback-retry' || d.state === 'fallback') append('⤷ ' + (d.message || `via ${d.provider || 'fallback'}${d.model ? ' · ' + d.model : ''}`), 'info');
   });
   es.addEventListener('log', (e) => {
     const d = JSON.parse(e.data);
@@ -442,13 +482,13 @@ function renderInbox() {
 async function loadNotes(force) {
   if (state.notes.length && !force) { renderNotes(); return; }
   try {
-    const [{ notes }, { folders, systemFolders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
-    state.notes = notes; state.folders = folders; state.systemFolders = systemFolders || []; renderNotes();
+    const [{ notes }, { folders, systemFolders, stagingFolders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
+    state.notes = notes; state.folders = folders; state.systemFolders = systemFolders || []; state.stagingFolders = stagingFolders || []; renderNotes();
   } catch (e) { toast(e.message); }
 }
 
 async function deleteNotePath(path, name) {
-  if (!confirm(`Delete note "${name}"? This can't be undone.`)) return;
+  if (!(await appConfirm(`Delete note "${name}"? This can't be undone.`, { okLabel: 'Delete', danger: true }))) return;
   try {
     await api('/api/note?path=' + encodeURIComponent(path), { method: 'DELETE' });
     state.notes = []; await loadNotes(true);
@@ -458,7 +498,7 @@ async function deleteNotePath(path, name) {
 
 async function deleteFolderPath(path, count) {
   const warn = count > 0 ? `\n\nThis folder has ${count} note${count > 1 ? 's' : ''} — they'll be deleted too.` : '';
-  if (!confirm(`Delete folder "${path}"?${warn}\nThis can't be undone.`)) return;
+  if (!(await appConfirm(`Delete folder "${path}"?${warn}\nThis can't be undone.`, { okLabel: 'Delete', danger: true }))) return;
   try {
     await api('/api/folder?path=' + encodeURIComponent(path), { method: 'DELETE' });
     state.expandedFolders.delete(path);
@@ -501,7 +541,11 @@ function renderNotes() {
   renderTreeInto(buildTree(state.notes, state.folders || []), 0, ul);
 }
 
+// AI-only staging folders (Captures, Drafts) are hidden from the tree unless state.showStaging —
+// they're processing scratch space, not content the user browses (see the toggle in the Browse
+// actions row). Matched on the top-level segment only.
 function buildTree(notes, folders = []) {
+  const hidden = state.showStaging ? new Set() : new Set(state.stagingFolders);
   const root = { dirs: new Map(), files: [] };
   const ensureDir = (parts) => {
     let cur = root, acc = '';
@@ -514,10 +558,11 @@ function buildTree(notes, folders = []) {
     return cur;
   };
   // Seed every known folder first so empty folders (no notes yet) still appear.
-  for (const f of folders) ensureDir(f.split('/'));
+  for (const f of folders) { if (hidden.has(f.split('/')[0])) continue; ensureDir(f.split('/')); }
   for (const n of notes) {
     const parts = n.path.split('/');
     parts.pop(); // filename
+    if (hidden.has(parts[0])) continue;
     ensureDir(parts).files.push(n);
   }
   return root;
@@ -704,14 +749,22 @@ $('#notes-list').addEventListener('click', (e) => {
   if (suppressTreeClick) { suppressTreeClick = false; e.stopPropagation(); e.preventDefault(); }
 }, true);
 
+// Toggle visibility of AI-only staging folders (Captures, Drafts) in the Browse tree — see buildTree().
+$('#btn-toggle-staging').addEventListener('click', (e) => {
+  state.showStaging = !state.showStaging;
+  e.currentTarget.textContent = state.showStaging ? '🙉' : '🙈';
+  e.currentTarget.title = state.showStaging ? 'Hide AI staging folders' : 'Show AI staging folders (Captures, Drafts)';
+  renderNotes();
+});
+
 // Create a folder (or nested subfolders via `Parent/Child`). Shows up in the tree immediately.
 $('#btn-new-folder').addEventListener('click', async () => {
-  const name = prompt('New folder — use / for subfolders, e.g. University/Scientific Computing/UAS');
-  if (!name || !name.trim()) return;
+  const name = await appPrompt('New folder — use / for subfolders, e.g. University/Scientific Computing/UAS');
+  if (!name) return;
   try {
     const { path } = await api('/api/folders', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: name.trim() }),
+      body: JSON.stringify({ path: name }),
     });
     // Expand the whole new chain so the user sees where it landed.
     let acc = '';
@@ -725,9 +778,9 @@ $('#btn-new-folder').addEventListener('click', async () => {
 // Create a note or subfolder INSIDE a specific folder (the tree's ＋). A trailing / makes a subfolder;
 // otherwise it opens the editor pre-targeted to that folder so you can write the note straight away.
 async function createInFolder(folderPath) {
-  const name = prompt(`New in "${folderPath}" — type a note title.\nEnd with / to make a subfolder instead (e.g. "Week 1/").`);
-  if (!name || !name.trim()) return;
-  const v = name.trim();
+  const name = await appPrompt(`New in "${folderPath}" — type a note title.\nEnd with / to make a subfolder instead (e.g. "Week 1/").`);
+  if (!name) return;
+  const v = name;
   if (v.endsWith('/')) {
     const sub = v.replace(/\/+$/, '').trim();
     if (!sub) return;
@@ -869,10 +922,8 @@ function renderReaderTreeInto(node, depth, ul) {
 // Rename flows (used by the reader sidebar tree). Notes reuse /api/note/rename (renames file + H1);
 // folders use the new /api/folder/rename. Both refresh the tree and keep the open note in sync.
 async function renameNoteFlow(path, curName) {
-  const t = prompt('Rename note', curName);
-  if (t == null) return;
-  const v = t.trim();
-  if (!v || v === curName) return;
+  const v = await appPrompt('Rename note', curName);
+  if (v == null || !v || v === curName) return;
   try {
     const { path: np } = await api('/api/note/rename', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, title: v }),
@@ -883,10 +934,8 @@ async function renameNoteFlow(path, curName) {
   } catch (e) { toast(e.message); }
 }
 async function renameFolderFlow(path, curName) {
-  const t = prompt('Rename folder', curName);
-  if (t == null) return;
-  const v = t.trim();
-  if (!v || v === curName) return;
+  const v = await appPrompt('Rename folder', curName);
+  if (v == null || !v || v === curName) return;
   try {
     await api('/api/folder/rename', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, name: v }),
@@ -922,11 +971,11 @@ $('#reader-sidebar-collapse').addEventListener('click', toggleReaderSidebar);
 // New note / folder straight from the reader sidebar.
 $('#reader-new-note').addEventListener('click', () => openEditor());
 $('#reader-new-folder').addEventListener('click', async () => {
-  const name = prompt('New folder — use / for subfolders, e.g. University/UAS');
-  if (!name || !name.trim()) return;
+  const name = await appPrompt('New folder — use / for subfolders, e.g. University/UAS');
+  if (!name) return;
   try {
     const { path } = await api('/api/folders', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name.trim() }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name }),
     });
     let acc = '';
     for (const p of path.split('/')) { acc = acc ? acc + '/' + p : p; state.expandedFolders.add(acc); }
@@ -1144,10 +1193,10 @@ async function saveReaderContent(newContent, msg) {
 function removeReaderTag(tag) {
   saveReaderContent(removeTagFromContent(state.readerContent, tag), 'Removed #' + tag);
 }
-function addReaderTag() {
-  let tag = prompt('Add a tag (without #):');
+async function addReaderTag() {
+  let tag = await appPrompt('Add a tag (without #):');
   if (tag == null) return;
-  tag = tag.trim().replace(/^#/, '').replace(/[^\w/-]/g, '');
+  tag = tag.replace(/^#/, '').replace(/[^\w/-]/g, '');
   if (!tag) return;
   if (noteTags(state.readerContent).includes(tag)) { toast('Already tagged #' + tag); return; }
   saveReaderContent(addTagToContent(state.readerContent, tag), 'Added #' + tag);
@@ -1164,7 +1213,7 @@ $('#reader-edit').addEventListener('click', () => {
 });
 $('#reader-del').addEventListener('click', async () => {
   if (!state.readerPath) return;
-  if (!confirm(`Delete "${$('#reader-title').textContent}"? This can't be undone.`)) return;
+  if (!(await appConfirm(`Delete "${$('#reader-title').textContent}"? This can't be undone.`, { okLabel: 'Delete', danger: true }))) return;
   try {
     await api('/api/note?path=' + encodeURIComponent(state.readerPath), { method: 'DELETE' });
     closeReader();
@@ -2103,7 +2152,7 @@ function bindWikilinks(root) {
 // Make embedded images (incl. handwritten ink pages) tap-to-expand: opens the zoom/pan viewer.
 function bindImages(root) {
   $$('.md-img', root).forEach((im) => {
-    im.addEventListener('click', () => window.openImageViewer(im.currentSrc || im.src));
+    im.addEventListener('click', () => window.openImageViewer(im.currentSrc || im.src, im.alt));
   });
 }
 
@@ -2122,9 +2171,9 @@ function bindImages(root) {
     s = ns; if (s === 1) { tx = 0; ty = 0; } apply();
   };
   const editBtn = $('#imgview-edit');
-  window.openImageViewer = (src) => {
+  window.openImageViewer = (src, alt) => {
     if (!src) return;
-    img.src = src; reset(); view.hidden = false;
+    img.src = src; img.alt = alt || 'Embedded image, expanded'; reset(); view.hidden = false;
     history.pushState({ imgview: true }, '');
     // Offer "Edit ink" only for handwriting images that have a saved stroke sidecar (re-editable).
     editBtn.hidden = true;

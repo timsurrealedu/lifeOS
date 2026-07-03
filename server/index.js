@@ -8,7 +8,7 @@ import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from '.
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
-  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
+  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
   clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
@@ -304,7 +304,7 @@ app.get('/api/note', (req, res) => {
   try { ok(res, { path: req.query.path, content: readNote(String(req.query.path)) }); }
   catch (e) { fail(res, e, 404); }
 });
-app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders(), systemFolders: SYSTEM_FOLDER_NAMES }));
+app.get('/api/folders', (_req, res) => ok(res, { folders: listFolders(), systemFolders: SYSTEM_FOLDER_NAMES, stagingFolders: STAGING_FOLDER_NAMES }));
 // Create a folder (supports nested subfolders via `Parent/Child`).
 app.post('/api/folders', (req, res) => {
   try { ok(res, { path: createFolder(req.body && req.body.path) }); } catch (e) { fail(res, e); }

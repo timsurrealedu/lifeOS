@@ -39,6 +39,11 @@ export const SYSTEM_FOLDER_NAMES = [
   'Captures', 'University', 'Personal', 'Ideas', 'Drafts', 'Reviews', 'TODO',
 ];
 const SYSTEM_FOLDERS = new Set(SYSTEM_FOLDER_NAMES);
+// Of the system folders, these two are pure AI-processing staging (not places the user browses for
+// content): Captures is the "unsure where this goes" dump + fleeting thoughts + inbox log, Drafts is
+// where the editor parks a note before the next process-inbox run polishes/files it (see the app's
+// createNote() and the process-inbox skill's §1b). The Browse tab hides these by default.
+export const STAGING_FOLDER_NAMES = ['Captures', 'Drafts'];
 
 /**
  * First folder with this basename **anywhere** under the vault (slash-joined relative path), or null.

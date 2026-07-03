@@ -137,15 +137,15 @@
   border-color: var(--border-soft);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
-/* List rows: flat with a left signal-color accent edge (no cut, so text stays flush-left) */
+/* List rows: flat, neutral at rest (no cut, so text stays flush-left) — signal color shows up on
+   interaction only, via a full border + tint, rather than a permanent accent stripe. */
 :root[data-theme="netrunner"] .list-item,
 :root[data-theme="netrunner"] .task {
-  border-color: var(--border-soft); border-left: 2px solid var(--accent);
+  border-color: var(--border-soft);
 }
 :root[data-theme="netrunner"] .list-item:hover,
-:root[data-theme="netrunner"] .task:hover { border-left-color: var(--cyan); }
+:root[data-theme="netrunner"] .task:hover { border-color: var(--cyan); }
 :root[data-theme="netrunner"] .list-item:hover { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--surface); }
-:root[data-theme="netrunner"] .suggest { border-left: 2px solid var(--accent); }
 
 :root[data-theme="netrunner"] .process-card { border-color: var(--accent); }
 :root[data-theme="netrunner"] .process-icon {
@@ -234,9 +234,9 @@
 :root[data-theme="netrunner"] .markdown blockquote { border-left-color: var(--cyan); }
 :root[data-theme="netrunner"] .markdown code { background: rgba(0,229,255,.08); color: var(--cyan); border: 1px solid var(--border-soft); }
 
-/* ---- Chat bubbles: flat, colored side edge instead of a fill bubble ---- */
-:root[data-theme="netrunner"] .bubble.me { background: var(--surface-2); border: 1px solid var(--border); border-right: 2px solid var(--accent); color: var(--text); }
-:root[data-theme="netrunner"] .bubble.ai { background: var(--surface); border: 1px solid var(--border-soft); border-left: 2px solid var(--cyan); }
+/* ---- Chat bubbles: flat, full signal-color border instead of a glow/fill bubble ---- */
+:root[data-theme="netrunner"] .bubble.me { background: var(--surface-2); border: 1px solid var(--accent); color: var(--text); }
+:root[data-theme="netrunner"] .bubble.ai { background: var(--surface); border: 1px solid var(--cyan); }
 
 /* ---- Task checkbox ---- */
 :root[data-theme="netrunner"] .task .box { border-color: var(--border); }
@@ -585,6 +585,25 @@ a.doc-link:hover { border-color: var(--accent); }
   color: #d7cdbd; white-space: pre-wrap; word-break: break-word; flex: 1;
 }
 .console .err { color: var(--danger); }
+/* Resilience events (e.g. a fallback provider catching a usage-limit hit) are working-as-designed,
+   not a failure — keep them visually distinct from real stderr so they don't read as "it broke". */
+.console .info { color: var(--accent); }
+
+/* ---- In-app confirm/prompt (native <dialog> — replaces window.confirm()/prompt()) ---- */
+.app-dialog {
+  border: none; padding: 0; border-radius: var(--radius); background: var(--surface); color: var(--text);
+  width: min(360px, calc(100% - 48px)); box-shadow: var(--shadow);
+}
+.app-dialog::backdrop { background: rgba(8,5,2,.6); }
+.app-dialog-form { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+#app-dialog-msg { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-line; }
+#app-dialog-input {
+  width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px;
+}
+#app-dialog-input:focus { outline: none; border-color: var(--accent); }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn.danger { background: var(--danger); color: #fff; border: none; }
 
 /* markdown */
 .markdown { padding: 16px 20px 40px; overflow: auto; }
@@ -627,6 +646,10 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .markdown audio { width: 100%; margin: 8px 0; }
 .markdown blockquote { border-left: 2px solid var(--accent); margin: 8px 0; padding: 2px 14px; color: var(--muted); }
+.markdown table { border-collapse: collapse; margin: 10px 0; font-size: 14px; max-width: 100%; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+.markdown th { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.markdown tr:nth-child(even) td { background: var(--surface-2); }
 .markdown mark { background: var(--accent-soft); color: var(--text); padding: 0 3px; border-radius: 4px; }
 
 /* settings */
@@ -711,7 +734,8 @@ a.doc-link:hover { border-color: var(--accent); }
 #reader-sidebar-toggle { display: none; }            /* desktop: collapse via header toggle only when wanted */
 .reader.sidebar-hidden #reader-sidebar-toggle { display: inline-flex; }
 
-/* Mobile: the sidebar is an off-canvas drawer you swipe in (right) / out (left). */
+/* Mobile: the sidebar is an off-canvas drawer you swipe in (right) / out (left). The toggle button
+   stays hidden here (see the no-hamburger rule further down) — swipe is the only entry point. */
 @media (max-width: 759px) {
   .reader-sidebar {
     position: absolute; top: 0; left: 0; bottom: 0; z-index: 60;
@@ -721,7 +745,6 @@ a.doc-link:hover { border-color: var(--accent); }
   }
   .reader.sidebar-open .reader-sidebar { transform: none; }
   .reader.sidebar-hidden .reader-sidebar { display: flex; }   /* ignore the desktop-collapse class on phones */
-  #reader-sidebar-toggle { display: inline-flex; }            /* always show the drawer toggle on mobile */
 }
 
 /* ---- Reader properties / tags header (Obsidian-style, collapsible) ---- */

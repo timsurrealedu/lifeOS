@@ -180,7 +180,7 @@
         </div>
 
         <div id="browse-files">
-          <div class="notes-actions"><button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button><button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button></div>
+          <div class="notes-actions"><button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button><button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button><button class="icon-btn" id="btn-toggle-staging" title="Show AI staging folders (Captures, Drafts)" aria-label="Show AI staging folders">🙈</button></div>
           <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
           <ul id="notes-list" class="list"></ul>
           <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
@@ -249,20 +249,20 @@
     <div class="sheet-grab"></div>
     <div class="sheet-head">
       <h3 id="process-status">Processing inbox…</h3>
-      <button class="icon-btn" data-action="close-sheet">✕</button>
+      <button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button>
     </div>
     <pre id="process-console" class="console"></pre>
   </div>
 
   <div class="sheet" id="sheet-log" hidden>
     <div class="sheet-grab"></div>
-    <div class="sheet-head"><h3>Run log</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <div class="sheet-head"><h3>Run log</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <article id="log-body" class="markdown"></article>
   </div>
 
   <div class="sheet" id="sheet-camera" hidden>
     <div class="sheet-grab"></div>
-    <div class="sheet-head"><h3>Take a photo</h3><button class="icon-btn" data-action="close-camera">✕</button></div>
+    <div class="sheet-head"><h3>Take a photo</h3><button class="icon-btn" data-action="close-camera" aria-label="Close">✕</button></div>
     <div class="camera-wrap"><video id="cam-video" playsinline autoplay muted></video></div>
     <div class="camera-actions">
       <button class="btn" id="cam-switch" type="button">⟲ Flip</button>
@@ -272,7 +272,7 @@
 
   <div class="sheet" id="sheet-settings" hidden>
     <div class="sheet-grab"></div>
-    <div class="sheet-head"><h3>Settings</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <div class="sheet-head"><h3>Settings</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <div class="settings">
       <label>Vault path<input id="cfg-vaultPath" /></label>
       <p class="hint">Point at your real Obsidian vault to go live (e.g. <code>/home/you/Documents/Obsidian Vault</code>).</p>
@@ -338,7 +338,7 @@
   <!-- Auto-sort preview sheet -->
   <div class="sheet" id="sheet-autosort" hidden>
     <div class="sheet-grab"></div>
-    <div class="sheet-head"><h3>Auto-sort preview</h3><button class="icon-btn" data-action="close-sheet">✕</button></div>
+    <div class="sheet-head"><h3>Auto-sort preview</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <div class="autosort-body">
       <p class="hint" id="autosort-intro">Proposed moves to tidy loose folders into their domain. Nothing moves until you Apply.</p>
       <ul id="autosort-list" class="list"></ul>
@@ -497,6 +497,20 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     <button class="btn imgview-edit" id="imgview-edit" type="button" hidden>✎ Edit ink</button>
     <img id="imgview-img" alt="" draggable="false" />
   </div>
+
+  <!-- In-app confirm/prompt — replaces window.confirm()/prompt() so destructive/rename actions get
+       the app's own chrome instead of a bare OS dialog. Native <dialog> gives focus-trap, Esc-to-cancel
+       and top-layer stacking for free. -->
+  <dialog id="app-dialog" class="app-dialog">
+    <form method="dialog" class="app-dialog-form">
+      <p id="app-dialog-msg"></p>
+      <input id="app-dialog-input" type="text" autocomplete="off" hidden />
+      <div class="app-dialog-actions">
+        <button type="button" id="app-dialog-cancel" class="btn sm">Cancel</button>
+        <button type="submit" value="ok" id="app-dialog-ok" class="btn sm primary">OK</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast" hidden></div>
 
