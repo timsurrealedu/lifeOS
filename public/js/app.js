@@ -1114,6 +1114,17 @@ function removeTagFromContent(content, tag) {
   }
   return buildFM(fmLines.join('\n'), newBody);
 }
+// Strip a `![[ref]]` embed (used when deleting a handwriting attachment) — drops the whole line if
+// the embed was the only thing on it, else just removes the embed text inline.
+function removeEmbedFromContent(content, ref) {
+  const esc = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const embedRe = new RegExp('!\\[\\[' + esc + '(?:\\|[^\\]]*)?\\]\\]');
+  const lines = content.split('\n').filter((line) => {
+    if (!embedRe.test(line)) return true;
+    return line.replace(new RegExp(embedRe.source, 'g'), '').trim() !== '';
+  });
+  return lines.join('\n').replace(new RegExp(embedRe.source, 'g'), '');
+}
 // Add a tag — into frontmatter `tags:` when the note has frontmatter, else as an inline #tag.
 function addTagToContent(content, tag) {
   const { fm, body, matched } = splitFM(content);
@@ -1409,6 +1420,7 @@ const edBody = $('#editor-body');
 let editorOpen = false, edPreviewing = false;
 let edMode = 'create', edPath = null; // 'create' → POST new note; 'edit' → overwrite edPath
 let edOrigName = '';                  // title at open (edit mode) → detect renames on save
+let edOrigContent = '';                // content at open (edit mode) → detect a pure append on save
 
 // Toolbar primitives operating on the textarea selection.
 function edSurround(before, after = before, placeholder = '') {
@@ -1610,6 +1622,11 @@ function setEditorMode(mode) {
   edTitle.readOnly = false;
   edTitle.placeholder = editing ? 'Note title (rename)' : 'Note title';
   $('.editor-folder-label').hidden = editing;
+  // Same checkbox, different scope: creating tags the whole note; editing tags only a pure append
+  // (nothing before the cursor touched) — a mid-note edit just saves normally either way.
+  $('#editor-draft-label').title = editing
+    ? 'If you only added text at the end, mark that new part so the AI polishes it on the next Process Inbox run'
+    : 'AI polishes this note (links, formatting, LaTeX) on the next Process Inbox run';
 }
 function showEditor() {
   if (!editorOpen) { history.pushState({ editor: true }, ''); editorOpen = true; }
@@ -1621,7 +1638,7 @@ function showEditor() {
 // New note (create mode).
 async function openEditor() {
   setEditorMode('create'); edPath = null;
-  edTitle.value = ''; edBody.value = ''; $('#editor-folder').value = 'Drafts';
+  edTitle.value = ''; edBody.value = ''; $('#editor-folder').value = 'Drafts'; $('#editor-draft').checked = true;
   try {
     const { folders } = await api('/api/folders');
     $('#editor-folders').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
@@ -1634,7 +1651,7 @@ async function openEditor() {
 // filled in and the title seeded, ready to write; saving creates the file inside that folder.
 async function openEditorInFolder(title, folder) {
   setEditorMode('create'); edPath = null;
-  edTitle.value = title || ''; edBody.value = '';
+  edTitle.value = title || ''; edBody.value = ''; $('#editor-draft').checked = true;
   try {
     const { folders } = await api('/api/folders');
     $('#editor-folders').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
@@ -1651,7 +1668,9 @@ async function openEditorFor(path, name) {
     setEditorMode('edit'); edPath = path;
     edTitle.value = name || path.split('/').pop().replace(/\.md$/, '');
     edOrigName = edTitle.value;
-    edBody.value = content.replace(/\r/g, '');
+    edOrigContent = content.replace(/\r/g, '');
+    edBody.value = edOrigContent;
+    $('#editor-draft').checked = true;
     showEditor();
     edBody.focus();
   } catch (e) { toast(e.message); }
@@ -1673,9 +1692,16 @@ $('#editor-save').addEventListener('click', async () => {
   try {
     let path, name, hub;
     if (edMode === 'edit') {
+      let toSave = edBody.value;
+      // Pure append (everything before the cursor is untouched) + draft checked → wrap just the new
+      // tail in draft markers, so process-inbox polishes only what's new, not the whole note.
+      if ($('#editor-draft').checked && toSave.startsWith(edOrigContent)) {
+        const added = toSave.slice(edOrigContent.length).trim();
+        if (added) toSave = edOrigContent.replace(/\s+$/, '') + `\n\n<!-- #draft:start -->\n${added}\n<!-- #draft:end -->\n`;
+      }
       ({ path } = await api('/api/note/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: edPath, content: edBody.value }),
+        body: JSON.stringify({ path: edPath, content: toSave }),
       }));
       name = edTitle.value.trim() || path.split('/').pop().replace(/\.md$/, '');
       // Title changed → rename the underlying file too.
@@ -1690,7 +1716,10 @@ $('#editor-save').addEventListener('click', async () => {
       if (!title) { toast('Add a title'); edTitle.focus(); return; }
       ({ path, hub } = await api('/api/notes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, folder: $('#editor-folder').value.trim() || 'Drafts', content: edBody.value }),
+        body: JSON.stringify({
+          title, folder: $('#editor-folder').value.trim() || 'Drafts', content: edBody.value,
+          draft: $('#editor-draft').checked,
+        }),
       }));
       name = title;
     }
@@ -1762,13 +1791,14 @@ async function loadPlan() {
   } catch (e) { toast(e.message); }
 }
 
-// One reusable task row that toggles its checkbox and reloads.
+// One reusable task row that toggles its checkbox and reloads; the ✎ button opens the edit sheet.
 function taskRow(t) {
   const overdue = !t.done && t.date && t.date < todayStr();
   const el = document.createElement('div');
   el.className = 'task' + (t.done ? ' done' : '') + (overdue ? ' overdue' : '');
   el.innerHTML = `<div class="box">${t.done ? '✓' : ''}</div>
-    <div><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}</div>` : ''}</div>`;
+    <div class="t-main"><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}</div>` : ''}</div>
+    <button class="t-edit" type="button" aria-label="Edit task" title="Edit">✎</button>`;
   el.addEventListener('click', async () => {
     el.classList.add('busy');
     try {
@@ -1779,8 +1809,38 @@ function taskRow(t) {
       await loadPlan();
     } catch (err) { el.classList.remove('busy'); toast(err.message); }
   });
+  el.querySelector('.t-edit').addEventListener('click', (e) => { e.stopPropagation(); openTaskEdit(t); });
   return el;
 }
+
+// ---- Edit task (desc + date) — writes back in the same "DD Mon DESC" line format the
+// process-inbox AI reads/writes, so a manual edit stays compatible with the next automated run.
+// Editing across a year boundary moves the line to the right TODO/{year}/{month}.md file (the line
+// itself never stores a year — it's inferred from the file path — so this keeps that correct).
+let editingTask = null;
+function openTaskEdit(t) {
+  editingTask = t;
+  $('#task-edit-desc').value = t.desc;
+  $('#task-edit-date').value = t.date || '';
+  openSheet('sheet-task-edit');
+  $('#task-edit-desc').focus();
+}
+async function saveTaskEdit(date) {
+  if (!editingTask) return;
+  const desc = $('#task-edit-desc').value.trim();
+  if (!desc) { toast('Description required'); return; }
+  try {
+    await api('/api/tasks/edit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: editingTask.file, line: editingTask.line, desc, date: date ?? $('#task-edit-date').value }),
+    });
+    closeSheets();
+    await loadPlan();
+    toast('Task updated');
+  } catch (e) { toast(e.message); }
+}
+$('#task-edit-save').addEventListener('click', () => saveTaskEdit());
+$('#task-edit-clear-date').addEventListener('click', () => saveTaskEdit(''));
 
 function renderPlanList(tasks) {
   const wrap = $('#plan-groups'); wrap.innerHTML = '';
@@ -2171,15 +2231,19 @@ function bindImages(root) {
     s = ns; if (s === 1) { tx = 0; ty = 0; } apply();
   };
   const editBtn = $('#imgview-edit');
+  const delBtn = $('#imgview-del');
   window.openImageViewer = (src, alt) => {
     if (!src) return;
     img.src = src; img.alt = alt || 'Embedded image, expanded'; reset(); view.hidden = false;
     history.pushState({ imgview: true }, '');
-    // Offer "Edit ink" only for handwriting images that have a saved stroke sidecar (re-editable).
-    editBtn.hidden = true;
+    // Offer "Edit ink" only for handwriting images that have a saved stroke sidecar (re-editable);
+    // "Delete" is offered for any handwriting image, sidecar or not.
+    editBtn.hidden = true; delBtn.hidden = true;
     const u = new URL(src, location.href);
     if (/\/vault-files\/attachments\/handwriting\/.+\.png$/i.test(u.pathname)) {
       const ref = decodeURIComponent(u.pathname.replace('/vault-files/', ''));
+      delBtn.hidden = false;
+      delBtn.onclick = () => deleteHandwritingNote(ref);
       fetch(u.pathname.replace(/\.png$/i, '.ink.json'))
         .then((r) => (r.ok ? r.json() : null))
         .then((strokes) => {
@@ -2191,6 +2255,18 @@ function bindImages(root) {
         .catch(() => {});
     }
   };
+  // Delete a handwritten note: removes the PNG + its .ink.json sidecar from disk (not just the
+  // ![[…]] embed — that alone leaves the canvas file orphaned), then strips the embed line from the
+  // currently open note, if any.
+  async function deleteHandwritingNote(ref) {
+    if (!(await appConfirm('Delete this handwritten note? The canvas file and its embed in this note will be removed. This can\'t be undone.', { okLabel: 'Delete', danger: true }))) return;
+    try {
+      await api('/api/handwriting?ref=' + encodeURIComponent(ref), { method: 'DELETE' });
+      close();
+      if (state.readerPath) await saveReaderContent(removeEmbedFromContent(state.readerContent, ref), 'Handwriting deleted');
+      else toast('Handwriting deleted');
+    } catch (e) { toast(e.message); }
+  }
   // Reopen a handwriting page in the ink canvas (over the viewer), then overwrite it in place.
   function editHandwriting(ref, strokes) {
     window.InkPad.open(({ blob, strokes: out }) => saveHandwritingEdit(ref, blob, out), { history: false, strokes });

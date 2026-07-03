@@ -335,6 +335,21 @@
     </div>
   </div>
 
+  <!-- Edit task sheet (Plan tab) — desc + date; native <input type="date"> for the picker -->
+  <div class="sheet" id="sheet-task-edit" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Edit task</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
+    <div class="settings">
+      <label>Description<input id="task-edit-desc" autocomplete="off" /></label>
+      <label>Date<input id="task-edit-date" type="date" /></label>
+      <p class="hint">Changing the date keeps this task in sync with how lifeOS &amp; the AI file tasks — it can move to a different month/year file if needed. It won't move any linked Google Calendar event.</p>
+      <div class="settings-actions">
+        <button class="btn primary" id="task-edit-save">Save</button>
+        <button class="btn sm" id="task-edit-clear-date" type="button">Clear date</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Auto-sort preview sheet -->
   <div class="sheet" id="sheet-autosort" hidden>
     <div class="sheet-grab"></div>
@@ -395,6 +410,9 @@
         <input id="editor-folder" list="editor-folders" placeholder="Drafts" />
       </label>
       <datalist id="editor-folders"></datalist>
+      <label class="chip editor-draft-label" id="editor-draft-label" title="AI polishes this note (links, formatting, LaTeX) on the next Process Inbox run">
+        <input type="checkbox" id="editor-draft" checked /> ✦ Draft
+      </label>
       <div class="spacer"></div>
       <button class="chip" id="editor-preview-toggle" type="button">👁 <span>Preview</span></button>
     </div>
@@ -494,7 +512,10 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
   <!-- Tap an embedded image (incl. handwritten ink pages) to expand it — pinch / wheel to zoom, drag to pan -->
   <div class="imgview" id="imgview" hidden>
     <button class="icon-btn imgview-close" id="imgview-close" aria-label="Close">✕</button>
-    <button class="btn imgview-edit" id="imgview-edit" type="button" hidden>✎ Edit ink</button>
+    <div class="imgview-actions">
+      <button class="btn imgview-edit" id="imgview-edit" type="button" hidden>✎ Edit ink</button>
+      <button class="btn danger imgview-del" id="imgview-del" type="button" hidden>🗑 Delete</button>
+    </div>
     <img id="imgview-img" alt="" draggable="false" />
   </div>
 

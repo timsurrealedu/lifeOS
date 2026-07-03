@@ -3,12 +3,12 @@ import multer from 'multer';
 import { join, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
-  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, readLog,
+  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, editTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
   clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
@@ -152,6 +152,23 @@ app.post('/api/handwriting/update', uploadMem.single('photo'), (req, res) => {
     if (!abs.startsWith(hwDir + sep)) throw new Error('bad path');
     writeFileSync(abs, req.file.buffer);
     saveInkSidecar(abs, req.body.strokes);
+    ok(res, { ref });
+  } catch (e) { fail(res, e); }
+});
+
+// Delete a handwriting attachment (the ink canvas PNG + its .ink.json sidecar, if any). Removing just
+// the note's ![[…]] embed never touched this file — it stayed orphaned on disk; this is that missing half.
+app.delete('/api/handwriting', (req, res) => {
+  try {
+    const ref = String(req.query.ref || '');
+    if (!/^attachments\/handwriting\/[A-Za-z0-9._-]+\.png$/.test(ref)) throw new Error('bad ref');
+    const dir = vaultDir(loadConfig());
+    const hwDir = join(dir, 'attachments', 'handwriting');
+    const abs = join(dir, ref);
+    if (!abs.startsWith(hwDir + sep) || !existsSync(abs)) throw new Error('not found');
+    unlinkSync(abs);
+    const sidecar = abs.replace(/\.png$/i, '.ink.json');
+    if (existsSync(sidecar)) unlinkSync(sidecar);
     ok(res, { ref });
   } catch (e) { fail(res, e); }
 });
@@ -394,6 +411,14 @@ app.get('/api/tasks', (_req, res) => ok(res, { tasks: listTasks() }));
 app.post('/api/tasks/toggle', (req, res) => {
   try { ok(res, { tasks: toggleTask(String(req.body.file), Number(req.body.line)) }); }
   catch (e) { fail(res, e); }
+});
+// Edit a task's description/date (Plan tab). May move the line to a different TODO/{year}/{month}.md
+// file if the date crosses a year boundary — see editTask()'s doc comment in vault.js.
+app.post('/api/tasks/edit', (req, res) => {
+  try {
+    const { file, line, desc, date } = req.body || {};
+    ok(res, { tasks: editTask(String(file), Number(line), { desc, date }) });
+  } catch (e) { fail(res, e); }
 });
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));
 // Calendar events synced from Google Calendar by the `calsync` run (may be empty until first sync).

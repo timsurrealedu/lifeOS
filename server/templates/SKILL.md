@@ -37,14 +37,22 @@ Do the job fully, but don't waste reads/turns:
 - Copy the raw unprocessed text into `.inbox-archive/<YYYY-MM-DD>.md` (append if it exists) **before** changing anything — this is the safety net.
 
 ## 1b. Optimize user-written drafts (`#draft`)
-Notes the user wrote in the app's own editor are saved tagged **`#draft`** (usually under `Drafts/`). On **every** run, find them (e.g. grep the vault for `#draft`) and polish each one **in place**:
+Notes the user wrote in the app's own editor are saved tagged **`#draft`** (usually under `Drafts/`) — a **whole-note** draft. Appending to an *existing* note through the editor instead wraps just the newly-added text in a **partial-draft** marker pair: `<!-- #draft:start -->` … `<!-- #draft:end -->` (the note itself may have no other draft tag at all — everything outside the markers is pre-existing, already-settled content). On **every** run, find both kinds (e.g. grep the vault for `#draft`) and polish each in place:
+
+**Whole-note drafts (`#draft` tag, no markers):**
 - **Never remove or rewrite away the user's content.** This is *their* writing, not a slide to summarize. Keep every fact, sentence, list item, and their original language(s) — never translate, never delete, never editorialize. You may only **add** and **restructure**.
 - Improve **formatting** toward the vault's writing style: clear headings, **bold** the key points, tidy bullet lists, fix obvious typos/spacing. Don't change meaning.
 - Convert any **math to LaTeX** so it renders — inline `$…$`, display `$$…$$` (see "Math formatting").
 - Add `[[wikilinks]]` to related notes and `#tags`, link it under the correct **MOC hub**, and add a `→ [[Hub]]` footer (see §3).
 - If the note clearly belongs to a known area, you **may** move it out of `Drafts/` into that area's folder and update its links (per the filing rules); if unsure, leave it in place.
-- When finished with a note, **remove its `#draft` tag** so it isn't re-optimized on the next run. List each optimized note in the report.
-- If there are no `#draft` notes, skip this step.
+- When finished, **remove its `#draft` tag** so it isn't re-optimized on the next run.
+
+**Partial drafts (`<!-- #draft:start -->…<!-- #draft:end -->` markers):**
+- The note already exists and is presumably already filed/linked — **touch only the text between the markers.** Do not reformat, re-link, or otherwise edit anything outside them, even if it looks improvable; that's a separate concern for a separate run.
+- Apply the same polish rules as above (formatting, LaTeX, typos) to *just* that span. Add a `[[wikilink]]` or `#tag` inside the marked span itself if it genuinely helps, but don't touch the note's existing links/footer/hub placement.
+- When finished, **remove both marker comments**, leaving the polished text in place (unwrapped) exactly where it was.
+
+List each optimized note (and which kind) in the report. If there are no `#draft` notes of either kind, skip this step.
 
 ## 2. Classify each item
 Go line by line. An item is one of:

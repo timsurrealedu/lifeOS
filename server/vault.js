@@ -510,12 +510,12 @@ function autolinkHub(relPath, title) {
 
 /**
  * Write a user-authored note into the vault (the in-app "write your own note" editor).
- * Saved into `folder` (default `Drafts/`), tagged `#draft` so the next process-inbox run
- * optimizes it in place. Never overwrites — auto-suffixes the filename if it's taken.
- * If the folder has a MOC hub, the note is linked into it automatically (no AI). Returns
+ * Saved into `folder` (default `Drafts/`), tagged `#draft` (unless `draft: false`) so the next
+ * process-inbox run optimizes it in place. Never overwrites — auto-suffixes the filename if it's
+ * taken. If the folder has a MOC hub, the note is linked into it automatically (no AI). Returns
  * `{ path, hub }` where `hub` is the hub note it linked into (or null).
  */
-export function createNote({ title, folder, content } = {}) {
+export function createNote({ title, folder, content, draft = true } = {}) {
   const root = vaultDir();
   const cleanTitle = String(title || '').trim();
   if (!cleanTitle) throw new Error('title required');
@@ -532,7 +532,8 @@ export function createNote({ title, folder, content } = {}) {
 
   let body = String(content || '').replace(/\r/g, '').trim();
   if (!/^#\s/.test(body)) body = `# ${cleanTitle}\n\n${body}`;       // ensure an H1
-  if (!/(^|\s)#draft\b/.test(body)) body += '\n\n#draft';            // optimize-me marker
+  // `draft: false` skips the optimize-me marker (e.g. a quick capture not worth the next run's tokens).
+  if (draft && !/(^|\s)#draft\b/.test(body)) body += '\n\n#draft';
   writeFileSync(full, `${body}\n`);
 
   const relPath = relative(root, full).split(sep).join('/');
@@ -806,6 +807,10 @@ export function buildGraph() {
 // ---------- Calendar / TODOs ----------
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const FULL_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 /** Parse all checkbox lines from TODO/ files into structured tasks. */
 export function listTasks() {
@@ -822,16 +827,17 @@ export function listTasks() {
       const done = m[1].toLowerCase() === 'x';
       let desc = m[2].trim();
       // try to pull a "DD Mon" date prefix
-      const dm = desc.match(/^(\d{1,2})\s+([A-Za-z]{3,})/);
+      const dm = desc.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s*/);
       let date = null;
       if (dm) {
         const mon = MONTHS.findIndex((mo) => dm[2].toLowerCase().startsWith(mo.toLowerCase()));
         if (mon >= 0) {
           const year = (f.path.match(/(\d{4})/) || [])[1] || String(new Date().getFullYear());
           date = `${year}-${String(mon + 1).padStart(2, '0')}-${String(+dm[1]).padStart(2, '0')}`;
+          desc = desc.slice(dm[0].length).trim(); // drop the "DD Mon " prefix now it's captured as `date`
         }
       }
-      // `line` lets the UI toggle the exact checkbox in its source file.
+      // `line` lets the UI toggle/edit the exact checkbox in its source file.
       out.push({ done, desc, date, file: f.path, line: i });
     }
   }
@@ -850,6 +856,94 @@ export function toggleTask(relPath, line) {
   if (!m) throw new Error('not a task line');
   lines[line] = m[1] + (m[2].toLowerCase() === 'x' ? ' ' : 'x') + m[3];
   writeFileSync(full, lines.join('\n'));
+  return listTasks();
+}
+
+/** Best-effort: link a freshly-created TODO month file into the [[TODO]] hub under its `## {year}`
+ *  heading (creating the heading if it's the first month filed for that year) — mirrors what
+ *  process-inbox does when it creates a month file, so a manual cross-year edit doesn't orphan one. */
+function linkMonthInTodoHub(year, monthTitle) {
+  const hubPath = join(dirPath('TODO'), 'TODO.md');
+  if (!existsSync(hubPath)) return;
+  let text = readFileSync(hubPath, 'utf8').replace(/\r/g, '');
+  const escTitle = monthTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp('\\[\\[\\s*' + escTitle + '\\s*(?:\\||\\]\\])', 'i').test(text)) return; // already linked
+  const bullet = `- [[${monthTitle}]]`;
+  let footer = '';
+  const fm = text.match(/(?:^|\n)((?:→[^\n]*\n?)+)\s*$/);
+  if (fm) { footer = fm[1].trim(); text = text.slice(0, fm.index); }
+  text = text.replace(/\s+$/, '');
+  const lines = text.split('\n');
+  const yearHeading = new RegExp('^#{2,6}\\s*' + year + '\\s*$');
+  let hIdx = lines.findIndex((l) => yearHeading.test(l.trim()));
+  if (hIdx < 0) { lines.push('', `## ${year}`); hIdx = lines.length - 1; }
+  let insertAt = hIdx + 1;
+  for (let j = hIdx + 1; j < lines.length; j++) {
+    if (/^#{1,6}\s/.test(lines[j])) break;
+    if (lines[j].trim() !== '') insertAt = j + 1;
+  }
+  lines.splice(insertAt, 0, bullet);
+  text = lines.join('\n') + '\n' + (footer ? `\n${footer}\n` : '');
+  writeFileSync(hubPath, text);
+}
+
+/**
+ * Edit a task's description and/or date in place, writing back in the exact `- [ ] DD Mon DESC`
+ * format process-inbox itself reads/writes, so the next AI run parses it the same as ever. The line
+ * never stores a year (only day + 3-letter month) — its year is inferred from the file's own
+ * `TODO/{year}/{month}.md` path — so an edit that crosses into a different year moves the line to
+ * that year's month file instead of silently mislabeling it. `date` is `'YYYY-MM-DD'`, or `''` to
+ * clear it (leaves the line undated, in place). Returns the refreshed task list.
+ */
+export function editTask(relPath, line, { desc, date } = {}) {
+  const root = vaultDir();
+  const full = join(root, relPath);
+  if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
+  const lines = readFileSync(full, 'utf8').split('\n');
+  if (!Number.isInteger(line) || line < 0 || line >= lines.length) throw new Error('bad line');
+  const m = lines[line].match(/^(\s*-\s*\[)([ xX])(\]\s*)(.*)$/);
+  if (!m) throw new Error('not a task line');
+  const cleanDesc = String(desc || '').trim();
+  if (!cleanDesc) throw new Error('description required');
+
+  let prefix = '';
+  let targetPath = relPath;
+  const dateStr = String(date || '').trim();
+  if (dateStr) {
+    const dm = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dm) throw new Error('bad date');
+    const [, y, mo, d] = dm;
+    const monIdx = Number(mo) - 1;
+    if (monIdx < 0 || monIdx > 11) throw new Error('bad date');
+    prefix = `${d} ${MONTHS[monIdx]} `;
+    const fileYear = (relPath.match(/(\d{4})/) || [])[1];
+    if (fileYear && y !== fileYear) {
+      const destDir = join(dirPath('TODO'), y);
+      mkdirSync(destDir, { recursive: true });
+      const destFull = join(destDir, `${FULL_MONTHS[monIdx]}.md`);
+      if (!existsSync(destFull)) {
+        writeFileSync(destFull, `# ${FULL_MONTHS[monIdx]} ${y}\n\n→ [[TODO]]\n`);
+        try { linkMonthInTodoHub(y, FULL_MONTHS[monIdx]); } catch { /* best-effort, never fail the edit */ }
+      }
+      targetPath = relative(root, destFull).split(sep).join('/');
+    }
+  }
+  const newLine = `${m[1]}${m[2]}${m[3]}${prefix}${cleanDesc}`;
+
+  if (targetPath === relPath) {
+    lines[line] = newLine;
+    writeFileSync(full, lines.join('\n'));
+  } else {
+    lines.splice(line, 1);
+    writeFileSync(full, lines.join('\n'));
+    const destFull = join(root, targetPath);
+    let destText = readFileSync(destFull, 'utf8').replace(/\r/g, '');
+    const fm = destText.match(/(?:^|\n)((?:→[^\n]*\n?)+)\s*$/);
+    destText = fm
+      ? destText.slice(0, fm.index).replace(/\s+$/, '') + `\n${newLine}\n\n${fm[1].trim()}\n`
+      : destText.replace(/\s+$/, '') + `\n${newLine}\n`;
+    writeFileSync(destFull, destText);
+  }
   return listTasks();
 }
 

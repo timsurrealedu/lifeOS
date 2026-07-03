@@ -26,7 +26,7 @@ launched by the lifeOS app), follow these rules.
   freely — both this `claude -p` run and the app's "📁 Folder" button create them.
 - `Personal/` — journal, ideas, life admin.
 - `Ideas/` — researched ideas (one note each), written by the **Research an idea** tool; tag `#idea`, link [[Ideas]].
-- `Drafts/` — notes the user wrote in the app's editor, tagged `#draft`; the next process run optimizes them in place (formatting/links/LaTeX) **without removing their content**, then drops the tag.
+- `Drafts/` — notes the user wrote in the app's editor, tagged `#draft`; the next process run optimizes them in place (formatting/links/LaTeX) **without removing their content**, then drops the tag. Appending to an *existing* note the same way wraps just the new text in `<!-- #draft:start -->…<!-- #draft:end -->` instead — process-inbox polishes only that span, not the whole note (see the process-inbox skill).
 - `Reviews/` — weekly review notes, written by the **Weekly review** tool.
 - `Captures/` — landing spot for items with no obvious home; tag `#needs-filing`.
 - `TODO/` — monthly checklist files under the `[[TODO]]` hub.

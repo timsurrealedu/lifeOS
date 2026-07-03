@@ -338,6 +338,7 @@ body {
 .chip:active { transform: scale(.95); }
 .chip:hover { color: var(--text); border-color: var(--border); }
 .chip.live { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.editor-draft-label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
 .btn {
   border: 1px solid var(--border); border-radius: 12px; padding: 11px 18px; font-size: 15px; font-weight: 600;
@@ -486,7 +487,15 @@ a.doc-link:hover { border-color: var(--accent); }
 .task.done .box { background: var(--sage); border-color: var(--sage); color: var(--sage-ink); }
 .task.done .t-desc { text-decoration: line-through; color: var(--faint); }
 .task.overdue .box { border-color: var(--danger); }
+.t-main { flex: 1; min-width: 0; }
 .t-desc { font-size: 15px; }
+/* Edit button — same quiet hover-reveal as the tree's add/delete/rename buttons. */
+.t-edit {
+  flex: none; align-self: center; border: none; background: none; color: var(--faint); font-size: 14px;
+  padding: 4px 7px; border-radius: 8px; cursor: pointer; opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.task:hover .t-edit, .task:focus-within .t-edit { opacity: 1; }
+.t-edit:hover { color: var(--accent); background: var(--surface-3); }
 .t-meta { font-size: 12px; color: var(--faint); margin-top: 2px; }
 
 /* ---- Graph ---- */
@@ -640,9 +649,9 @@ a.doc-link:hover { border-color: var(--accent); }
   position: absolute; top: max(12px, env(safe-area-inset-top)); right: 14px; z-index: 1;
   background: rgba(0,0,0,.45); color: #fff;
 }
-.imgview-edit {
+.imgview-actions {
   position: absolute; bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px)); left: 50%;
-  transform: translateX(-50%); z-index: 1;
+  transform: translateX(-50%); z-index: 1; display: flex; gap: 10px;
 }
 .markdown audio { width: 100%; margin: 8px 0; }
 .markdown blockquote { border-left: 2px solid var(--accent); margin: 8px 0; padding: 2px 14px; color: var(--muted); }
@@ -960,7 +969,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .tree-row:hover .tw-ren, .tree-row:focus-within .tw-ren { opacity: 1; }
 .tw-ren:hover { color: var(--accent); background: var(--surface-3); }
 /* On touch (no hover) keep the row actions visible but quiet. */
-@media (hover: none) { .tw-del, .tw-add, .tw-ren { opacity: .5; } }
+@media (hover: none) { .tw-del, .tw-add, .tw-ren, .t-edit { opacity: .5; } }
 
 /* ---- Segmented toggle (Plan list/calendar) ---- */
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
