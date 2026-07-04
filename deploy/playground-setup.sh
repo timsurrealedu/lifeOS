@@ -15,7 +15,7 @@ echo "== apt: compilers, JDK, terminal, tools =="
 # NOTE: ttyd + pipx are NOT in apt on Ubuntu 20.04 (focal) — installed separately below so this works
 # on both focal and newer. apt-get install is atomic, so keep only packages that exist everywhere here.
 sudo apt-get update -y
-sudo apt-get install -y gcc default-jdk python3-pip unzip curl git tmux ripgrep fd-find build-essential
+sudo apt-get install -y gcc default-jdk python3-pip python3-venv unzip curl git tmux ripgrep fd-find build-essential
 
 echo "== pipx (via pip — focal has no apt pipx) =="
 python3 -m pip install --user -U pipx
@@ -65,19 +65,9 @@ else
 fi
 
 # ---------------------------------------------------------------- Neovim + LazyVim (Editor, :7681)
-echo "== Neovim (official build — apt's is too old for LazyVim) =="
-case "$(uname -m)" in
-  aarch64|arm64) NVIM_ARCH=arm64 ;;
-  x86_64)        NVIM_ARCH=x86_64 ;;
-  *) echo "unknown arch $(uname -m)"; exit 1 ;;
-esac
-tmp="$(mktemp -d)"
-curl -fL -o "$tmp/nvim.tar.gz" \
-  "https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${NVIM_ARCH}.tar.gz"
-sudo rm -rf /opt/nvim
-sudo tar -C /opt -xzf "$tmp/nvim.tar.gz"
-sudo ln -sf "/opt/nvim-linux-${NVIM_ARCH}/bin/nvim" /usr/local/bin/nvim
-rm -rf "$tmp"
+echo "== Neovim (snap — distro/glibc-agnostic; apt's is too old for LazyVim, official tarball wants newer glibc than focal's) =="
+sudo snap install nvim --classic
+sudo ln -sf /snap/bin/nvim /usr/local/bin/nvim
 
 echo "== LazyVim starter =="
 if [ ! -d "$HOME/.config/nvim" ]; then
