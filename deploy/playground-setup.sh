@@ -51,7 +51,7 @@ rm -rf "$tmp"
 echo
 if [ -n "${JUPYTER_PASSWORD:-}" ]; then
   echo "== setting Jupyter password non-interactively (from \$JUPYTER_PASSWORD) =="
-  JUPYTER_PASSWORD="$JUPYTER_PASSWORD" python3 - <<'PY'
+  JUPYTER_PASSWORD="$JUPYTER_PASSWORD" "$HOME/.local/share/pipx/venvs/jupyterlab/bin/python" - <<'PY'
 import json, os
 from jupyter_server.auth import passwd
 cfgdir = os.path.expanduser("~/.jupyter"); os.makedirs(cfgdir, exist_ok=True)
