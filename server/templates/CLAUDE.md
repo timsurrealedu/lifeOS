@@ -39,15 +39,20 @@ launched by the lifeOS app), follow these rules.
 - `.inbox-archive/` — raw copies of processed inbox text (safety net).
 
 ### MOC hub hierarchy (drives the graph)
-Each area has a **MOC hub note named exactly after it** (so `[[Area Name]]` resolves to it).
-Group hubs into **separate top-level domains so unrelated spheres of life don't tangle** in the
-graph:
+Each folder has a **MOC hub note named exactly after it** (so `[[Folder Name]]` resolves to it).
+**The MOC mirrors the folder tree:** a hub lists only the notes and sub-folder hubs that live
+**directly inside its own folder** — never anything from a sibling folder. Top-level folders are
+siblings listed in the root `[[Home]]` MOC; **never nest one top-level folder's hub under another.**
 
 ```
-[[University]]                         [[Personal]]
-├── [[<Course>]] ...                   ├── [[TODO]] → [[<Month>]] ...
-                                       └── journal, ideas, config
+[[Home]]
+├── [[University]]  → [[BINUS]], [[BNCC]] …   (only University's own subfolders)
+├── [[Personal]]    → [[State of my mind]] …  (only Personal's own subfolders)
+├── [[Ideas]]
+└── [[TODO]] → [[<Month>]] …
 ```
+TODO and Ideas are their **own** top-level hubs — do **not** list them under Personal, and Home
+lists only the top-level folders (not their subfolders — those belong in each domain's own hub).
 
 Rules:
 - **Every note must be listed as a `[[link]]` in its hub, and carry a `→ [[Hub]]` footer.** A note
@@ -66,9 +71,9 @@ Rules:
   connector, **write the word `and` instead of `&`** (e.g. `Turunan Numerik and Richardson Extrapolation`,
   not `Turunan Numerik & Richardson Extrapolation`). Keep titles to letters, numbers, spaces, and `-` `_`.
   If you find an existing note whose title contains one of these, rename it (and update its `[[links]]`).
-- Every note links **up** the chain: note → area hub → … → domain hub.
-- A monthly TODO file links up to a `[[TODO]]` hub (under the Personal domain).
-- **Never mix one domain's notes into another's tree.**
+- Every note links **up** the chain: note → its folder's hub → … → the top-level hub → `[[Home]]`.
+- A monthly TODO file links up to the `[[TODO]]` hub (its own top-level domain).
+- **Never mix one folder's notes into another's tree.**
 - When adding a new level (area, sub-area, month), create its hub, link it to its parent, and list it under that parent.
 
 ## Writing style

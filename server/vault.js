@@ -110,9 +110,9 @@ export function ensureVault(cfg = loadConfig()) {
   // hub if a note of that name doesn't already exist anywhere (it may have been moved into a folder).
   const hub = (name, body) => { if (!noteExists(name)) writeIfMissing(join(root, `${name}.md`), body); };
   hub('University', '# University\n\nTop-level hub for courses and study material.\n\n## Areas\n\n');
-  hub('Personal', '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n- [[TODO]]\n- [[Ideas]]\n');
-  hub('TODO', '# TODO\n\nHub for monthly checklists.\n\n→ [[Personal]]\n\n## Months\n\n');
-  hub('Ideas', '# Ideas\n\nHub for researched ideas. The **Research an idea** tool writes full notes here.\n\n→ [[Personal]]\n\n## Bank\n\n');
+  hub('Personal', '# Personal\n\nTop-level hub for life, journal and ideas.\n\n## Areas\n\n');
+  hub('TODO', '# TODO\n\nHub for monthly checklists.\n\n→ [[Home]]\n\n## Months\n\n');
+  hub('Ideas', '# Ideas\n\nHub for researched ideas. The **Research an idea** tool writes full notes here.\n\n→ [[Home]]\n\n## Bank\n\n');
   hub('Home', '# Home\n\nDashboard MOC. Use **Refresh Home note** to regenerate this from the current vault.\n\n## Hubs\n\n- [[University]]\n- [[Personal]]\n- [[TODO]]\n- [[Ideas]]\n');
   hub('Welcome', '# Welcome to lifeOS\n\nCapture anything into the inbox; press **Process** and a Claude run files it into notes, '
     + 'Google Calendar, TODOs and the graph.\n\n#meta → [[Personal]]\n');
@@ -784,8 +784,12 @@ export function buildGraph() {
   };
 
   for (const n of notes) {
-    const text = readFileSync(join(root, n.path), 'utf8');
-    for (const m of text.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) addLink(n.name, m[1].trim());
+    // Strip code (fenced + inline) so wikilink *examples* in docs aren't counted as real links, and
+    // skip `![[…]]` embeds (attachments/images, not MOC links) via the negative lookbehind.
+    const text = readFileSync(join(root, n.path), 'utf8')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]*`/g, '');
+    for (const m of text.matchAll(/(?<!!)\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) addLink(n.name, m[1].trim());
 
     // Implicit MOC link: connect every note to the hub of its **nearest ancestor folder that has
     // one** — so a note appears under its course/area in the graph even when its own text has no

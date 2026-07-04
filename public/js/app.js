@@ -2214,7 +2214,26 @@ function mdToHtml(md) {
     .replace(/(^|\s)(#[A-Za-z][\w-]*)/g, '$1<span class="tag">$2</span>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
-  for (const line of lines) {
+  // GFM table helpers. Inline math/code with `|` was already stashed as @@n@@ tokens above, so
+  // splitting cells on `|` here is safe from absolute-value bars etc.
+  const isDelimRow = (l) => { const t = (l || '').trim(); return t.includes('|') && t.includes('-') && /^[\s:|-]+$/.test(t); };
+  const cellsOf = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Table: a `|`-row immediately followed by a delimiter row (`|---|:--:|`), then data rows.
+    if (line.includes('|') && isDelimRow(lines[i + 1])) {
+      closeList();
+      const head = cellsOf(line);
+      let k = i + 2, body = '';
+      while (k < lines.length && lines[k].includes('|') && lines[k].trim() && !/^#{1,6}\s/.test(lines[k])) {
+        const cs = cellsOf(lines[k]);
+        body += '<tr>' + head.map((_, ci) => `<td>${inline(cs[ci] || '')}</td>`).join('') + '</tr>';
+        k++;
+      }
+      html += '<table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') + `</tr></thead><tbody>${body}</tbody></table>`;
+      i = k - 1;
+      continue;
+    }
     if (/^#{1,6}\s/.test(line)) { closeList(); const lvl = line.match(/^#+/)[0].length; html += `<h${lvl}>${inline(line.replace(/^#+\s/, ''))}</h${lvl}>`; }
     else if (/^\s*[-*]\s\[[ xX]\]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } const done = /\[[xX]\]/.test(line); html += `<li>${done ? '☑' : '☐'} ${inline(line.replace(/^\s*[-*]\s\[[ xX]\]\s/, ''))}</li>`; }
     else if (/^\s*[-*]\s/.test(line)) { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(line.replace(/^\s*[-*]\s/, ''))}</li>`; }
