@@ -2443,7 +2443,9 @@ function codeEnter() {
   const ta = codeTA(), val = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
   const lineStart = val.lastIndexOf('\n', s - 1) + 1;
   const indent = (val.slice(lineStart, s).match(/^[\t ]*/) || [''])[0];
-  if (s > 0 && CODE_PAIRS[val[s - 1]] === val[s]) {
+  // Expand a block ONLY when the caret sits between a real pair, e.g. {|}. (Guard against
+  // CODE_PAIRS[nonOpener] === val[s] both being undefined at end-of-file — that used to indent includes.)
+  if (CODE_PAIRS[val[s - 1]] && CODE_PAIRS[val[s - 1]] === val[s]) {
     const mid = '\n' + indent + '    ';
     codeReplaceRange(s, e, mid + '\n' + indent, s + mid.length);
   } else {
@@ -2457,7 +2459,7 @@ function codeKeydown(ev) {
   const ta = codeTA(), s = ta.selectionStart, e = ta.selectionEnd, val = ta.value;
   if (s === e && CODE_CLOSERS.has(ev.key) && val[s] === ev.key) { ev.preventDefault(); ta.selectionStart = ta.selectionEnd = s + 1; return; } // type over
   if (CODE_PAIRS[ev.key]) { ev.preventDefault(); codeInsertPair(ev.key, CODE_PAIRS[ev.key]); return; }
-  if (ev.key === 'Backspace' && s === e && s > 0 && CODE_PAIRS[val[s - 1]] === val[s]) { ev.preventDefault(); codeReplaceRange(s - 1, s + 1, ''); } // delete empty pair
+  if (ev.key === 'Backspace' && s === e && CODE_PAIRS[val[s - 1]] && CODE_PAIRS[val[s - 1]] === val[s]) { ev.preventDefault(); codeReplaceRange(s - 1, s + 1, ''); } // delete empty pair
 }
 function codeBuildSymbols() {
   const bar = $('#code-symbols'); bar.innerHTML = '';
