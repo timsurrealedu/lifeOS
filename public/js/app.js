@@ -439,6 +439,15 @@ $('#tile-ideas').addEventListener('click', () => {
   if (latest) openNote(latest.path, latest.name); else toast('No ideas yet — research one above');
 });
 $('#tile-needs').addEventListener('click', () => searchByTag('needs-filing'));
+// Playground → JupyterLab, running on the same box over Tailscale (port 8888). New tab, not iframed
+// (Jupyter sets X-Frame-Options and the SW would fight it). ponytail: link out, don't embed.
+$('#tile-playground').addEventListener('click', () => {
+  window.open(`${location.protocol}//${location.hostname}:8888`, '_blank');
+});
+// Editor → LazyVim (Neovim) served by ttyd on the same box over Tailscale (port 7681). New tab.
+$('#tile-editor').addEventListener('click', () => {
+  window.open(`${location.protocol}//${location.hostname}:7681`, '_blank');
+});
 
 /* ---------- Inbox ---------- */
 async function refreshInbox() {
