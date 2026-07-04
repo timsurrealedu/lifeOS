@@ -104,6 +104,50 @@ app.post('/api/capture/photo', upload.single('photo'), (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// ---- PWA Share Target ----
+// Android system share sheet → POST here. Image shares (e.g. a screenshot) render a tiny note page
+// (add a spoken/typed note, then Save → inbox). Text-only shares drop straight in. This is the free,
+// no-Tasker "Essential Space" path: screenshot → Share → lifeOS → note.
+function sharePage(filename, note, msg) {
+  const esc = (s) => String(s || '').replace(/[<&"]/g, (c) => ({ '<': '&lt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const head = `<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Capture</title>
+<style>body{margin:0;background:#0c0d11;color:#e6e7ea;font:16px/1.4 system-ui,sans-serif;padding:16px}
+img{max-width:100%;border-radius:10px;margin-bottom:12px;display:block}
+textarea{width:100%;box-sizing:border-box;min-height:96px;background:#16181f;color:#e6e7ea;border:1px solid #2a2d38;border-radius:10px;padding:12px;font:inherit}
+.row{display:flex;gap:10px;margin-top:12px}button{flex:1;padding:14px;border:0;border-radius:10px;font:600 16px system-ui;color:#fff}
+#mic{background:#2a2d38}#save{background:#3b6ef5}#s{opacity:.7;margin-top:10px}a{color:#7aa2ff}</style></head><body>`;
+  if (!filename) return `${head}<p>${esc(msg) || 'Saved ✓'}</p><a href="/">open lifeOS</a></body></html>`;
+  return `${head}<img src="/vault-files/attachments/${encodeURIComponent(filename)}" alt="shared">
+<textarea id=n autofocus placeholder="add a note… or tap 🎤">${esc(note)}</textarea>
+<div class=row><button id=mic type=button>🎤 Speak</button><button id=save type=button>Save to inbox</button></div>
+<p id=s></p><script>
+var fn=${JSON.stringify(filename)},n=document.getElementById('n'),s=document.getElementById('s');
+document.getElementById('mic').onclick=function(){var S=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(!S){s.textContent='speech not supported — use keyboard mic';return;}var r=new S();r.lang='en-US';
+r.onresult=function(e){n.value=(n.value+' '+e.results[0][0].transcript).trim();};r.onerror=function(){s.textContent='mic error';};r.start();};
+document.getElementById('save').onclick=async function(){s.textContent='saving…';
+try{var res=await fetch('/share/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fn,note:n.value})});
+var j=await res.json();if(j.ok){s.textContent='Saved ✓';location.href='/';}else s.textContent='error: '+j.error;}catch(e){s.textContent='error: '+e;}};
+</script></body></html>`;
+}
+
+app.post('/share', upload.single('photo'), (req, res) => {
+  try {
+    const shared = (req.body.text || req.body.title || '').trim();
+    if (!req.file) { if (shared) addInboxItem(shared); return res.send(sharePage(null, '', shared ? 'Saved to inbox ✓' : 'Nothing to capture')); }
+    res.send(sharePage(req.file.filename, shared, ''));   // defer inbox item until Save, so the note rides along
+  } catch (e) { res.status(400).send('share failed: ' + (e.message || e)); }
+});
+
+app.post('/share/save', (req, res) => {
+  try {
+    const fn = String(req.body.filename || '');
+    if (!/^[A-Za-z0-9._-]+$/.test(fn)) throw new Error('bad filename');   // bare basename only — matches multer naming
+    ok(res, { items: addPhotoItem(fn, String(req.body.note || '').trim()) });
+  } catch (e) { fail(res, e); }
+});
+
 // Documents (PDF / PPTX / DOCX / …) ride the same attachments plumbing as photos, but embed
 // by bare filename and carry #document so process-inbox extracts & summarizes them.
 app.post('/api/capture/document', upload.single('document'), (req, res) => {
