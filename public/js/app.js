@@ -2422,6 +2422,18 @@ const CODE_CLOSERS = new Set([')', ']', '}', '"', "'", '`']);
 const codeCurLang = () => (codeState.mode === 'saved' ? codeLangOf(codeState.file.name) : codeState.scratchLang);
 const codeTA = () => $('#code-body');
 
+// Does the program read stdin (scanf/cin/input/…)? If so we auto-reveal the input box on Run.
+const CODE_INPUT_RE = {
+  c: /\b(scanf|fscanf|gets|fgets|getchar|getline)\s*\(/,
+  cpp: /\bcin\b|\b(scanf|getline)\s*\(/,
+  python: /\binput\s*\(|\bsys\.stdin\b/,
+  java: /\bScanner\b|\bBufferedReader\b|\bSystem\.in\b/,
+  go: /\bfmt\.Scan|\bbufio\.NewReader\b|\bos\.Stdin\b/,
+  javascript: /\breadline\b|\bprocess\.stdin\b/,
+  bash: /\bread\b|\$\(<\s*\/dev\/stdin/,
+};
+const codeReadsInput = (code, lang) => { const re = CODE_INPUT_RE[lang]; return !!(re && re.test(code)); };
+
 function codeLoadLS() { try { return JSON.parse(localStorage.getItem(CODE_LS) || '{}'); } catch { return {}; } }
 function codeSaveLS() {
   try {
@@ -2672,6 +2684,12 @@ async function codeRun() {
   if (codeState.running) return;
   const lang = codeCurLang();
   if (!lang) { toast('Pick a language / add a file extension to run'); return; }
+  const src = codeTA().value;
+  // scanf/cin/input(): surface the stdin box so the user can supply input (then re-run).
+  if (codeReadsInput(src, lang) && $('#code-stdin-wrap').hidden) {
+    $('#code-stdin-wrap').hidden = false; $('#code-stdin-toggle').classList.add('on');
+    if (!$('#code-stdin').value.trim()) toast('Reads input — type it in the box above, then Run again');
+  }
   codeState.running = true;
   const btn = $('#code-run'); btn.classList.add('running'); btn.disabled = true;
   codeShowStatus('running…', ''); $('#code-output').hidden = false; codeSetOut([{ cls: 'muted', text: '…' }]);
