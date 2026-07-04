@@ -904,34 +904,37 @@ a.doc-link:hover { border-color: var(--accent); }
 #code-stdin-toggle.on { color: var(--accent); border-color: var(--accent-soft); }
 
 /* Output panel (top, collapsible) */
-.code-panel { flex: none; display: flex; flex-direction: column; max-height: 42vh; overflow: hidden;
+.code-panel { flex: none; display: flex; flex-direction: column; max-height: 78vh; overflow: hidden;
   border-bottom: 1px solid var(--border-soft); background: var(--surface); }
 .code-panel-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border-soft); }
 .code-status { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--muted); }
 .code-status.ok { color: var(--sage); }
 .code-status.err { color: var(--danger); }
 .code-out-body { margin: 0; padding: 10px 14px; overflow: auto; font-family: var(--mono); font-size: 13px;
-  line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--text);
+  resize: vertical; min-height: 44px; }  /* drag the bottom-right grip to grow the output terminal */
 .code-out-body .oe { color: var(--danger); }
 .code-out-body .muted { color: var(--faint); }
 
 /* stdin */
 .code-stdin-wrap { flex: none; border-bottom: 1px solid var(--border-soft); background: var(--surface); }
-.code-stdin { width: 100%; resize: none; border: 0; outline: none; background: transparent; color: var(--text);
-  font-family: var(--mono); font-size: 13px; line-height: 1.5; padding: 8px 14px; }
+.code-stdin { width: 100%; resize: vertical; min-height: 44px; border: 0; outline: none; background: transparent; color: var(--text);
+  font-family: var(--mono); font-size: 13px; line-height: 1.5; padding: 8px 14px; }  /* drag to grow the input box */
 .code-stdin::placeholder { color: var(--faint); }
 
 /* Editor: gutter + (highlight layer under a transparent textarea) */
 .code-editor { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
 .code-gutter { flex: none; overflow: hidden; padding: 12px 8px 0 12px; background: var(--bg); }
-.code-gutter-inner { font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--faint);
+.code-gutter-inner { font-family: var(--mono); font-size: 13px; line-height: 21px; color: var(--faint);
   text-align: right; white-space: pre; user-select: none; will-change: transform; }
 .code-stack { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 .code-hl, .code-body {
   position: absolute; inset: 0; margin: 0; border: 0; padding: 12px 14px;
-  font-family: var(--mono); font-size: 13px; line-height: 1.6; tab-size: 4; -moz-tab-size: 4;
-  /* Overlay editor: the textarea (caret) and the highlight <pre> must agree on glyph advances, so
-     disable ligatures/kerning — JetBrains Mono's coding ligatures otherwise drift the caret. */
+  font-family: var(--mono); font-size: 13px; line-height: 21px; tab-size: 4; -moz-tab-size: 4;
+  /* Overlay editor: the textarea (caret) and the highlight <pre> must agree on glyph advances AND
+     line boxes. Ligatures/kerning off keeps horizontal advance fixed; an INTEGER line-height (21px,
+     not 1.6=20.8px) stops vertical caret drift — a textarea snaps lines to the pixel grid while the
+     <pre> accumulates fractional heights, so a non-integer line-height misplaces the caret. */
   letter-spacing: normal; font-kerning: none;
   font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
 }

@@ -16,7 +16,9 @@ window.LifeVim = (function () {
     const history = [];             // undo snapshots
 
     const val = () => ta.value;
-    const setVal = (v) => { ta.value = v; };
+    // Mutating .value directly doesn't fire 'input'; dispatch it so overlay editors (highlight,
+    // gutter, autosave) re-sync after every vim edit (dd/p/x/…), same as normal typing.
+    const setVal = (v) => { ta.value = v; ta.dispatchEvent(new Event('input', { bubbles: true })); };
     const lineStart = (p) => val().lastIndexOf('\n', p - 1) + 1;
     const lineEnd = (p) => { const i = val().indexOf('\n', p); return i === -1 ? val().length : i; };
     const firstNonBlank = (p) => {

@@ -287,6 +287,7 @@
           </div>
         </div>
 
+        <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
         <div class="code-symbols" id="code-symbols"></div>
 
         <!-- Project files drawer — swipe in from the left (Saved mode), like Browse -->
@@ -622,7 +623,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
         var cc = document.getElementById('cap-crumb');
         if (cc) cc.textContent = DOW[d.getDay()] + ' · ' + MON[d.getMonth()] + ' ' + d.getDate();
       }
-      tick(); setInterval(tick, 15000);
+      window._capTick = tick; tick(); setInterval(tick, 15000);
     })();
   </script>
 

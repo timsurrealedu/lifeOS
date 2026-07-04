@@ -68,8 +68,8 @@ $('#capture-seg').addEventListener('click', (e) => {
   $('#capture-main').hidden = chat;
   $('#capture-chat-panel').hidden = !chat;
   $('#capture-title').textContent = chat ? 'Chat' : 'Inbox';
-  $('#cap-crumb').textContent = chat ? 'Advisor' : '—';
-  if (chat) renderChat();
+  if (chat) { $('#cap-crumb').textContent = 'Advisor'; renderChat(); }
+  else if (window._capTick) window._capTick(); // repaint day/date now, not after the next 15s tick
 });
 
 // Browse: Files ⇄ Graph toggle (same page, like the mockup).
@@ -2112,7 +2112,7 @@ async function openSettings() {
 }
 // Editor preference toggles (live — apply to the editor immediately if it's open).
 $('#cfg-livepreview').addEventListener('change', (e) => { prefs.set('livepreview', e.target.checked ? '1' : '0'); if (editorOpen) setEditorSurface(e.target.checked ? 'live' : 'source'); });
-$('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
+$('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); if (codeVim) codeVim.setEnabled(prefs.vim); });
 $('#cfg-lineno').addEventListener('change', (e) => { prefs.set('lineno', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
 // Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
 function renderDocTools(tools) {
@@ -2476,7 +2476,11 @@ function codeEnter() {
     codeReplaceRange(s, e, '\n' + indent + (opens ? '    ' : ''));
   }
 }
+// Vim on the code editor (attached lazily; toggled by prefs.vim). While vim owns the keys in
+// normal/visual mode, skip the auto-indent/bracket-pair handling below — those are insert-time helpers.
+let codeVim = null, codeVimMode = '';
 function codeKeydown(ev) {
+  if (codeVim && codeVim.isEnabled() && codeVimMode && codeVimMode !== 'INSERT') return;
   if (ev.key === 'Enter') { ev.preventDefault(); codeEnter(); return; }
   if (ev.key === 'Tab') { ev.preventDefault(); codeInsert('    '); return; }
   const ta = codeTA(), s = ta.selectionStart, e = ta.selectionEnd, val = ta.value;
@@ -2712,6 +2716,16 @@ function codeInitOnce() {
   ta.addEventListener('focus', codeViewportFit);
   ta.addEventListener('blur', codeViewportReset);
   ta.addEventListener('keydown', codeKeydown);
+  codeVim = window.LifeVim.attach(ta, {
+    onMode: (mode, pending) => {
+      codeVimMode = mode;
+      const bar = $('#code-vim-status');
+      if (!mode) { bar.hidden = true; return; }
+      bar.hidden = false; bar.dataset.mode = mode;
+      bar.querySelector('.mode').textContent = mode;
+      $('#code-vim-pending').textContent = pending || '';
+    },
+  });
   $$('#code-mode .seg-btn').forEach((b) => b.addEventListener('click', () => codeSetMode(b.dataset.mode)));
   $('#code-lang').addEventListener('change', (e) => codeSetScratchLang(e.target.value));
   $('#code-filename').addEventListener('input', () => { codeState.file.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
@@ -2738,6 +2752,7 @@ async function loadCode() {
   await codeLoadLangs();
   await codeRefreshFiles();
   codeApplyMode(); codeLoadBuffer();
+  if (codeVim) codeVim.setEnabled(prefs.vim);
   codeViewportFit();
 }
 
