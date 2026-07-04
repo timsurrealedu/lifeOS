@@ -2,7 +2,7 @@
 # deploy/playground-setup.sh — install the lifeOS code Playground on the Oracle A1 box.
 #
 # Run ONCE, on the box:   bash deploy/playground-setup.sh
-# Then start it:          pm2 start deploy/playground.ecosystem.cjs && pm2 save
+# Then start it:          pm2 start deploy/playground.config.cjs && pm2 save
 #
 # Two tools, both reachable ONLY over Tailscale (like lifeOS on 7777):
 #   Playground (JupyterLab, :8888) — Python + .ipynb real cell-by-cell kernel, Java (IJava), C (!gcc cell), + vim keys
@@ -81,7 +81,7 @@ nvim --headless "+Lazy! sync" +qa || true
 
 echo
 echo "Done."
-echo "  Start:  pm2 start deploy/playground.ecosystem.cjs && pm2 save"
+echo "  Start:  pm2 start deploy/playground.config.cjs && pm2 save"
 echo "  Open:   the 'Playground' and 'Editor' tiles in lifeOS -> Discover  (or :8888 / :7681 over Tailscale)"
 echo "  In LazyVim, enable C/Java/Python LSP+tools once:  run  :LazyExtras  -> toggle lang.clangd, lang.java, lang.python"
 echo "  Compile/run inside nvim:  :!gcc % -o out && ./out   (or open a tmux split and use gcc/javac/python directly)"

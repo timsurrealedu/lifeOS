@@ -170,14 +170,14 @@ the ports publicly):
 
 ```bash
 bash deploy/playground-setup.sh                        # one-time: JupyterLab+IJava+gcc+jdk + Neovim+LazyVim+ttyd
-pm2 start deploy/playground.ecosystem.cjs && pm2 save  # run 24/7 + survive reboots
+pm2 start deploy/playground.config.cjs && pm2 save  # run 24/7 + survive reboots
 ```
 
 Open via the **Playground** / **Editor** tiles in lifeOS → Discover (or `http://<box>:8888` / `:7681`).
 In LazyVim, enable language tooling once: `:LazyExtras` → toggle `lang.clangd`, `lang.java`, `lang.python`.
 Compile inside nvim with `:!gcc % -o out && ./out`, or use a tmux split.
 
-| Editor tips / gotchas | On a phone, a Bluetooth keyboard makes vim usable (soft keyboards lack Esc). Some LazyVim icons show as boxes unless the browser has a Nerd Font — cosmetic only. `:7681` gives a raw shell over the web; add `-c user:pass` to the ttyd args in `playground.ecosystem.cjs` to layer a login on top of Tailscale. |
+| Editor tips / gotchas | On a phone, a Bluetooth keyboard makes vim usable (soft keyboards lack Esc). Some LazyVim icons show as boxes unless the browser has a Nerd Font — cosmetic only. `:7681` gives a raw shell over the web; add `-c user:pass` to the ttyd args in `playground.config.cjs` to layer a login on top of Tailscale. |
 | Can't reach `:8888` / `:7681` | Tailscale must be up. `pm2 status` should show `lifeOS-playground` and `lifeOS-editor` online. Do **not** open the ports publicly. |
 
 ---

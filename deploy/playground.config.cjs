@@ -1,8 +1,8 @@
-// deploy/playground.ecosystem.cjs — the lifeOS code Playground. LINUX BOX ONLY (not the Windows laptop).
+// deploy/playground.config.cjs — the lifeOS code Playground. LINUX BOX ONLY (not the Windows laptop).
 // Kept separate from ecosystem.config.cjs so it never runs / restart-loops on the dev machine.
 //
 //   bash deploy/playground-setup.sh                        # one-time install (see that file)
-//   pm2 start deploy/playground.ecosystem.cjs && pm2 save  # run 24/7 + survive reboots
+//   pm2 start deploy/playground.config.cjs && pm2 save  # run 24/7 + survive reboots
 //
 // Both bind 0.0.0.0 -> reachable ONLY over Tailscale, exactly like lifeOS on 7777.
 //   :8888  JupyterLab  — protected by the password set during setup
