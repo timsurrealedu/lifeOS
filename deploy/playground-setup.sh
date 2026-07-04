@@ -43,7 +43,9 @@ tmp="$(mktemp -d)"
 curl -fL -o "$tmp/ijava.zip" \
   "https://github.com/SpencerPark/IJava/releases/download/v${IJAVA_VER}/ijava-${IJAVA_VER}.zip"
 unzip -oq "$tmp/ijava.zip" -d "$tmp"
-python3 "$tmp/install.py" --user
+# Run install.py with JupyterLab's own venv python — it has jupyter_client; the system python doesn't.
+# --user drops the kernelspec in ~/.local/share/jupyter, which JupyterLab searches regardless of venv.
+"$HOME/.local/share/pipx/venvs/jupyterlab/bin/python" "$tmp/install.py" --user
 rm -rf "$tmp"
 
 echo
