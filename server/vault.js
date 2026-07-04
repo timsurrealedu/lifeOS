@@ -502,6 +502,11 @@ function autolinkHub(relPath, title) {
     const root = vaultDir();
     const hub = findHubForFolder(walk(root, root, []), folderRel);
     if (!hub || hub.name.toLowerCase() === title.toLowerCase()) return null; // no hub, or note IS the hub
+    // Only bullet-link a note that sits *directly* in its hub's folder. Deeper notes (e.g. under an
+    // intermediate folder with no hub of its own) would land as a loose stray in a distant ancestor
+    // hub — the graph already links them implicitly, so skip the file edit instead of polluting it.
+    const hubFolder = hub.path.includes('/') ? hub.path.split('/').slice(0, -1).join('/') : folderRel.split('/')[0];
+    if (folderRel !== hubFolder) return null;
     const linked = linkNoteInHub(hub.path, title);
     addHubFooter(join(root, relPath), hub.name);
     return linked ? hub.name : null;

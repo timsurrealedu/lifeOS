@@ -71,10 +71,13 @@ const PROMPTS = {
 
   home: (cfg) =>
     `You are the "Refresh Home note" tool in ${cfg.ownerName}'s vault, launched from lifeOS. `
-    + 'Regenerate `Home.md` as a dashboard MOC: links to the top hubs ([[University]], [[Personal]], '
-    + '[[TODO]], [[Ideas]]); the most recently edited notes; open/overdue tasks from TODO/; and any '
-    + 'notes tagged #needs-filing. Keep it concise and link-rich. Overwrite Home.md only. Finish '
-    + 'with a one-line summary.',
+    + 'Regenerate `Home.md` as a dashboard MOC. First look at the actual top-level folders/hubs that '
+    + 'exist in the vault (e.g. [[University]], [[Personal]], [[TODO]], [[Ideas]], plus any others). '
+    + 'List each real top-level domain, and under it only its **actual** sub-areas — its real '
+    + 'subfolders. Never nest a sibling top-level folder under another domain (e.g. TODO and Ideas are '
+    + 'their own domains, not areas of Personal). Also include the most recently edited notes, '
+    + 'open/overdue tasks from TODO/, and any notes tagged #needs-filing. Keep it concise and link-rich. '
+    + 'Overwrite Home.md only. Finish with a one-line summary.',
 
   chat: (cfg, messages) => {
     const recent = (messages || []).slice(-8);

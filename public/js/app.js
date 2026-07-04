@@ -1234,14 +1234,22 @@ $('#reader-del').addEventListener('click', async () => {
 });
 
 /* ---------- Per-note tutor chat (read-only) + ➕ add-to-note ---------- */
+// On mobile the chat panel is 90vw, leaving a reader sliver visible — tapping it closes the chat.
+function noteChatOutsideClose(e) {
+  if (window.innerWidth >= 760) return;
+  if (e.target.closest('#note-chat') || e.target.closest('#reader-chat')) return;
+  closeNoteChat();
+}
 function closeNoteChat() {
   $('#reader').classList.remove('chat-open');
   $('#note-chat').hidden = true;
+  document.removeEventListener('click', noteChatOutsideClose, true);
 }
 function openNoteChat() {
   if (!state.readerPath) return;
   $('#reader').classList.add('chat-open');
   $('#note-chat').hidden = false;
+  document.addEventListener('click', noteChatOutsideClose, true);
   renderNoteChat();
   setTimeout(() => $('#note-chat-input').focus(), 50);
 }
@@ -1438,6 +1446,20 @@ function edLinePrefix(prefix) {
   edBody.value = v.slice(0, start) + block + v.slice(end);
   edBody.focus(); edBody.setSelectionRange(start + prefix.length, start + block.length);
 }
+// Wrap the current line in a `<div align="…">` (Obsidian renders it too). Re-clicking the same
+// alignment clears it; switching alignment replaces it.
+function edAlign(dir) {
+  const v = edBody.value, s = edBody.selectionStart;
+  const start = v.lastIndexOf('\n', s - 1) + 1;
+  let end = v.indexOf('\n', s); if (end === -1) end = v.length;
+  const line = v.slice(start, end);
+  const had = line.match(/^<div align="(left|center|right)">([\s\S]*)<\/div>$/i);
+  const inner = had ? had[2] : line;
+  const next = (had && had[1].toLowerCase() === dir) ? inner : `<div align="${dir}">${inner}</div>`;
+  edBody.value = v.slice(0, start) + next + v.slice(end);
+  const caret = start + next.length;
+  edBody.focus(); edBody.setSelectionRange(caret, caret);
+}
 const edFmt = {
   h1: () => edLinePrefix('# '),
   h2: () => edLinePrefix('## '),
@@ -1450,6 +1472,9 @@ const edFmt = {
   link: () => edSurround('[[', ']]', 'Note'),
   math: () => edSurround('$', '$', 'x^2'),
   highlight: () => edSurround('==', '==', 'highlight'),
+  alignleft: () => edAlign('left'),
+  aligncenter: () => edAlign('center'),
+  alignright: () => edAlign('right'),
 };
 // Insert text at the caret (or replacing the selection) — used by the handwriting embed.
 function edInsertAtCursor(text) {
@@ -2196,6 +2221,11 @@ function mdToHtml(md) {
     else if (/^>\s?/.test(line)) { closeList(); html += `<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`; }
     else if (line.trim() === '---') { closeList(); html += '<hr>'; }
     else if (line.trim() === '') { closeList(); }
+    else if (/^<div align="(?:left|center|right)">.*<\/div>\s*$/i.test(line)) {
+      closeList();
+      const al = line.match(/^<div align="(left|center|right)">(.*)<\/div>\s*$/i);
+      html += `<p style="text-align:${al[1]}">${inline(al[2])}</p>`;
+    }
     else { closeList(); html += `<p>${inline(line)}</p>`; }
   }
   closeList();
