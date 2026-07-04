@@ -952,7 +952,15 @@ a.doc-link:hover { border-color: var(--accent); }
 .sym:active { transform: scale(.9); background: var(--surface-3); }
 .sym-wide { min-width: 50px; font-size: 12px; letter-spacing: .02em; }
 
-/* filename + save + files picker */
+/* sub-bar: controls that change with Scratch/Saved mode */
+.code-subbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px 8px; border-bottom: 1px solid var(--border-soft); }
+.code-mode { flex: none; }
+.code-mode .seg-btn { padding: 5px 13px; font-size: 12px; }
+.view[data-view="code"].mode-scratch .code-saved-only { display: none; }
+.view[data-view="code"].mode-saved .code-scratch-only { display: none; }
+.code-scratch-note { font-size: 12px; color: var(--faint); font-family: var(--mono); }
+.code-lang { flex: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; color: var(--text); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; }
+.code-lang:focus { border-color: var(--accent); outline: none; }
 .code-filename {
   flex: 1; min-width: 54px; background: var(--surface-2); border: 1px solid var(--border-soft);
   border-radius: 999px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 7px 12px; outline: none;
@@ -961,23 +969,30 @@ a.doc-link:hover { border-color: var(--accent); }
 .code-filename::placeholder { color: var(--faint); }
 .code-save { position: relative; }
 .code-save.dirty::after {
-  content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px;
+  content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--accent);
 }
 .code-save[disabled] { opacity: .4; }
-.code-files-sheet {
-  position: absolute; left: 8px; right: 8px; top: calc(env(safe-area-inset-top) + 54px); z-index: 6;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
-  max-height: 62vh; overflow: auto; animation: readerin .16s ease;
+
+/* project files drawer — swipe in from the left, off-canvas like Browse */
+.code-sidebar {
+  position: absolute; top: 0; left: 0; bottom: 0; z-index: 8; width: min(80vw, 300px);
+  display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border);
+  transform: translateX(-100%); transition: transform .24s cubic-bezier(.2,.9,.25,1);
+  padding-top: env(safe-area-inset-top);
 }
-.code-files-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); position: sticky; top: 0; background: var(--surface); }
-.code-files-dir { font-family: var(--mono); font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code-file-list { padding: 4px; }
-.code-file-item {
+.view[data-view="code"].sidebar-open .code-sidebar { transform: none; box-shadow: var(--shadow); }
+.code-sidebar-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--border-soft); }
+.code-sidebar-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-tree { flex: 1; overflow: auto; padding: 6px 4px calc(env(safe-area-inset-bottom) + 20px); }
+.code-tree-dir, .code-tree-file {
   display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text);
-  font-family: var(--mono); font-size: 13px; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+  font-family: var(--mono); font-size: 13px; padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.code-file-item:hover, .code-file-item:active { background: var(--surface-2); }
+.code-tree-dir { color: var(--muted); font-weight: 600; }
+.code-tree-dir:hover, .code-tree-file:hover, .code-tree-dir:active, .code-tree-file:active { background: var(--surface-2); }
+.code-tree-file.active { background: var(--accent-soft); color: var(--accent); }
 .code-file-empty { padding: 16px 12px; color: var(--faint); font-size: 13px; }
 
 /* ---- Live preview editor (Obsidian-style: render blocks, click one to edit its source) ---- */

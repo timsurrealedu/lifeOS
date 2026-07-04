@@ -241,23 +241,24 @@
       </section>
 
       <!-- CODE (phone-first: write + run code with an on-screen symbol bar) -->
-      <section class="view" data-view="code" hidden>
+      <section class="view mode-scratch" data-view="code" hidden>
         <div class="code-top">
           <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
-          <button class="icon-btn" id="code-files" title="Open file" aria-label="Files">📁</button>
-          <input id="code-filename" class="code-filename" placeholder="untitled.py" spellcheck="false"
-            autocapitalize="off" autocorrect="off" autocomplete="off" />
+          <div class="seg code-mode" id="code-mode">
+            <button class="seg-btn active" data-mode="scratch" type="button">Scratch</button>
+            <button class="seg-btn" data-mode="saved" type="button">Saved</button>
+          </div>
+          <div class="spacer"></div>
           <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
-          <button class="icon-btn code-save" id="code-save" title="Save to your synced code folder" aria-label="Save">💾</button>
           <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
         </div>
-        <div class="code-files-sheet" id="code-files-sheet" hidden>
-          <div class="code-files-head">
-            <span class="code-files-dir" id="code-files-dir"></span>
-            <div class="spacer"></div>
-            <button class="chip" id="code-file-new">＋ New</button>
-          </div>
-          <div class="code-file-list" id="code-file-list"></div>
+        <div class="code-subbar" id="code-subbar">
+          <button class="icon-btn code-saved-only" id="code-files" title="Project files" aria-label="Files">☰</button>
+          <input id="code-filename" class="code-filename code-saved-only" placeholder="untitled.py" spellcheck="false"
+            autocapitalize="off" autocorrect="off" autocomplete="off" />
+          <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
+          <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
+          <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
         </div>
 
         <div class="code-panel" id="code-output" hidden>
@@ -285,6 +286,17 @@
         </div>
 
         <div class="code-symbols" id="code-symbols"></div>
+
+        <!-- Project files drawer — swipe in from the left (Saved mode), like Browse -->
+        <aside class="code-sidebar" id="code-sidebar">
+          <div class="code-sidebar-head">
+            <span class="code-sidebar-title" id="code-sidebar-title">mycode</span>
+            <div class="spacer"></div>
+            <button class="icon-btn" id="code-sidebar-new" title="New file" aria-label="New file">＋</button>
+            <button class="icon-btn" id="code-sidebar-close" aria-label="Close">✕</button>
+          </div>
+          <div class="code-tree" id="code-tree"></div>
+        </aside>
       </section>
 
     </main>

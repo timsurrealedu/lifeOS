@@ -2375,20 +2375,27 @@ function bindImages(root) {
   view.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; if (e.touches.length === 0) { drag = false; if (s === 1) reset(); } });
 })();
 
-/* ---------- Code tab: phone-first editor over the synced code folder ----------
-   Transparent textarea over a highlight.js layer + an on-screen symbol bar (the keys a phone keyboard
-   hides), anchored above the soft keyboard. Opens/saves files in the server's run.dir (Syncthing-
-   synced ~/mycode, so phone edits reach your other machines) and runs whole programs via /api/run.
-   Language is derived from the filename extension. */
+/* ---------- Code tab: phone-first editor (Scratchpad or Saved files over run.dir) ----------
+   Transparent textarea over a highlight.js layer + an on-screen symbol bar (keys a phone keyboard
+   hides), anchored above the soft keyboard. Two modes: Scratch (ephemeral, per-language buffers) and
+   Saved (real files in run.dir = Syncthing-synced ~/mycode, browsable in a swipe-in project tree).
+   Auto-indent + auto-closing brackets make typing on a touch keyboard bearable. Runs via /api/run. */
 const CODE_LS = 'lifeos.code';
-const codeState = { name: '', codeDir: null, files: [], running: false, inited: false, dirty: false };
+const codeState = {
+  mode: 'scratch', scratchLang: 'python', scratchBuffers: {},
+  file: { name: '', content: '', dirty: false },
+  langs: [], codeDir: null, files: [], expanded: new Set(),
+  running: false, inited: false,
+};
 
-// Symbol keys. `v` inserts text at the caret; `act` moves the caret. `wide` = a wider label key.
+// Symbol keys. `v` inserts at caret; `close` makes it an auto-closing pair; `act` moves the caret.
 const CODE_KEYS = [
-  { t: 'Tab', v: '    ', wide: true }, { t: '(', v: '(' }, { t: ')', v: ')' }, { t: '{', v: '{' }, { t: '}', v: '}' },
-  { t: '[', v: '[' }, { t: ']', v: ']' }, { t: '<', v: '<' }, { t: '>', v: '>' }, { t: ';', v: ';' }, { t: ':', v: ':' },
-  { t: '=', v: '=' }, { t: '+', v: '+' }, { t: '-', v: '-' }, { t: '*', v: '*' }, { t: '/', v: '/' }, { t: '%', v: '%' },
-  { t: '&', v: '&' }, { t: '|', v: '|' }, { t: '!', v: '!' }, { t: '"', v: '"' }, { t: "'", v: "'" }, { t: '`', v: '`' },
+  { t: 'Tab', v: '    ', wide: true },
+  { t: '(', v: '(', close: ')' }, { t: ')', v: ')' }, { t: '{', v: '{', close: '}' }, { t: '}', v: '}' },
+  { t: '[', v: '[', close: ']' }, { t: ']', v: ']' }, { t: '<', v: '<' }, { t: '>', v: '>' },
+  { t: ';', v: ';' }, { t: ':', v: ':' }, { t: '=', v: '=' }, { t: '+', v: '+' }, { t: '-', v: '-' },
+  { t: '*', v: '*' }, { t: '/', v: '/' }, { t: '%', v: '%' }, { t: '&', v: '&' }, { t: '|', v: '|' }, { t: '!', v: '!' },
+  { t: '"', v: '"', close: '"' }, { t: "'", v: "'", close: "'" }, { t: '`', v: '`', close: '`' },
   { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '.', v: '.' }, { t: ',', v: ',' }, { t: '\\', v: '\\' }, { t: '$', v: '$' },
   { t: '@', v: '@' }, { t: '←', act: 'left', wide: true }, { t: '→', act: 'right', wide: true },
 ];
@@ -2398,22 +2405,59 @@ const CODE_EXT_LANG = {
 };
 const codeLangOf = (name) => CODE_EXT_LANG[(name || '').split('.').pop().toLowerCase()] || null;
 const CODE_STARTER = 'print("hello")\n';
+const CODE_PAIRS = { '(': ')', '{': '}', '[': ']', '"': '"', "'": "'", '`': '`' };
+const CODE_CLOSERS = new Set([')', ']', '}', '"', "'", '`']);
+// Active language for run + highlight: Saved → the file's extension; Scratch → the picker.
+const codeCurLang = () => (codeState.mode === 'saved' ? codeLangOf(codeState.file.name) : codeState.scratchLang);
+const codeTA = () => $('#code-body');
 
-// localStorage draft = the working buffer, so a phone reload doesn't lose edits made before Save.
 function codeLoadLS() { try { return JSON.parse(localStorage.getItem(CODE_LS) || '{}'); } catch { return {}; } }
-function codeSaveLS() { try { localStorage.setItem(CODE_LS, JSON.stringify({ name: codeState.name, content: $('#code-body').value, dirty: codeState.dirty })); } catch { /* quota */ } }
+function codeSaveLS() {
+  try {
+    localStorage.setItem(CODE_LS, JSON.stringify({
+      mode: codeState.mode, scratchLang: codeState.scratchLang, scratchBuffers: codeState.scratchBuffers,
+      file: codeState.file, expanded: [...codeState.expanded],
+    }));
+  } catch { /* quota */ }
+}
 
-function codeInsert(text) {
-  const ta = $('#code-body');
-  const s = ta.selectionStart, e = ta.selectionEnd;
+// ---- editing primitives (formatting) ----
+function codeReplaceRange(s, e, text, caret) {
+  const ta = codeTA();
   ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
-  ta.selectionStart = ta.selectionEnd = s + text.length;
+  ta.selectionStart = ta.selectionEnd = caret === undefined ? s + text.length : caret;
   ta.focus(); codeOnInput();
 }
+function codeInsert(text) { const ta = codeTA(); codeReplaceRange(ta.selectionStart, ta.selectionEnd, text); }
+function codeInsertPair(open, close) {
+  const ta = codeTA(), s = ta.selectionStart, e = ta.selectionEnd, sel = ta.value.slice(s, e);
+  codeReplaceRange(s, e, open + sel + close, s + open.length + sel.length); // wraps a selection, else caret between
+}
 function codeMoveCaret(dir) {
-  const ta = $('#code-body');
-  const p = Math.max(0, Math.min(ta.value.length, ta.selectionStart + (dir === 'left' ? -1 : 1)));
-  ta.selectionStart = ta.selectionEnd = p; ta.focus();
+  const ta = codeTA();
+  ta.selectionStart = ta.selectionEnd = Math.max(0, Math.min(ta.value.length, ta.selectionStart + (dir === 'left' ? -1 : 1)));
+  ta.focus();
+}
+// Enter: keep the line's indent, add a level after a trailing opener, and expand {|} into a block.
+function codeEnter() {
+  const ta = codeTA(), val = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+  const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+  const indent = (val.slice(lineStart, s).match(/^[\t ]*/) || [''])[0];
+  if (s > 0 && CODE_PAIRS[val[s - 1]] === val[s]) {
+    const mid = '\n' + indent + '    ';
+    codeReplaceRange(s, e, mid + '\n' + indent, s + mid.length);
+  } else {
+    const opens = /[[({:]$/.test(val.slice(lineStart, s).replace(/\s+$/, ''));
+    codeReplaceRange(s, e, '\n' + indent + (opens ? '    ' : ''));
+  }
+}
+function codeKeydown(ev) {
+  if (ev.key === 'Enter') { ev.preventDefault(); codeEnter(); return; }
+  if (ev.key === 'Tab') { ev.preventDefault(); codeInsert('    '); return; }
+  const ta = codeTA(), s = ta.selectionStart, e = ta.selectionEnd, val = ta.value;
+  if (s === e && CODE_CLOSERS.has(ev.key) && val[s] === ev.key) { ev.preventDefault(); ta.selectionStart = ta.selectionEnd = s + 1; return; } // type over
+  if (CODE_PAIRS[ev.key]) { ev.preventDefault(); codeInsertPair(ev.key, CODE_PAIRS[ev.key]); return; }
+  if (ev.key === 'Backspace' && s === e && s > 0 && CODE_PAIRS[val[s - 1]] === val[s]) { ev.preventDefault(); codeReplaceRange(s - 1, s + 1, ''); } // delete empty pair
 }
 function codeBuildSymbols() {
   const bar = $('#code-symbols'); bar.innerHTML = '';
@@ -2421,34 +2465,41 @@ function codeBuildSymbols() {
     const b = document.createElement('button');
     b.className = 'sym' + (k.wide ? ' sym-wide' : ''); b.textContent = k.t; b.type = 'button';
     // pointerdown + preventDefault keeps the textarea focused (keyboard stays up) and acts immediately.
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); k.act ? codeMoveCaret(k.act) : codeInsert(k.v); });
+    b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); if (k.act) codeMoveCaret(k.act); else if (k.close) codeInsertPair(k.v, k.close); else codeInsert(k.v); });
     bar.appendChild(b);
   }
 }
-function codeMarkDirty(d) { codeState.dirty = d; $('#code-save').classList.toggle('dirty', d); }
+function codeMarkDirty(d) { codeState.file.dirty = d; $('#code-save').classList.toggle('dirty', d); }
 
-function codeOnInput() { codeMarkDirty(true); codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
+function codeOnInput() {
+  const v = codeTA().value;
+  if (codeState.mode === 'saved') { codeState.file.content = v; codeMarkDirty(true); }
+  else codeState.scratchBuffers[codeState.scratchLang] = v;
+  codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll();
+}
+function codeStash() { const v = codeTA().value; if (codeState.mode === 'saved') codeState.file.content = v; else codeState.scratchBuffers[codeState.scratchLang] = v; }
+function codeSetContent(text) { codeTA().value = text; codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
 function codeRenderGutter() {
   const inner = $('#code-gutter-inner');
-  const n = $('#code-body').value.split('\n').length;
+  const n = codeTA().value.split('\n').length;
   if (inner._n !== n) { inner.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n'); inner._n = n; }
 }
 function codeSyncScroll() {
-  const ta = $('#code-body');
+  const ta = codeTA();
   const c = $('#code-hl-code'); if (c) c.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
   $('#code-gutter-inner').style.transform = `translateY(${-ta.scrollTop}px)`;
 }
 function codeHighlight() {
   const codeEl = $('#code-hl-code');
   if (!window.hljs) return; // plain mode (textarea shows its own text)
-  const lang = codeLangOf(codeState.name) || 'plaintext';
-  const text = $('#code-body').value;
+  const lang = codeCurLang() || 'plaintext';
+  const text = codeTA().value;
   try { codeEl.innerHTML = window.hljs.highlight(text, { language: lang, ignoreIllegal: true }).value; }
   catch { codeEl.textContent = text; }
 }
 function codeApplyHljsMode() {
   const on = !!window.hljs;
-  $('#code-body').classList.toggle('plain', !on);
+  codeTA().classList.toggle('plain', !on);
   $('.code-hl').style.display = on ? '' : 'none';
 }
 function codeLoadHljs() {
@@ -2469,43 +2520,92 @@ function codeViewportFit() {
 }
 function codeViewportReset() { const v = $('.view[data-view="code"]'); if (v) { v.style.height = ''; v.style.top = ''; } }
 
-function codeSetName(name) { codeState.name = name; if ($('#code-filename').value !== name) $('#code-filename').value = name; codeHighlight(); }
-function codeSetContent(text) { $('#code-body').value = text; codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
+// ---- mode (Scratch / Saved) ----
+function codeApplyMode() {
+  const view = $('.view[data-view="code"]');
+  view.classList.toggle('mode-saved', codeState.mode === 'saved');
+  view.classList.toggle('mode-scratch', codeState.mode !== 'saved');
+  $$('#code-mode .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === codeState.mode));
+  if (codeState.mode !== 'saved') codeToggleSidebar(false);
+}
+function codeLoadBuffer() {
+  if (codeState.mode === 'saved') {
+    codeSetContent(codeState.file.content); $('#code-filename').value = codeState.file.name; codeMarkDirty(codeState.file.dirty);
+  } else {
+    codeSetContent(codeState.scratchBuffers[codeState.scratchLang] ?? CODE_STARTER); $('#code-lang').value = codeState.scratchLang;
+  }
+  codeHighlight();
+}
+function codeSetMode(mode) { codeStash(); codeState.mode = mode; codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeTA().focus(); }
+function codeSetScratchLang(lang) {
+  codeStash(); codeState.scratchLang = lang; $('#code-lang').value = lang;
+  codeSetContent(codeState.scratchBuffers[lang] ?? CODE_STARTER); codeHighlight(); codeSaveLS();
+}
+async function codeLoadLangs() {
+  try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
+  catch { codeState.langs = []; }
+  const list = codeState.langs.length ? codeState.langs : [{ id: 'python', name: 'Python' }];
+  const sel = $('#code-lang'); sel.innerHTML = '';
+  for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
+  if (!list.find((l) => l.id === codeState.scratchLang)) codeState.scratchLang = list[0].id;
+  sel.value = codeState.scratchLang;
+}
 
-// ---- files in the synced folder (run.dir) ----
+// ---- Saved files: project tree in the swipe-in sidebar ----
 async function codeRefreshFiles() {
   try { const j = await api('/api/code/files'); codeState.codeDir = j.dir; codeState.files = j.files || []; }
   catch { codeState.codeDir = null; codeState.files = []; }
-  $('#code-files-dir').textContent = codeState.codeDir || 'run.dir not set';
+  $('#code-sidebar-title').textContent = codeState.codeDir ? codeState.codeDir.split(/[\\/]/).pop() : 'files';
   $('#code-save').disabled = !codeState.codeDir;
+  codeRenderTree();
 }
-function codeRenderFileList() {
-  const list = $('#code-file-list'); list.innerHTML = '';
-  const empty = (t) => { const p = document.createElement('div'); p.className = 'code-file-empty'; p.textContent = t; list.appendChild(p); };
-  if (!codeState.codeDir) return empty('Set run.dir in config.json to open/save files.');
-  if (!codeState.files.length) return empty('No code files yet — write one and tap Save.');
+function codeBuildTree() {
+  const root = { dirs: new Map(), files: [] };
   for (const f of codeState.files) {
-    const b = document.createElement('button'); b.className = 'code-file-item'; b.type = 'button'; b.textContent = f.path;
-    b.addEventListener('click', () => codeOpenFile(f.path));
-    list.appendChild(b);
+    const parts = f.path.split('/'); let node = root;
+    for (let i = 0; i < parts.length - 1; i++) { const d = parts[i]; if (!node.dirs.has(d)) node.dirs.set(d, { dirs: new Map(), files: [] }); node = node.dirs.get(d); }
+    node.files.push(f);
   }
+  return root;
 }
-function codeToggleFiles(force) {
-  const sheet = $('#code-files-sheet');
-  const openIt = force !== undefined ? force : sheet.hidden;
-  sheet.hidden = !openIt;
-  if (openIt) codeRefreshFiles().then(codeRenderFileList);
+function codeRenderTree() {
+  const el = $('#code-tree'); el.innerHTML = '';
+  const empty = (t) => { const p = document.createElement('div'); p.className = 'code-file-empty'; p.textContent = t; el.appendChild(p); };
+  if (!codeState.codeDir) return empty('Set run.dir in config.json to browse files.');
+  if (!codeState.files.length) return empty('No code files yet — write one in Saved mode and Save.');
+  const render = (node, prefix, depth) => {
+    for (const d of [...node.dirs.keys()].sort()) {
+      const path = prefix ? prefix + '/' + d : d, open = codeState.expanded.has(path);
+      const row = document.createElement('button'); row.type = 'button'; row.className = 'code-tree-dir';
+      row.style.paddingLeft = (8 + depth * 14) + 'px'; row.textContent = (open ? '▾ ' : '▸ ') + d;
+      row.addEventListener('click', () => { open ? codeState.expanded.delete(path) : codeState.expanded.add(path); codeSaveLS(); codeRenderTree(); });
+      el.appendChild(row);
+      if (open) render(node.dirs.get(d), path, depth + 1);
+    }
+    for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name))) {
+      const row = document.createElement('button'); row.type = 'button';
+      row.className = 'code-tree-file' + (codeState.mode === 'saved' && f.path === codeState.file.name ? ' active' : '');
+      row.style.paddingLeft = (8 + depth * 14 + 14) + 'px'; row.textContent = f.name;
+      row.addEventListener('click', () => codeOpenFile(f.path));
+      el.appendChild(row);
+    }
+  };
+  render(codeBuildTree(), '', 0);
+}
+function codeToggleSidebar(force) {
+  const view = $('.view[data-view="code"]');
+  const openIt = force !== undefined ? force : !view.classList.contains('sidebar-open');
+  view.classList.toggle('sidebar-open', openIt);
+  if (openIt) codeRefreshFiles();
 }
 async function codeOpenFile(rel) {
-  try {
-    const j = await api('/api/code/file?path=' + encodeURIComponent(rel));
-    codeSetName(j.path); codeSetContent(j.content); codeMarkDirty(false); codeSaveLS();
-  } catch (e) { toast(e.message); return; }
-  codeToggleFiles(false); $('#code-body').focus();
+  let j; try { j = await api('/api/code/file?path=' + encodeURIComponent(rel)); } catch (e) { toast(e.message); return; }
+  codeState.mode = 'saved'; codeState.file = { name: j.path, content: j.content, dirty: false };
+  codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeToggleSidebar(false); codeTA().focus();
 }
 function codeNewFile() {
-  codeSetName('untitled.py'); codeSetContent(CODE_STARTER); codeMarkDirty(false); codeSaveLS();
-  codeToggleFiles(false);
+  codeState.mode = 'saved'; codeState.file = { name: 'untitled.py', content: CODE_STARTER, dirty: false };
+  codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeToggleSidebar(false);
   const fn = $('#code-filename'); fn.focus(); fn.select();
 }
 async function codeSave() {
@@ -2513,10 +2613,29 @@ async function codeSave() {
   if (!name) { toast('Name the file first (e.g. hello.py)'); $('#code-filename').focus(); return; }
   if (!codeState.codeDir) { toast('No synced folder configured (run.dir)'); return; }
   try {
-    const j = await api('/api/code/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name, content: $('#code-body').value }) });
-    codeState.name = j.path; codeMarkDirty(false); codeSaveLS();
+    const j = await api('/api/code/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name, content: codeTA().value }) });
+    codeState.file.name = j.path; codeMarkDirty(false); codeSaveLS();
     toast('Saved · ' + j.path); codeRefreshFiles();
   } catch (e) { toast(e.message); }
+}
+function codeSetupSwipe() {
+  const view = $('.view[data-view="code"]'); let sx = 0, sy = 0, track = false;
+  view.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { track = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; track = true;
+  }, { passive: true });
+  view.addEventListener('touchend', (e) => {
+    if (!track) return; track = false;
+    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    const open = view.classList.contains('sidebar-open');
+    if (dx > 0 && !open && sx < 28 && codeState.mode === 'saved') codeToggleSidebar(true); // left-edge → open
+    else if (dx < 0 && open) codeToggleSidebar(false);                                     // swipe left → close
+  }, { passive: true });
+  // tap outside the drawer while open → close it
+  view.addEventListener('pointerdown', (e) => {
+    if (view.classList.contains('sidebar-open') && !e.target.closest('.code-sidebar') && !e.target.closest('#code-files')) codeToggleSidebar(false);
+  }, true);
 }
 function codeShowStatus(t, cls) { const el = $('#code-status'); el.textContent = t; el.className = 'code-status' + (cls ? ' ' + cls : ''); }
 function codeSetOut(parts) {
@@ -2538,8 +2657,8 @@ function codeRenderOutput(r) {
 }
 async function codeRun() {
   if (codeState.running) return;
-  const lang = codeLangOf($('#code-filename').value);
-  if (!lang) { toast('Add an extension like .py / .c / .java to run'); return; }
+  const lang = codeCurLang();
+  if (!lang) { toast('Pick a language / add a file extension to run'); return; }
   codeState.running = true;
   const btn = $('#code-run'); btn.classList.add('running'); btn.disabled = true;
   codeShowStatus('running…', ''); $('#code-output').hidden = false; codeSetOut([{ cls: 'muted', text: '…' }]);
@@ -2547,7 +2666,7 @@ async function codeRun() {
     const stdin = $('#code-stdin-wrap').hidden ? '' : $('#code-stdin').value;
     const { result } = await api('/api/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lang, code: $('#code-body').value, stdin }),
+      body: JSON.stringify({ lang, code: codeTA().value, stdin }),
     });
     codeRenderOutput(result);
   } catch (e) { codeShowStatus('error', 'err'); codeSetOut([{ cls: 'oe', text: e.message }]); toast(e.message); }
@@ -2555,31 +2674,39 @@ async function codeRun() {
 }
 
 function codeInitOnce() {
-  codeBuildSymbols();
-  const ta = $('#code-body');
+  codeBuildSymbols(); codeSetupSwipe();
+  const ta = codeTA();
   ta.addEventListener('input', codeOnInput);
   ta.addEventListener('scroll', codeSyncScroll);
   ta.addEventListener('focus', codeViewportFit);
   ta.addEventListener('blur', codeViewportReset);
-  ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); codeInsert('    '); } }); // desktop
-  $('#code-filename').addEventListener('input', () => { codeState.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
-  $('#code-files').addEventListener('click', () => codeToggleFiles());
-  $('#code-file-new').addEventListener('click', codeNewFile);
+  ta.addEventListener('keydown', codeKeydown);
+  $$('#code-mode .seg-btn').forEach((b) => b.addEventListener('click', () => codeSetMode(b.dataset.mode)));
+  $('#code-lang').addEventListener('change', (e) => codeSetScratchLang(e.target.value));
+  $('#code-filename').addEventListener('input', () => { codeState.file.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
+  $('#code-files').addEventListener('click', () => codeToggleSidebar());
+  $('#code-sidebar-new').addEventListener('click', codeNewFile);
+  $('#code-sidebar-close').addEventListener('click', () => codeToggleSidebar(false));
   $('#code-save').addEventListener('click', codeSave);
   $('#code-run').addEventListener('click', codeRun);
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
   $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
-  $('#code-back').addEventListener('click', () => { codeViewportReset(); codeToggleFiles(false); show(state.prevTab || 'discover'); });
+  $('#code-back').addEventListener('click', () => { codeViewportReset(); codeToggleSidebar(false); show(state.prevTab || 'discover'); });
   if (window.visualViewport) { visualViewport.addEventListener('resize', codeViewportFit); visualViewport.addEventListener('scroll', codeViewportFit); }
   codeLoadHljs();
 }
 async function loadCode() {
   if (!codeState.inited) { codeInitOnce(); codeState.inited = true; }
-  await codeRefreshFiles();
   const d = codeLoadLS();
-  if (typeof d.content === 'string' && (d.content || d.name)) { codeSetName(d.name || ''); codeSetContent(d.content); codeMarkDirty(!!d.dirty); }
-  else { codeSetName('untitled.py'); codeSetContent(CODE_STARTER); codeMarkDirty(false); }
+  if (d.mode === 'saved' || d.mode === 'scratch') codeState.mode = d.mode;
+  if (d.scratchLang) codeState.scratchLang = d.scratchLang;
+  if (d.scratchBuffers && typeof d.scratchBuffers === 'object') codeState.scratchBuffers = d.scratchBuffers;
+  if (d.file && typeof d.file === 'object') codeState.file = { name: d.file.name || '', content: d.file.content || '', dirty: !!d.file.dirty };
+  if (Array.isArray(d.expanded)) codeState.expanded = new Set(d.expanded);
+  await codeLoadLangs();
+  await codeRefreshFiles();
+  codeApplyMode(); codeLoadBuffer();
   codeViewportFit();
 }
 
