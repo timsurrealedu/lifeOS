@@ -670,6 +670,7 @@ function endDrag(commit) {
   window.removeEventListener('pointermove', onDragMove, { passive: false });
   window.removeEventListener('pointerup', onDragUp);
   window.removeEventListener('pointercancel', onDragUp);
+  window.removeEventListener('touchmove', onDragTouchMove, { passive: false });
   if (commit && s.started && s.dest !== null && s.dest !== undefined) {
     const destLabel = s.dest === '' ? 'vault root' : s.dest;
     suppressTreeClick = true;
@@ -704,7 +705,12 @@ function onDragDown(e) {
   window.addEventListener('pointermove', onDragMove, { passive: false });
   window.addEventListener('pointerup', onDragUp);
   window.addEventListener('pointercancel', onDragUp);
+  window.addEventListener('touchmove', onDragTouchMove, { passive: false });
 }
+// Once a row is picked up, stop the page/list from scrolling — otherwise the browser hijacks the
+// gesture and fires pointercancel, dropping the drag ("lets go itself" on touch). touch-action:none
+// can't do this once the gesture has started, so we preventDefault the touchmove instead.
+function onDragTouchMove(e) { if (dragS && dragS.started) e.preventDefault(); }
 function beginDrag(x, y) {
   if (!dragS) return;
   dragS.started = true;
@@ -850,7 +856,6 @@ function showReader(title, html, path = null) {
   state.readerPath = path;
   $('#reader-edit').hidden = !path;
   $('#reader-chat').hidden = !path;
-  $('#reader-del').hidden = !path || isProtectedPath(path);
   // New note open → drop any prior tutor conversation and collapse the dock.
   state.noteChat = []; closeNoteChat();
   renderReaderProps(path ? state.readerContent : '');
@@ -1031,6 +1036,7 @@ $('#reader-new-folder').addEventListener('click', async () => {
     const open = reader.classList.contains('sidebar-open');
     if (dx > 0 && !open && sx < 120) reader.classList.add('sidebar-open'); // wide left-edge zone → open
     else if (dx < 0 && open) reader.classList.remove('sidebar-open');      // → close
+    else if (dx < 0 && !open && !reader.classList.contains('chat-open')) openNoteChat(); // swipe left on the note → AI assistant
   }, { passive: true });
   // Tap the exposed note (outside the drawer) to slide back to it. Capture phase + stop so the
   // dismissing tap doesn't also fire a wikilink/note click underneath.
@@ -1222,17 +1228,6 @@ $('#reader-back').addEventListener('click', closeReader);
 $('#reader-edit').addEventListener('click', () => {
   if (state.readerPath) openEditorFor(state.readerPath, $('#reader-title').textContent);
 });
-$('#reader-del').addEventListener('click', async () => {
-  if (!state.readerPath) return;
-  if (!(await appConfirm(`Delete "${$('#reader-title').textContent}"? This can't be undone.`, { okLabel: 'Delete', danger: true }))) return;
-  try {
-    await api('/api/note?path=' + encodeURIComponent(state.readerPath), { method: 'DELETE' });
-    closeReader();
-    state.notes = []; await loadNotes(true);
-    toast('Note deleted');
-  } catch (e) { toast(e.message); }
-});
-
 /* ---------- Per-note tutor chat (read-only) + ➕ add-to-note ---------- */
 // On mobile the chat panel is 90vw, leaving a reader sliver visible — tapping it closes the chat.
 function noteChatOutsideClose(e) {
