@@ -12,8 +12,24 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
 echo "== apt: compilers, JDK, terminal, tools =="
+# NOTE: ttyd + pipx are NOT in apt on Ubuntu 20.04 (focal) — installed separately below so this works
+# on both focal and newer. apt-get install is atomic, so keep only packages that exist everywhere here.
 sudo apt-get update -y
-sudo apt-get install -y gcc default-jdk pipx unzip curl git ttyd tmux ripgrep fd-find build-essential
+sudo apt-get install -y gcc default-jdk python3-pip unzip curl git tmux ripgrep fd-find build-essential
+
+echo "== pipx (via pip — focal has no apt pipx) =="
+python3 -m pip install --user -U pipx
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "== ttyd (static binary — not in apt on focal) =="
+case "$(uname -m)" in
+  aarch64|arm64) TTYD_ARCH=aarch64 ;;
+  x86_64)        TTYD_ARCH=x86_64 ;;
+  *) echo "unknown arch $(uname -m)"; exit 1 ;;
+esac
+sudo curl -fL -o /usr/local/bin/ttyd \
+  "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${TTYD_ARCH}"
+sudo chmod +x /usr/local/bin/ttyd
 
 # ---------------------------------------------------------------- JupyterLab (Playground, :8888)
 echo "== JupyterLab + vim keybindings (isolated venv via pipx) =="

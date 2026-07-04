@@ -23,7 +23,7 @@ module.exports = {
     },
     {
       name: 'lifeOS-editor', // LazyVim in the browser via ttyd -> persistent tmux (survives mobile disconnects)
-      script: 'ttyd',
+      script: '/usr/local/bin/ttyd',
       args: '-W -p 7681 -i 0.0.0.0 tmux new -A -s main',
       interpreter: 'none',
       cwd: HOME,
