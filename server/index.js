@@ -16,6 +16,7 @@ import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
   runNoteChat, runNoteAugment, runAiSearch, isRunning,
 } from './process.js';
+import { runCode, availableLangs } from './runner.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -478,6 +479,16 @@ app.post('/api/config', (req, res) => {
     const c = saveConfig(req.body || {});
     ensureVault(c);
     ok(res, { config: c, vaultDir: vaultDir(c) });
+  } catch (e) { fail(res, e); }
+});
+
+// ---- Code runner (phone "Code" tab) ----
+app.get('/api/run/langs', (_req, res) => ok(res, { langs: availableLangs() }));
+app.post('/api/run', async (req, res) => {
+  try {
+    const { lang, code, stdin } = req.body || {};
+    if (!lang || typeof code !== 'string') return fail(res, new Error('lang and code are required'));
+    ok(res, { result: await runCode({ lang, code, stdin: typeof stdin === 'string' ? stdin : '' }) });
   } catch (e) { fail(res, e); }
 });
 

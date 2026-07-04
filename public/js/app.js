@@ -47,6 +47,7 @@ function cycleTheme() {
    New notes are created from Browse's "+ New" or the reader sidebar. */
 const TAB_VIEW = { inbox: 'capture', browse: 'notes', plan: 'plan', chat: 'chat' };
 function show(tab) {
+  if (tab !== 'code') state.prevTab = tab;                   // Code is full-screen; Back returns here
   const view = TAB_VIEW[tab] || tab;                         // 'discover' passes through
   state.view = view;
   $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
@@ -56,6 +57,7 @@ function show(tab) {
   if (view === 'notes') loadNotes();
   if (view === 'plan') loadPlan();
   if (view === 'chat') renderChat();
+  if (view === 'code') loadCode();
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
 
@@ -2372,6 +2374,183 @@ function bindImages(root) {
   }, { passive: true });
   view.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; if (e.touches.length === 0) { drag = false; if (s === 1) reset(); } });
 })();
+
+/* ---------- Code tab: phone-first write + run (no Bluetooth keyboard needed) ----------
+   A transparent textarea over a highlight.js layer + an on-screen symbol bar (the keys a phone
+   keyboard hides), anchored above the soft keyboard. Runs whole programs via POST /api/run. */
+const CODE_LS = 'lifeos.code';
+const codeState = { lang: 'python', langs: [], buffers: {}, running: false, inited: false };
+
+// Symbol keys. `v` inserts text at the caret; `act` moves the caret. `wide` = a wider label key.
+const CODE_KEYS = [
+  { t: 'Tab', v: '    ', wide: true }, { t: '(', v: '(' }, { t: ')', v: ')' }, { t: '{', v: '{' }, { t: '}', v: '}' },
+  { t: '[', v: '[' }, { t: ']', v: ']' }, { t: '<', v: '<' }, { t: '>', v: '>' }, { t: ';', v: ';' }, { t: ':', v: ':' },
+  { t: '=', v: '=' }, { t: '+', v: '+' }, { t: '-', v: '-' }, { t: '*', v: '*' }, { t: '/', v: '/' }, { t: '%', v: '%' },
+  { t: '&', v: '&' }, { t: '|', v: '|' }, { t: '!', v: '!' }, { t: '"', v: '"' }, { t: "'", v: "'" }, { t: '`', v: '`' },
+  { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '.', v: '.' }, { t: ',', v: ',' }, { t: '\\', v: '\\' }, { t: '$', v: '$' },
+  { t: '@', v: '@' }, { t: '←', act: 'left', wide: true }, { t: '→', act: 'right', wide: true },
+];
+const CODE_HLLANG = { python: 'python', javascript: 'javascript', c: 'c', cpp: 'cpp', java: 'java', go: 'go', rust: 'rust', bash: 'bash' };
+const CODE_STARTERS = {
+  python: 'print("hello")\n',
+  javascript: 'console.log("hello")\n',
+  c: '#include <stdio.h>\nint main(){ printf("hello\\n"); return 0; }\n',
+  cpp: '#include <iostream>\nint main(){ std::cout << "hello\\n"; }\n',
+  java: 'public class Main {\n  public static void main(String[] a) {\n    System.out.println("hello");\n  }\n}\n',
+  go: 'package main\nimport "fmt"\nfunc main(){ fmt.Println("hello") }\n',
+  rust: 'fn main(){ println!("hello"); }\n',
+  bash: 'echo hello\n',
+};
+
+function codeLoadLS() {
+  try { const s = JSON.parse(localStorage.getItem(CODE_LS) || '{}'); codeState.lang = s.lang || 'python'; codeState.buffers = s.buffers || {}; } catch { /* defaults */ }
+}
+function codeSaveLS() {
+  try { localStorage.setItem(CODE_LS, JSON.stringify({ lang: codeState.lang, buffers: codeState.buffers })); } catch { /* quota */ }
+}
+
+function codeInsert(text) {
+  const ta = $('#code-body');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+  ta.selectionStart = ta.selectionEnd = s + text.length;
+  ta.focus(); codeOnInput();
+}
+function codeMoveCaret(dir) {
+  const ta = $('#code-body');
+  const p = Math.max(0, Math.min(ta.value.length, ta.selectionStart + (dir === 'left' ? -1 : 1)));
+  ta.selectionStart = ta.selectionEnd = p; ta.focus();
+}
+function codeBuildSymbols() {
+  const bar = $('#code-symbols'); bar.innerHTML = '';
+  for (const k of CODE_KEYS) {
+    const b = document.createElement('button');
+    b.className = 'sym' + (k.wide ? ' sym-wide' : ''); b.textContent = k.t; b.type = 'button';
+    // pointerdown + preventDefault keeps the textarea focused (keyboard stays up) and acts immediately.
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); k.act ? codeMoveCaret(k.act) : codeInsert(k.v); });
+    bar.appendChild(b);
+  }
+}
+
+function codeOnInput() {
+  const ta = $('#code-body');
+  codeState.buffers[codeState.lang] = ta.value; codeSaveLS();
+  codeRenderGutter(); codeHighlight(); codeSyncScroll();
+}
+function codeRenderGutter() {
+  const inner = $('#code-gutter-inner');
+  const n = $('#code-body').value.split('\n').length;
+  if (inner._n !== n) { inner.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n'); inner._n = n; }
+}
+function codeSyncScroll() {
+  const ta = $('#code-body');
+  const c = $('#code-hl-code'); if (c) c.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
+  $('#code-gutter-inner').style.transform = `translateY(${-ta.scrollTop}px)`;
+}
+function codeHighlight() {
+  const codeEl = $('#code-hl-code');
+  if (!window.hljs) return; // plain mode (textarea shows its own text)
+  const lang = CODE_HLLANG[codeState.lang] || 'plaintext';
+  const text = $('#code-body').value;
+  try { codeEl.innerHTML = window.hljs.highlight(text, { language: lang, ignoreIllegal: true }).value; }
+  catch { codeEl.textContent = text; }
+}
+function codeApplyHljsMode() {
+  const on = !!window.hljs;
+  $('#code-body').classList.toggle('plain', !on);
+  $('.code-hl').style.display = on ? '' : 'none';
+}
+function codeLoadHljs() {
+  if (window.hljs) { codeApplyHljsMode(); codeHighlight(); return; }
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/vendor/hljs/theme.css'; document.head.appendChild(l);
+  const s = document.createElement('script'); s.src = '/vendor/hljs/highlight.min.js';
+  s.onload = () => { codeApplyHljsMode(); codeHighlight(); };
+  s.onerror = () => codeApplyHljsMode(); // load failed → stay in plain mode
+  document.head.appendChild(s);
+}
+
+// Pin the fixed Code view to the visual viewport so the symbol bar sits above the keyboard (iOS
+// fallback; Android gets it from interactive-widget=resizes-content).
+function codeViewportFit() {
+  const vv = window.visualViewport, view = $('.view[data-view="code"]');
+  if (!vv || !view || view.hidden) return;
+  view.style.height = vv.height + 'px'; view.style.top = vv.offsetTop + 'px';
+}
+function codeViewportReset() { const v = $('.view[data-view="code"]'); if (v) { v.style.height = ''; v.style.top = ''; } }
+
+async function codeLoadLangs() {
+  try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
+  catch { codeState.langs = []; }
+  const list = codeState.langs.length ? codeState.langs : [{ id: 'python', name: 'Python' }];
+  const sel = $('#code-lang'); sel.innerHTML = '';
+  for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
+  if (!list.find((l) => l.id === codeState.lang)) codeState.lang = list[0].id;
+  sel.value = codeState.lang;
+}
+function codeSetLang(lang) {
+  codeState.lang = lang; $('#code-lang').value = lang;
+  const ta = $('#code-body');
+  ta.value = codeState.buffers[lang] ?? CODE_STARTERS[lang] ?? '';
+  codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll();
+}
+function codeShowStatus(t, cls) { const el = $('#code-status'); el.textContent = t; el.className = 'code-status' + (cls ? ' ' + cls : ''); }
+function codeSetOut(parts) {
+  const body = $('#code-out-body'); body.innerHTML = '';
+  for (const p of parts) { const span = document.createElement('span'); if (p.cls) span.className = p.cls; span.textContent = p.text; body.appendChild(span); }
+}
+function codeRenderOutput(r) {
+  $('#code-output').hidden = false;
+  const parts = [];
+  if (r.stdout) parts.push({ text: r.stdout });
+  if (r.stderr) parts.push({ cls: 'oe', text: r.stderr });
+  if (!r.stdout && !r.stderr) parts.push({ cls: 'muted', text: r.timedOut ? '(killed — timed out)' : '(no output)' });
+  codeSetOut(parts);
+  const secs = (r.durationMs / 1000).toFixed(r.durationMs < 1000 ? 2 : 1);
+  if (r.timedOut) codeShowStatus(`timed out · ${secs}s`, 'err');
+  else if (r.phase === 'compile' && r.exitCode !== 0) codeShowStatus(`compile error · ${r.durationMs}ms`, 'err');
+  else if (r.exitCode === 0) codeShowStatus(`exit 0 · ${r.durationMs}ms`, 'ok');
+  else codeShowStatus(`exit ${r.exitCode} · ${r.durationMs}ms`, 'err');
+}
+async function codeRun() {
+  if (codeState.running) return;
+  codeState.running = true;
+  const btn = $('#code-run'); btn.classList.add('running'); btn.disabled = true;
+  codeShowStatus('running…', ''); $('#code-output').hidden = false; codeSetOut([{ cls: 'muted', text: '…' }]);
+  try {
+    const stdin = $('#code-stdin-wrap').hidden ? '' : $('#code-stdin').value;
+    const { result } = await api('/api/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: codeState.lang, code: $('#code-body').value, stdin }),
+    });
+    codeRenderOutput(result);
+  } catch (e) { codeShowStatus('error', 'err'); codeSetOut([{ cls: 'oe', text: e.message }]); toast(e.message); }
+  finally { codeState.running = false; btn.classList.remove('running'); btn.disabled = false; }
+}
+
+function codeInitOnce() {
+  codeLoadLS(); codeBuildSymbols();
+  const ta = $('#code-body');
+  ta.addEventListener('input', codeOnInput);
+  ta.addEventListener('scroll', codeSyncScroll);
+  ta.addEventListener('focus', codeViewportFit);
+  ta.addEventListener('blur', codeViewportReset);
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); codeInsert('    '); } }); // desktop
+  $('#code-lang').addEventListener('change', (e) => codeSetLang(e.target.value));
+  $('#code-run').addEventListener('click', codeRun);
+  $('#code-clear').addEventListener('click', () => { $('#code-body').value = ''; codeOnInput(); $('#code-body').focus(); });
+  $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
+  $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
+  $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
+  $('#code-back').addEventListener('click', () => { codeViewportReset(); show(state.prevTab || 'discover'); });
+  if (window.visualViewport) { visualViewport.addEventListener('resize', codeViewportFit); visualViewport.addEventListener('scroll', codeViewportFit); }
+  codeLoadHljs();
+}
+async function loadCode() {
+  if (!codeState.inited) { codeInitOnce(); codeState.inited = true; }
+  await codeLoadLangs();
+  codeSetLang(codeState.lang);
+  codeViewportFit();
+}
 
 /* ---------- Boot ---------- */
 (async function boot() {

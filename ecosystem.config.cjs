@@ -31,6 +31,8 @@ module.exports = {
           '/bin',
           '/usr/local/sbin',
           '/usr/sbin',
+          '/snap/bin', // Go (snap) — for the Code tab's /api/run
+          `${process.env.HOME || '/home/ubuntu'}/.cargo/bin`, // Rust (rustup) — for /api/run
           `${process.env.HOME || '/home/ubuntu'}/.npm-global/bin`,
           process.env.PATH || '',
         ].join(':'),

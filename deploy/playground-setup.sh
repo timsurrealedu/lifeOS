@@ -31,6 +31,16 @@ sudo curl -fL -o /usr/local/bin/ttyd \
   "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${TTYD_ARCH}"
 sudo chmod +x /usr/local/bin/ttyd
 
+# ---------------------------------------------------------------- Extra compilers for the in-app Code tab
+# The lifeOS "Code" tab (POST /api/run) shells out to these. gcc/g++ (build-essential), python3 and
+# the JDK are already installed above / by the base setup; add Go + Rust here.
+echo "== Go (snap — focal apt Go is ancient) =="
+sudo snap install go --classic || true   # /snap/bin/go
+echo "== Rust (rustup, non-interactive) =="
+if ! command -v rustc >/dev/null 2>&1 && [ ! -x "$HOME/.cargo/bin/rustc" ]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
+fi   # rustc/cargo land in ~/.cargo/bin
+
 # ---------------------------------------------------------------- JupyterLab (Playground, :8888)
 echo "== JupyterLab + vim keybindings (isolated venv via pipx) =="
 pipx ensurepath

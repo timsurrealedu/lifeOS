@@ -563,7 +563,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .tabbar {
   flex: none; width: 100%;
   height: calc(var(--tab-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; z-index: var(--z-tabbar);
+  display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; z-index: var(--z-tabbar);
   background: var(--surface); border-top: 1px solid var(--border-soft);
 }
 .tab {
@@ -879,6 +879,78 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .editor-body::placeholder { color: var(--faint); }
 .editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
+
+/* ============ Code tab — phone-first write + run ============ */
+/* Full-screen focused surface (covers topbar+tabbar); the Back button exits. Fixed flex column so
+   the symbol bar stays glued above the on-screen keyboard (helped by interactive-widget + VisualViewport). */
+.view[data-view="code"]:not([hidden]) {
+  position: fixed; inset: 0; z-index: 44; display: flex; flex-direction: column;
+  background: var(--bg); background-image: var(--bg-tint);
+  padding-top: env(safe-area-inset-top);
+  animation: readerin .2s cubic-bezier(.2,.9,.25,1);
+}
+.code-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
+.code-back { font-size: 22px; }
+.code-lang {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; cursor: pointer; max-width: 42vw;
+}
+.code-lang:focus { border-color: var(--accent); outline: none; }
+.code-run { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; font-weight: 600; }
+.code-run[disabled] { opacity: .65; }
+.code-run .code-run-ico { display: inline-block; font-size: 12px; }
+.code-run.running .code-run-ico { animation: codespin .8s linear infinite; }
+@keyframes codespin { to { transform: rotate(360deg); } }
+#code-stdin-toggle.on { color: var(--accent); border-color: var(--accent-soft); }
+
+/* Output panel (top, collapsible) */
+.code-panel { flex: none; display: flex; flex-direction: column; max-height: 42vh; overflow: hidden;
+  border-bottom: 1px solid var(--border-soft); background: var(--surface); }
+.code-panel-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border-soft); }
+.code-status { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--muted); }
+.code-status.ok { color: var(--sage); }
+.code-status.err { color: var(--danger); }
+.code-out-body { margin: 0; padding: 10px 14px; overflow: auto; font-family: var(--mono); font-size: 13px;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.code-out-body .oe { color: var(--danger); }
+.code-out-body .muted { color: var(--faint); }
+
+/* stdin */
+.code-stdin-wrap { flex: none; border-bottom: 1px solid var(--border-soft); background: var(--surface); }
+.code-stdin { width: 100%; resize: none; border: 0; outline: none; background: transparent; color: var(--text);
+  font-family: var(--mono); font-size: 13px; line-height: 1.5; padding: 8px 14px; }
+.code-stdin::placeholder { color: var(--faint); }
+
+/* Editor: gutter + (highlight layer under a transparent textarea) */
+.code-editor { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+.code-gutter { flex: none; overflow: hidden; padding: 12px 8px 0 12px; background: var(--bg); }
+.code-gutter-inner { font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--faint);
+  text-align: right; white-space: pre; user-select: none; will-change: transform; }
+.code-stack { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.code-hl, .code-body {
+  position: absolute; inset: 0; margin: 0; border: 0; padding: 12px 14px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6; tab-size: 4; -moz-tab-size: 4;
+}
+.code-hl { overflow: hidden; pointer-events: none; background: transparent; }
+.code-hl code { display: block; white-space: pre; will-change: transform; color: var(--text); }
+.code-body {
+  overflow: auto; resize: none; outline: none; white-space: pre; background: transparent;
+  color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--accent);
+}
+.code-body::placeholder { color: var(--faint); -webkit-text-fill-color: var(--faint); }
+.code-body.plain { color: var(--text); -webkit-text-fill-color: currentColor; }  /* highlight.js absent → show textarea text */
+
+/* On-screen symbol bar — the keys a phone keyboard hides. Bottom-most = rides above the keyboard. */
+.code-symbols { flex: none; display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none;
+  padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--border-soft); }
+.code-symbols::-webkit-scrollbar { display: none; }
+.sym { flex: none; min-width: 38px; height: 40px; padding: 0 10px; border-radius: 10px;
+  border: 1px solid var(--border-soft); background: var(--surface-2); color: var(--text);
+  font-family: var(--mono); font-size: 16px; cursor: pointer; touch-action: manipulation;
+  transition: transform .08s, background .12s; }
+.sym:active { transform: scale(.9); background: var(--surface-3); }
+.sym-wide { min-width: 50px; font-size: 12px; letter-spacing: .02em; }
 
 /* ---- Live preview editor (Obsidian-style: render blocks, click one to edit its source) ---- */
 .lp-editor {

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#0d0e12" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -240,6 +240,44 @@
         </div>
       </section>
 
+      <!-- CODE (phone-first: write + run code with an on-screen symbol bar) -->
+      <section class="view" data-view="code" hidden>
+        <div class="code-top">
+          <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
+          <select id="code-lang" class="code-lang" aria-label="Language"></select>
+          <div class="spacer"></div>
+          <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
+          <button class="icon-btn" id="code-clear" title="Clear code" aria-label="Clear code">⌫</button>
+          <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
+        </div>
+
+        <div class="code-panel" id="code-output" hidden>
+          <div class="code-panel-head">
+            <span class="code-status" id="code-status">output</span>
+            <div class="spacer"></div>
+            <button class="chip code-copy" id="code-copy">Copy</button>
+            <button class="icon-btn" id="code-output-close" aria-label="Hide output">✕</button>
+          </div>
+          <pre class="code-out-body" id="code-out-body"></pre>
+        </div>
+
+        <div class="code-stdin-wrap" id="code-stdin-wrap" hidden>
+          <textarea id="code-stdin" class="code-stdin" rows="2" spellcheck="false" autocapitalize="off"
+            autocorrect="off" autocomplete="off" placeholder="stdin — input fed to your program…"></textarea>
+        </div>
+
+        <div class="code-editor" id="code-editor">
+          <div class="code-gutter" id="code-gutter"><div class="code-gutter-inner" id="code-gutter-inner">1</div></div>
+          <div class="code-stack">
+            <pre class="code-hl" aria-hidden="true"><code id="code-hl-code"></code></pre>
+            <textarea id="code-body" class="code-body" spellcheck="false" autocapitalize="off" autocorrect="off"
+              autocomplete="off" wrap="off" placeholder="write code, then tap Run…"></textarea>
+          </div>
+        </div>
+
+        <div class="code-symbols" id="code-symbols"></div>
+      </section>
+
     </main>
 
     <!-- Bottom nav -->
@@ -249,6 +287,7 @@
       <button class="tab" data-tab="browse"><span class="ti">▤</span><span>Browse</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="chat"><span class="ti">◈</span><span>Chat</span></button>
+      <button class="tab" data-tab="code"><span class="ti">❯</span><span>Code</span></button>
     </nav>
   </div>
 

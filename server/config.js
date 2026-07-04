@@ -42,6 +42,8 @@ const DEFAULTS = {
   // run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
   // https://aistudio.google.com/apikey
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },
+  // Code runner (the phone "Code" tab). Per-run wall-clock timeout and captured-output cap.
+  run: { timeoutMs: 10000, maxOutputBytes: 262144 },
 };
 
 export function loadConfig() {
@@ -55,6 +57,7 @@ export function loadConfig() {
     cfg.qwen = { ...DEFAULTS.qwen, ...(saved.qwen || {}) };
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
     cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
+    cfg.run = { ...DEFAULTS.run, ...(saved.run || {}) };
   } catch {
     /* first run: defaults */
   }
@@ -69,6 +72,7 @@ export function saveConfig(patch) {
   if (patch.qwen) cfg.qwen = { ...prev.qwen, ...patch.qwen };
   if (patch.fallback) cfg.fallback = { ...prev.fallback, ...patch.fallback };
   if (patch.gemini) cfg.gemini = { ...prev.gemini, ...patch.gemini };
+  if (patch.run) cfg.run = { ...prev.run, ...patch.run };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
   return cfg;
 }

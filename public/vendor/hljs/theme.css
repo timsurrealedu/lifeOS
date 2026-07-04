@@ -1,0 +1,40 @@
+/* highlight.js theme for the Code tab, mapped to lifeOS design tokens so it fits every app theme
+   (warm / light / netrunner) instead of a fixed palette. Scoped to .code-hl. */
+.code-hl .hljs { color: var(--text); background: transparent; }
+
+.code-hl .hljs-comment,
+.code-hl .hljs-quote { color: var(--faint); font-style: italic; }
+
+.code-hl .hljs-keyword,
+.code-hl .hljs-selector-tag,
+.code-hl .hljs-built_in,
+.code-hl .hljs-type,
+.code-hl .hljs-name,
+.code-hl .hljs-tag { color: var(--accent); }
+
+.code-hl .hljs-string,
+.code-hl .hljs-attr,
+.code-hl .hljs-regexp,
+.code-hl .hljs-meta .hljs-string { color: var(--sage); }
+
+.code-hl .hljs-number,
+.code-hl .hljs-literal,
+.code-hl .hljs-symbol,
+.code-hl .hljs-bullet { color: #c98a3c; }
+
+.code-hl .hljs-title,
+.code-hl .hljs-title.function_,
+.code-hl .hljs-title.class_,
+.code-hl .hljs-section { color: var(--text); font-weight: 600; }
+
+.code-hl .hljs-variable,
+.code-hl .hljs-template-variable,
+.code-hl .hljs-params,
+.code-hl .hljs-attribute { color: var(--text); }
+
+.code-hl .hljs-meta,
+.code-hl .hljs-doctag { color: var(--muted); }
+
+.code-hl .hljs-emphasis { font-style: italic; }
+.code-hl .hljs-strong { font-weight: 700; }
+.code-hl .hljs-link { text-decoration: underline; }
