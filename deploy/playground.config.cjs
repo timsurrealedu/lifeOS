@@ -12,8 +12,10 @@ module.exports = {
   apps: [
     {
       name: 'lifeOS-playground', // JupyterLab
-      script: `${HOME}/.local/bin/jupyter`, // pipx shim; own venv shebang, so PATH doesn't matter
-      args: `lab --no-browser --ip=0.0.0.0 --port=8888 --ServerApp.root_dir=${HOME}`,
+      // pipx exposes `jupyter-lab` (not a bare `jupyter`); use the venv binary directly — its shebang
+      // pins the right python, so PATH/reboot env doesn't matter.
+      script: `${HOME}/.local/share/pipx/venvs/jupyterlab/bin/jupyter-lab`,
+      args: `--no-browser --ip=0.0.0.0 --port=8888 --ServerApp.root_dir=${HOME}`,
       interpreter: 'none',
       cwd: HOME,
       autorestart: true,
