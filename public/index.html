@@ -244,11 +244,20 @@
       <section class="view" data-view="code" hidden>
         <div class="code-top">
           <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
-          <select id="code-lang" class="code-lang" aria-label="Language"></select>
-          <div class="spacer"></div>
+          <button class="icon-btn" id="code-files" title="Open file" aria-label="Files">📁</button>
+          <input id="code-filename" class="code-filename" placeholder="untitled.py" spellcheck="false"
+            autocapitalize="off" autocorrect="off" autocomplete="off" />
           <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
-          <button class="icon-btn" id="code-clear" title="Clear code" aria-label="Clear code">⌫</button>
+          <button class="icon-btn code-save" id="code-save" title="Save to your synced code folder" aria-label="Save">💾</button>
           <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
+        </div>
+        <div class="code-files-sheet" id="code-files-sheet" hidden>
+          <div class="code-files-head">
+            <span class="code-files-dir" id="code-files-dir"></span>
+            <div class="spacer"></div>
+            <button class="chip" id="code-file-new">＋ New</button>
+          </div>
+          <div class="code-file-list" id="code-file-list"></div>
         </div>
 
         <div class="code-panel" id="code-output" hidden>

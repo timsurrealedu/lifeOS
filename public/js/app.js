@@ -2375,11 +2375,13 @@ function bindImages(root) {
   view.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; if (e.touches.length === 0) { drag = false; if (s === 1) reset(); } });
 })();
 
-/* ---------- Code tab: phone-first write + run (no Bluetooth keyboard needed) ----------
-   A transparent textarea over a highlight.js layer + an on-screen symbol bar (the keys a phone
-   keyboard hides), anchored above the soft keyboard. Runs whole programs via POST /api/run. */
+/* ---------- Code tab: phone-first editor over the synced code folder ----------
+   Transparent textarea over a highlight.js layer + an on-screen symbol bar (the keys a phone keyboard
+   hides), anchored above the soft keyboard. Opens/saves files in the server's run.dir (Syncthing-
+   synced ~/mycode, so phone edits reach your other machines) and runs whole programs via /api/run.
+   Language is derived from the filename extension. */
 const CODE_LS = 'lifeos.code';
-const codeState = { lang: 'python', langs: [], buffers: {}, running: false, inited: false };
+const codeState = { name: '', codeDir: null, files: [], running: false, inited: false, dirty: false };
 
 // Symbol keys. `v` inserts text at the caret; `act` moves the caret. `wide` = a wider label key.
 const CODE_KEYS = [
@@ -2390,24 +2392,16 @@ const CODE_KEYS = [
   { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '.', v: '.' }, { t: ',', v: ',' }, { t: '\\', v: '\\' }, { t: '$', v: '$' },
   { t: '@', v: '@' }, { t: '←', act: 'left', wide: true }, { t: '→', act: 'right', wide: true },
 ];
-const CODE_HLLANG = { python: 'python', javascript: 'javascript', c: 'c', cpp: 'cpp', java: 'java', go: 'go', rust: 'rust', bash: 'bash' };
-const CODE_STARTERS = {
-  python: 'print("hello")\n',
-  javascript: 'console.log("hello")\n',
-  c: '#include <stdio.h>\nint main(){ printf("hello\\n"); return 0; }\n',
-  cpp: '#include <iostream>\nint main(){ std::cout << "hello\\n"; }\n',
-  java: 'public class Main {\n  public static void main(String[] a) {\n    System.out.println("hello");\n  }\n}\n',
-  go: 'package main\nimport "fmt"\nfunc main(){ fmt.Println("hello") }\n',
-  rust: 'fn main(){ println!("hello"); }\n',
-  bash: 'echo hello\n',
+const CODE_EXT_LANG = {
+  py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', c: 'c', h: 'c',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', java: 'java', go: 'go', rs: 'rust', sh: 'bash', bash: 'bash',
 };
+const codeLangOf = (name) => CODE_EXT_LANG[(name || '').split('.').pop().toLowerCase()] || null;
+const CODE_STARTER = 'print("hello")\n';
 
-function codeLoadLS() {
-  try { const s = JSON.parse(localStorage.getItem(CODE_LS) || '{}'); codeState.lang = s.lang || 'python'; codeState.buffers = s.buffers || {}; } catch { /* defaults */ }
-}
-function codeSaveLS() {
-  try { localStorage.setItem(CODE_LS, JSON.stringify({ lang: codeState.lang, buffers: codeState.buffers })); } catch { /* quota */ }
-}
+// localStorage draft = the working buffer, so a phone reload doesn't lose edits made before Save.
+function codeLoadLS() { try { return JSON.parse(localStorage.getItem(CODE_LS) || '{}'); } catch { return {}; } }
+function codeSaveLS() { try { localStorage.setItem(CODE_LS, JSON.stringify({ name: codeState.name, content: $('#code-body').value, dirty: codeState.dirty })); } catch { /* quota */ } }
 
 function codeInsert(text) {
   const ta = $('#code-body');
@@ -2431,12 +2425,9 @@ function codeBuildSymbols() {
     bar.appendChild(b);
   }
 }
+function codeMarkDirty(d) { codeState.dirty = d; $('#code-save').classList.toggle('dirty', d); }
 
-function codeOnInput() {
-  const ta = $('#code-body');
-  codeState.buffers[codeState.lang] = ta.value; codeSaveLS();
-  codeRenderGutter(); codeHighlight(); codeSyncScroll();
-}
+function codeOnInput() { codeMarkDirty(true); codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
 function codeRenderGutter() {
   const inner = $('#code-gutter-inner');
   const n = $('#code-body').value.split('\n').length;
@@ -2450,7 +2441,7 @@ function codeSyncScroll() {
 function codeHighlight() {
   const codeEl = $('#code-hl-code');
   if (!window.hljs) return; // plain mode (textarea shows its own text)
-  const lang = CODE_HLLANG[codeState.lang] || 'plaintext';
+  const lang = codeLangOf(codeState.name) || 'plaintext';
   const text = $('#code-body').value;
   try { codeEl.innerHTML = window.hljs.highlight(text, { language: lang, ignoreIllegal: true }).value; }
   catch { codeEl.textContent = text; }
@@ -2478,20 +2469,54 @@ function codeViewportFit() {
 }
 function codeViewportReset() { const v = $('.view[data-view="code"]'); if (v) { v.style.height = ''; v.style.top = ''; } }
 
-async function codeLoadLangs() {
-  try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
-  catch { codeState.langs = []; }
-  const list = codeState.langs.length ? codeState.langs : [{ id: 'python', name: 'Python' }];
-  const sel = $('#code-lang'); sel.innerHTML = '';
-  for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
-  if (!list.find((l) => l.id === codeState.lang)) codeState.lang = list[0].id;
-  sel.value = codeState.lang;
+function codeSetName(name) { codeState.name = name; if ($('#code-filename').value !== name) $('#code-filename').value = name; codeHighlight(); }
+function codeSetContent(text) { $('#code-body').value = text; codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
+
+// ---- files in the synced folder (run.dir) ----
+async function codeRefreshFiles() {
+  try { const j = await api('/api/code/files'); codeState.codeDir = j.dir; codeState.files = j.files || []; }
+  catch { codeState.codeDir = null; codeState.files = []; }
+  $('#code-files-dir').textContent = codeState.codeDir || 'run.dir not set';
+  $('#code-save').disabled = !codeState.codeDir;
 }
-function codeSetLang(lang) {
-  codeState.lang = lang; $('#code-lang').value = lang;
-  const ta = $('#code-body');
-  ta.value = codeState.buffers[lang] ?? CODE_STARTERS[lang] ?? '';
-  codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll();
+function codeRenderFileList() {
+  const list = $('#code-file-list'); list.innerHTML = '';
+  const empty = (t) => { const p = document.createElement('div'); p.className = 'code-file-empty'; p.textContent = t; list.appendChild(p); };
+  if (!codeState.codeDir) return empty('Set run.dir in config.json to open/save files.');
+  if (!codeState.files.length) return empty('No code files yet — write one and tap Save.');
+  for (const f of codeState.files) {
+    const b = document.createElement('button'); b.className = 'code-file-item'; b.type = 'button'; b.textContent = f.path;
+    b.addEventListener('click', () => codeOpenFile(f.path));
+    list.appendChild(b);
+  }
+}
+function codeToggleFiles(force) {
+  const sheet = $('#code-files-sheet');
+  const openIt = force !== undefined ? force : sheet.hidden;
+  sheet.hidden = !openIt;
+  if (openIt) codeRefreshFiles().then(codeRenderFileList);
+}
+async function codeOpenFile(rel) {
+  try {
+    const j = await api('/api/code/file?path=' + encodeURIComponent(rel));
+    codeSetName(j.path); codeSetContent(j.content); codeMarkDirty(false); codeSaveLS();
+  } catch (e) { toast(e.message); return; }
+  codeToggleFiles(false); $('#code-body').focus();
+}
+function codeNewFile() {
+  codeSetName('untitled.py'); codeSetContent(CODE_STARTER); codeMarkDirty(false); codeSaveLS();
+  codeToggleFiles(false);
+  const fn = $('#code-filename'); fn.focus(); fn.select();
+}
+async function codeSave() {
+  const name = $('#code-filename').value.trim();
+  if (!name) { toast('Name the file first (e.g. hello.py)'); $('#code-filename').focus(); return; }
+  if (!codeState.codeDir) { toast('No synced folder configured (run.dir)'); return; }
+  try {
+    const j = await api('/api/code/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: name, content: $('#code-body').value }) });
+    codeState.name = j.path; codeMarkDirty(false); codeSaveLS();
+    toast('Saved · ' + j.path); codeRefreshFiles();
+  } catch (e) { toast(e.message); }
 }
 function codeShowStatus(t, cls) { const el = $('#code-status'); el.textContent = t; el.className = 'code-status' + (cls ? ' ' + cls : ''); }
 function codeSetOut(parts) {
@@ -2513,6 +2538,8 @@ function codeRenderOutput(r) {
 }
 async function codeRun() {
   if (codeState.running) return;
+  const lang = codeLangOf($('#code-filename').value);
+  if (!lang) { toast('Add an extension like .py / .c / .java to run'); return; }
   codeState.running = true;
   const btn = $('#code-run'); btn.classList.add('running'); btn.disabled = true;
   codeShowStatus('running…', ''); $('#code-output').hidden = false; codeSetOut([{ cls: 'muted', text: '…' }]);
@@ -2520,7 +2547,7 @@ async function codeRun() {
     const stdin = $('#code-stdin-wrap').hidden ? '' : $('#code-stdin').value;
     const { result } = await api('/api/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lang: codeState.lang, code: $('#code-body').value, stdin }),
+      body: JSON.stringify({ lang, code: $('#code-body').value, stdin }),
     });
     codeRenderOutput(result);
   } catch (e) { codeShowStatus('error', 'err'); codeSetOut([{ cls: 'oe', text: e.message }]); toast(e.message); }
@@ -2528,27 +2555,31 @@ async function codeRun() {
 }
 
 function codeInitOnce() {
-  codeLoadLS(); codeBuildSymbols();
+  codeBuildSymbols();
   const ta = $('#code-body');
   ta.addEventListener('input', codeOnInput);
   ta.addEventListener('scroll', codeSyncScroll);
   ta.addEventListener('focus', codeViewportFit);
   ta.addEventListener('blur', codeViewportReset);
   ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); codeInsert('    '); } }); // desktop
-  $('#code-lang').addEventListener('change', (e) => codeSetLang(e.target.value));
+  $('#code-filename').addEventListener('input', () => { codeState.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
+  $('#code-files').addEventListener('click', () => codeToggleFiles());
+  $('#code-file-new').addEventListener('click', codeNewFile);
+  $('#code-save').addEventListener('click', codeSave);
   $('#code-run').addEventListener('click', codeRun);
-  $('#code-clear').addEventListener('click', () => { $('#code-body').value = ''; codeOnInput(); $('#code-body').focus(); });
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
   $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
-  $('#code-back').addEventListener('click', () => { codeViewportReset(); show(state.prevTab || 'discover'); });
+  $('#code-back').addEventListener('click', () => { codeViewportReset(); codeToggleFiles(false); show(state.prevTab || 'discover'); });
   if (window.visualViewport) { visualViewport.addEventListener('resize', codeViewportFit); visualViewport.addEventListener('scroll', codeViewportFit); }
   codeLoadHljs();
 }
 async function loadCode() {
   if (!codeState.inited) { codeInitOnce(); codeState.inited = true; }
-  await codeLoadLangs();
-  codeSetLang(codeState.lang);
+  await codeRefreshFiles();
+  const d = codeLoadLS();
+  if (typeof d.content === 'string' && (d.content || d.name)) { codeSetName(d.name || ''); codeSetContent(d.content); codeMarkDirty(!!d.dirty); }
+  else { codeSetName('untitled.py'); codeSetContent(CODE_STARTER); codeMarkDirty(false); }
   codeViewportFit();
 }
 

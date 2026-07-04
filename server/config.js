@@ -42,8 +42,9 @@ const DEFAULTS = {
   // run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
   // https://aistudio.google.com/apikey
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },
-  // Code runner (the phone "Code" tab). Per-run wall-clock timeout and captured-output cap.
-  run: { timeoutMs: 10000, maxOutputBytes: 262144 },
+  // Code runner (the phone "Code" tab). `dir` = a folder the tab reads/writes files in (e.g. a
+  // Syncthing-synced ~/mycode so phone edits sync to your other machines); empty → files disabled.
+  run: { timeoutMs: 10000, maxOutputBytes: 262144, dir: '' },
 };
 
 export function loadConfig() {

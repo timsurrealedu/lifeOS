@@ -952,6 +952,34 @@ a.doc-link:hover { border-color: var(--accent); }
 .sym:active { transform: scale(.9); background: var(--surface-3); }
 .sym-wide { min-width: 50px; font-size: 12px; letter-spacing: .02em; }
 
+/* filename + save + files picker */
+.code-filename {
+  flex: 1; min-width: 54px; background: var(--surface-2); border: 1px solid var(--border-soft);
+  border-radius: 999px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 7px 12px; outline: none;
+}
+.code-filename:focus { border-color: var(--accent); }
+.code-filename::placeholder { color: var(--faint); }
+.code-save { position: relative; }
+.code-save.dirty::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--accent);
+}
+.code-save[disabled] { opacity: .4; }
+.code-files-sheet {
+  position: absolute; left: 8px; right: 8px; top: calc(env(safe-area-inset-top) + 54px); z-index: 6;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
+  max-height: 62vh; overflow: auto; animation: readerin .16s ease;
+}
+.code-files-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border-soft); position: sticky; top: 0; background: var(--surface); }
+.code-files-dir { font-family: var(--mono); font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-file-list { padding: 4px; }
+.code-file-item {
+  display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text);
+  font-family: var(--mono); font-size: 13px; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+}
+.code-file-item:hover, .code-file-item:active { background: var(--surface-2); }
+.code-file-empty { padding: 16px 12px; color: var(--faint); font-size: 13px; }
+
 /* ---- Live preview editor (Obsidian-style: render blocks, click one to edit its source) ---- */
 .lp-editor {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;

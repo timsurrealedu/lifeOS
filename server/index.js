@@ -17,6 +17,7 @@ import {
   runNoteChat, runNoteAugment, runAiSearch, isRunning,
 } from './process.js';
 import { runCode, availableLangs } from './runner.js';
+import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -489,6 +490,17 @@ app.post('/api/run', async (req, res) => {
     const { lang, code, stdin } = req.body || {};
     if (!lang || typeof code !== 'string') return fail(res, new Error('lang and code are required'));
     ok(res, { result: await runCode({ lang, code, stdin: typeof stdin === 'string' ? stdin : '' }) });
+  } catch (e) { fail(res, e); }
+});
+
+// Code files — read/write the synced run.dir (e.g. ~/mycode), so phone edits sync everywhere.
+app.get('/api/code/files', (_req, res) => { try { ok(res, listCodeFiles()); } catch (e) { fail(res, e); } });
+app.get('/api/code/file', (req, res) => { try { ok(res, readCodeFile(loadConfig(), req.query.path || '')); } catch (e) { fail(res, e); } });
+app.post('/api/code/save', (req, res) => {
+  try {
+    const { path, content } = req.body || {};
+    if (!path || typeof content !== 'string') return fail(res, new Error('path and content are required'));
+    ok(res, saveCodeFile(loadConfig(), path, content));
   } catch (e) { fail(res, e); }
 });
 
