@@ -47,11 +47,17 @@
 
     <!-- Views -->
     <main id="views">
-      <!-- INBOX (capture) -->
+      <!-- INBOX + CHAT (toggled in one view, like Browse's Files/Graph) -->
       <section class="view" data-view="capture">
         <div class="view-head vhead">
           <div class="crumb-row"><span class="crumb" id="cap-crumb">—</span></div>
-          <div class="title-row"><h2>Inbox</h2></div>
+          <div class="title-row">
+            <h2 id="capture-title">Inbox</h2>
+            <div class="seg" id="capture-seg">
+              <button class="seg-btn active" data-cap="inbox" type="button">Inbox</button>
+              <button class="seg-btn" data-cap="chat" type="button">Chat</button>
+            </div>
+          </div>
         </div>
 
         <div id="capture-main">
@@ -81,31 +87,27 @@
         <ul id="inbox-list" class="list"></ul>
         <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
         </div><!-- /capture-main -->
-      </section>
 
-      <!-- CHAT (read-only advisor over the vault) -->
-      <section class="view" data-view="chat" hidden>
-        <div class="view-head vhead">
-          <div class="crumb-row"><span class="crumb">Advisor</span><span class="crumb-r"><span class="dot-live">●</span> Read-only</span></div>
-          <div class="title-row"><h2>Chat</h2><button class="chip" id="chat-clear">Clear</button></div>
-          <p class="vsub">reads your vault + calendar · never edits your notes</p>
-        </div>
-        <div id="capture-chat" class="chat-view">
-          <div class="chat-thread" id="chat-thread">
-            <div class="chat-intro" id="chat-intro">
-              <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
-              <div class="chat-chips">
-                <button class="suggest">What should I focus on today?</button>
-                <button class="suggest">Review today's diary</button>
-                <button class="suggest">What's open or overdue?</button>
-                <button class="suggest">How should I approach my next assignment?</button>
+        <!-- Chat sub-panel (toggled by the seg above) -->
+        <div id="capture-chat-panel" hidden>
+          <div class="chat-sub"><span class="dot-live">●</span> Read-only · reads your vault + calendar, never edits it<button class="chip" id="chat-clear">Clear</button></div>
+          <div id="capture-chat" class="chat-view">
+            <div class="chat-thread" id="chat-thread">
+              <div class="chat-intro" id="chat-intro">
+                <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
+                <div class="chat-chips">
+                  <button class="suggest">What should I focus on today?</button>
+                  <button class="suggest">Review today's diary</button>
+                  <button class="suggest">What's open or overdue?</button>
+                  <button class="suggest">How should I approach my next assignment?</button>
+                </div>
               </div>
             </div>
+            <form class="chat-bar" id="chat-bar">
+              <input id="chat-input" class="chat-input" placeholder="Ask about your vault…" autocomplete="off" />
+              <button class="btn primary" id="chat-send" type="submit">Send</button>
+            </form>
           </div>
-          <form class="chat-bar" id="chat-bar">
-            <input id="chat-input" class="chat-input" placeholder="Ask about your vault…" autocomplete="off" />
-            <button class="btn primary" id="chat-send" type="submit">Send</button>
-          </form>
         </div>
       </section>
 
@@ -307,7 +309,6 @@
       <button class="tab" data-tab="discover"><span class="ti">◎</span><span>Discover</span></button>
       <button class="tab" data-tab="browse"><span class="ti">▤</span><span>Browse</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
-      <button class="tab" data-tab="chat"><span class="ti">◈</span><span>Chat</span></button>
       <button class="tab" data-tab="code"><span class="ti">❯</span><span>Code</span></button>
     </nav>
   </div>

@@ -563,7 +563,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .tabbar {
   flex: none; width: 100%;
   height: calc(var(--tab-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; z-index: var(--z-tabbar);
+  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; z-index: var(--z-tabbar);
   background: var(--surface); border-top: 1px solid var(--border-soft);
 }
 .tab {
@@ -1142,6 +1142,8 @@ body.dragging-tree .tree-row { touch-action: none; }
    scrolls internally and the input bar pins just above the tab bar instead of being clipped by it. */
 .view[data-view="capture"].chat-mode { display: flex; flex-direction: column; height: 100%; }
 .view[data-view="capture"].chat-mode #capture-chat { flex: 1 1 auto; min-height: 0; }
+.chat-sub { display: flex; align-items: center; gap: 8px; margin: 0 2px 10px; font-size: 13px; color: var(--muted); }
+.chat-sub .chip { margin-left: auto; }
 .chat-view { display: flex; flex-direction: column; min-height: 320px; }
 .chat-thread { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 6px 2px 14px; }
 .chat-intro { margin: auto 0; text-align: center; color: var(--muted); }

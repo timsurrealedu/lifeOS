@@ -45,7 +45,7 @@ function cycleTheme() {
 /* ---------- Navigation ----------
    Bottom tabs map to internal views. "browse" is the merged Notes+Graph view.
    New notes are created from Browse's "+ New" or the reader sidebar. */
-const TAB_VIEW = { inbox: 'capture', browse: 'notes', plan: 'plan', chat: 'chat' };
+const TAB_VIEW = { inbox: 'capture', browse: 'notes', plan: 'plan' };
 function show(tab) {
   if (tab !== 'code') state.prevTab = tab;                   // Code is full-screen; Back returns here
   const view = TAB_VIEW[tab] || tab;                         // 'discover' passes through
@@ -56,10 +56,21 @@ function show(tab) {
   if (view === 'discover') loadDiscover();
   if (view === 'notes') loadNotes();
   if (view === 'plan') loadPlan();
-  if (view === 'chat') renderChat();
   if (view === 'code') loadCode();
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+
+// Inbox ⇄ Chat toggle (one view, like Browse's Files/Graph).
+$('#capture-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  const chat = b.dataset.cap === 'chat';
+  $$('#capture-seg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+  $('#capture-main').hidden = chat;
+  $('#capture-chat-panel').hidden = !chat;
+  $('#capture-title').textContent = chat ? 'Chat' : 'Inbox';
+  $('#cap-crumb').textContent = chat ? 'Advisor' : '—';
+  if (chat) renderChat();
+});
 
 // Browse: Files ⇄ Graph toggle (same page, like the mockup).
 $('#browse-seg').addEventListener('click', (e) => {

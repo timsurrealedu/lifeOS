@@ -23,11 +23,19 @@ the whole loop that used to be a skill + vault + cron glue:
   stays as-is.
 - **Chat** — a read-only AI advisor with your whole vault (+ calendar) as context: "what should I
   focus on today?", "review today's diary", "how should I approach this assignment given the
-  lecturer?". It reads and cites your notes but never changes them.
+  lecturer?". It reads and cites your notes but never changes them. Lives as a top toggle on the
+  **Inbox** tab (Inbox ⇄ Chat, like Browse's Files/Graph) — so the bottom nav stays at five.
+- **Code** — write and **run** code from your phone with no Bluetooth keyboard: a monospace editor
+  with an on-screen **symbol bar** (the `{ } ( ) [ ] ; = < >` keys a phone hides, anchored above the
+  keyboard), **syntax highlighting**, auto-closing brackets and auto-indent. Runs whole programs
+  server-side — **Python, JavaScript, C, C++, Java, Go, Rust, Bash** — and shows stdout/stderr. Toggle
+  **Scratch** (throwaway, per-language) or **Saved** (real files in a Syncthing-synced folder, with a
+  swipe-in project tree). See **Code** below.
 - **Discover** — a deck of tools over the vault: **Research an idea** (`claude -p` web-searches
   demand/competition/feasibility and writes a full note to `Ideas/`), **Find** (instant plain-text
   search across your notes — no AI, no tokens), the **Idea bank** (`Ideas/`), a **Needs filing** list
-  (`#needs-filing`), plus **Weekly review** and **Refresh Home note**.
+  (`#needs-filing`), **Weekly review**, **Refresh Home note**, plus a **Playground** (JupyterLab —
+  notebooks + Python/Java/C, opens in a tab) and an **Editor** (real LazyVim/Neovim in the browser).
 
 It is a thin, friendly front-end over your Obsidian vault. The **vault stays the source of
 truth** (still opens in Obsidian, still syncs); lifeOS is a second way in. The processing brain —
@@ -175,6 +183,47 @@ The `process-inbox` skill is the brain for both. It's a managed file: lifeOS now
 your vault's `.claude/` whenever the bundled copy changes, so engine updates like this reach
 existing vaults automatically (it only overwrites that one generated skill file — never your notes).
 
+## Code — run & write code from your phone
+
+The **Code** tab is a phone-first coding surface (the whole point: code on a touchscreen with **no
+Bluetooth keyboard**). It's a monospace `<textarea>` over a highlight.js layer, with:
+
+- an on-screen **symbol bar** — a scrollable row of the keys a soft keyboard buries (`{ } ( ) [ ] < >
+  ; = + - * / …`, Tab, `← →`), anchored right above the keyboard (VisualViewport +
+  `interactive-widget=resizes-content`), that inserts without dismissing it;
+- **formatting** — auto-closing brackets/quotes (tap `(` → `()` caret inside; wraps a selection),
+  **auto-indent** on Enter (copies the line's indent, adds a level after an opener, expands `{|}` into
+  a block), type-over closers, delete-empty-pair;
+- **syntax highlighting** via self-hosted highlight.js (`public/vendor/hljs/`), themed with the app's
+  own CSS tokens so it fits every theme;
+- **Run** — `POST /api/run` compiles/runs the whole program on the server and shows stdout/stderr,
+  exit code and timing (optional stdin). Languages: **Python, JavaScript, C, C++, Java, Go, Rust,
+  Bash**; `GET /api/run/langs` hides toolchains that aren't installed.
+
+Two modes (top toggle): **Scratch** — throwaway buffers, one per language, nothing touches disk; and
+**Saved** — real files in a configured folder (`run.dir`, e.g. a Syncthing-synced `~/mycode`), so a
+snippet written on the phone lands in a file and syncs to your other machines. Saved mode adds a
+filename + **Save** and a **swipe-in project tree** (swipe from the left edge, like Browse) of the
+folder; tap a file to open it. Files are served/written via `GET /api/code/files`,
+`GET /api/code/file`, `POST /api/code/save`, all path-guarded to stay inside `run.dir`.
+
+> **The runner runs arbitrary code with no sandbox** — timeout + output cap + temp-dir cleanup are the
+> only guards. It's meant for a **single-user, Tailscale-only** box (same posture as the tools below).
+> Never expose it publicly. Tune `run.timeoutMs` / `run.maxOutputBytes` / `run.dir` in `config.json`.
+
+### Playground & Editor (Discover tiles)
+
+For heavier work the **Discover** tab links to two services on the box (installed by
+`deploy/playground-setup.sh`, run under pm2 via `deploy/playground.config.cjs`, reachable only over
+Tailscale):
+
+- **Playground** — **JupyterLab** on `:8888`: real cell-by-cell `.ipynb` notebooks with inline plots,
+  Python + an **IJava** kernel for Java, a `!gcc` cell for C, and vim keybindings in cells.
+- **Editor** — real **LazyVim** (Neovim) in the browser via **ttyd** on `:7681` over a persistent
+  tmux, for full vim editing/compiling when you *do* have a keyboard.
+
+See `deploy/README.md` for the one-time install.
+
 ## Hosting on the always-on machine (e.g. Windows)
 
 It's plain cross-platform Node — copy the folder over, `npm install`, `npm start`. Requirements
@@ -196,6 +245,7 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 | `timezone`, `languages`, `todoPath`, `todoFormat`, `ownerName` | written into the vault's `CLAUDE.md` house rules |
 | `models` | per-task model so cheap runs don't burn a premium one: `{ "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku" }`. Omit a key → CLI default. |
 | `maxTurns` | cap on agent turns per run (runaway-loop guard, default `40`; `0` = no cap) |
+| `run` | the **Code** tab's runner: `{ "timeoutMs": 10000, "maxOutputBytes": 262144, "dir": "" }` — per-run wall-clock timeout, captured-output cap, and the folder it reads/writes files in (empty → file open/save disabled; set it to a synced folder like `/home/you/mycode`). |
 | `qwen` / `gemini` / `fallback` | the fallback chain (in order) used **only** when the primary run hits a usage/rate limit. Empty `apiKey` = that link disabled. See **Fallback chain** below. |
 
 ### Token efficiency
@@ -246,9 +296,13 @@ server/
   index.js     Express API + SSE + static host
   vault.js     scaffold + inbox/notes/graph/tasks logic
   process.js   spawns & streams claude runs (process / research / review / home / chat / calsync / autosort)
+  runner.js    Code tab: compile/run a snippet (py/js/c/cpp/java/go/rust/bash) with a timeout
+  codefiles.js Code tab: list/read/write files inside run.dir (path-guarded)
   config.js    config load/save
   templates/   CLAUDE.md + process-inbox SKILL.md seeded into new vaults
 public/        mobile-first PWA (vanilla JS, no build step)
+  vendor/hljs/ self-hosted highlight.js + token-based theme (Code tab)
+deploy/        Oracle-cloud pm2 setup + the Playground/Editor installer (playground-setup.sh)
 vault/         the test vault (created on first run)
 ```
 
