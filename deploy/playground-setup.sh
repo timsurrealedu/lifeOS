@@ -31,8 +31,22 @@ python3 "$tmp/install.py" --user
 rm -rf "$tmp"
 
 echo
-echo "== set a Jupyter password (you'll type it into the Playground once, then it's remembered) =="
-jupyter lab password
+if [ -n "${JUPYTER_PASSWORD:-}" ]; then
+  echo "== setting Jupyter password non-interactively (from \$JUPYTER_PASSWORD) =="
+  JUPYTER_PASSWORD="$JUPYTER_PASSWORD" python3 - <<'PY'
+import json, os
+from jupyter_server.auth import passwd
+cfgdir = os.path.expanduser("~/.jupyter"); os.makedirs(cfgdir, exist_ok=True)
+path = os.path.join(cfgdir, "jupyter_server_config.json")
+cfg = json.load(open(path)) if os.path.exists(path) else {}
+cfg.setdefault("IdentityProvider", {})["hashed_password"] = passwd(os.environ["JUPYTER_PASSWORD"])
+json.dump(cfg, open(path, "w"), indent=2)
+print("wrote", path)
+PY
+else
+  echo "== set a Jupyter password (you'll type it into the Playground once, then it's remembered) =="
+  jupyter lab password
+fi
 
 # ---------------------------------------------------------------- Neovim + LazyVim (Editor, :7681)
 echo "== Neovim (official build — apt's is too old for LazyVim) =="
