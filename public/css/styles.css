@@ -939,7 +939,12 @@ a.doc-link:hover { border-color: var(--accent); }
   font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
 }
 .code-hl { overflow: hidden; pointer-events: none; background: transparent; }
-.code-hl code { display: block; white-space: pre; will-change: transform; color: var(--text); }
+/* The UA stylesheet's `code { font-family: monospace }` matches this <code> directly and beats the
+   var(--mono) it would otherwise inherit from the <pre> — so the highlight rendered in a different
+   font than the textarea (generic monospace vs the --mono stack), drifting the caret along long
+   lines. Re-assert the editor font here so both overlay layers share identical glyph advances. */
+.code-hl code { display: block; white-space: pre; will-change: transform; color: var(--text);
+  font-family: var(--mono); }
 .code-body {
   overflow: auto; resize: none; outline: none; white-space: pre; background: transparent;
   color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--accent);
