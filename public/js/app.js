@@ -28,6 +28,7 @@ const prefs = {
   get livepreview() { return localStorage.getItem('lifeos.livepreview') !== '0'; }, // default on
   get noteWidth() { return localStorage.getItem('lifeos.noteWidth') || 'default'; },
   get codeWidth() { return localStorage.getItem('lifeos.codeWidth') || 'full'; },
+  get manualProvider() { return localStorage.getItem('lifeos.manualProvider') || 'default'; },
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
@@ -2169,6 +2170,7 @@ async function openSettings() {
     $('#cfg-livepreview').checked = prefs.livepreview;
     $('#cfg-vim').checked = prefs.vim;
     $('#cfg-lineno').checked = prefs.lineno;
+    $('#cfg-manual-provider').value = prefs.manualProvider;
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
 }
@@ -2176,6 +2178,7 @@ async function openSettings() {
 $('#cfg-livepreview').addEventListener('change', (e) => { prefs.set('livepreview', e.target.checked ? '1' : '0'); if (editorOpen) setEditorSurface(e.target.checked ? 'live' : 'source'); });
 $('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); if (codeVim) codeVim.setEnabled(prefs.vim); });
 $('#cfg-lineno').addEventListener('change', (e) => { prefs.set('lineno', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
+$('#cfg-manual-provider').addEventListener('change', (e) => { prefs.set('manualProvider', e.target.value); });
 // Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
 function renderDocTools(tools) {
   const box = $('#cfg-doctools'); if (!box) return;
@@ -3077,6 +3080,7 @@ async function loadCode() {
   applyTheme(prefs.theme);
   applyWidth('note', prefs.noteWidth);
   applyWidth('code', prefs.codeWidth);
+  $('#cfg-manual-provider').value = prefs.manualProvider;
   await refreshInbox();
   await loadNotes(true);
   show('inbox');

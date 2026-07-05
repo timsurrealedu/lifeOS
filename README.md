@@ -289,6 +289,13 @@ the run log. Configure them in **⚙ Settings → Fallback AI** (or in `config.j
 `config.json` is gitignored, so the keys stay local. Tool-use quality on these providers is below
 Claude — treat the chain as a safety net, not the default path.
 
+**Google Calendar (and every other claude.ai connector) is unavailable on any fallback provider.**
+Routing through Qwen/DeepSeek/GLM works by setting `ANTHROPIC_API_KEY`, and Claude Code disables all
+claude.ai connectors the moment that env var is set — connectors only load under your real claude.ai
+login. So `calsync` and any calendar step in `process` silently has no calendar tool while on a
+fallback (the app now surfaces a status warning when this happens); this is a Claude Code platform
+constraint, not something lifeOS can work around.
+
 ## Layout
 
 ```

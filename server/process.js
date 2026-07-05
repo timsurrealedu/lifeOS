@@ -438,7 +438,14 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
     const env = onFallback
       ? { ...baseEnv, ANTHROPIC_BASE_URL: provider.baseUrl, ANTHROPIC_AUTH_TOKEN: provider.apiKey, ANTHROPIC_API_KEY: provider.apiKey }
       : baseEnv;
-    onEvent('status', { state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default', provider: onFallback ? provider.name : 'Claude' });
+    // Fallback providers route through a raw API key, which makes Claude Code disable ALL claude.ai
+    // connectors (incl. Google Calendar) — they only load under the real Claude.ai login. Warn rather
+    // than silently no-op on kinds whose job depends on a connector tool.
+    const usesConnector = onFallback && (ALLOWED[kind] || []).some((t) => t.startsWith('mcp__claude_ai_'));
+    onEvent('status', {
+      state: onFallback ? 'fallback' : 'starting', cwd, kind, model: model || 'default', provider: onFallback ? provider.name : 'Claude',
+      ...(usesConnector ? { message: `via ${provider.name}${model ? ' · ' + model : ''} — ⚠ Google Calendar is unavailable on fallback providers (they need your Claude.ai login, which a custom API key replaces)` } : {}),
+    });
 
     // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
     let settled = false;
