@@ -2814,7 +2814,7 @@ function codeSetupSwipe() {
       if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;  // not a clear horizontal drag yet
       const open = view.classList.contains('sidebar-open');
       if (open && dx < 0) lockIn('close');
-      else if (!open && dx > 0 && sx < 28 && codeState.mode === 'saved') lockIn('open'); // left-edge zone, Saved mode only
+      else if (!open && dx > 0 && sx < 120 && codeState.mode === 'saved') lockIn('open'); // wide left-edge zone, Saved mode only
       else { live = false; return; }
     }
     e.preventDefault();
