@@ -958,9 +958,17 @@ export function editTask(relPath, line, { desc, date } = {}) {
 
 // ---------- Log ----------
 
+// process-inbox now logs one file per day (Captures/Inbox Log/<YYYY-MM-DD>.md) instead of one
+// ever-growing Captures/Inbox Log.md, so a run's read cost doesn't grow with the vault's whole
+// history. The viewer wants recent activity, so concatenate the most recent days, newest first.
 export function readLog() {
-  const path = join(dirPath('Captures'), 'Inbox Log.md'); // wherever Captures/ lives
-  return existsSync(path) ? readFileSync(path, 'utf8') : '';
+  const dir = join(dirPath('Captures'), 'Inbox Log');
+  if (existsSync(dir)) {
+    const days = readdirSync(dir).filter((f) => f.endsWith('.md')).sort().reverse().slice(0, 30);
+    if (days.length) return days.map((f) => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n');
+  }
+  const legacy = join(dirPath('Captures'), 'Inbox Log.md'); // pre-split vaults
+  return existsSync(legacy) ? readFileSync(legacy, 'utf8') : '';
 }
 
 // ---------- Calendar cache ----------

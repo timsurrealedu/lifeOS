@@ -29,7 +29,17 @@ const DEFAULTS = {
   // qwen + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
   // working; gemini is REST-only (read-only chats + add-to-note), so on write jobs it's skipped and
   // the chain is qwen → fallback. Empty apiKey → that link skipped.
-  //   Qwen (DashScope) → baseUrl "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", model "qwen3-coder-plus"
+  //   Qwen (DashScope) → baseUrl "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
+  //   model "claude-sonnet-5" — NOT "qwen3-coder-plus". This app-scoped DashScope proxy is pinned to
+  //   one backend model and ignores whatever `model` string it's sent (verified: even a nonsense
+  //   model name gets 200'd and answered by the same qwen3-coder-plus backend). Meanwhile Claude Code
+  //   only builds a spec-correct request (system prompt as the top-level `system` field) for a model
+  //   id it recognizes as first-party; for an unrecognized id like "qwen3-coder-plus" it takes a
+  //   generic path that stuffs the system prompt into messages[0] as {role:"system"} instead —
+  //   DashScope's proxy validates strictly and 500s on that role (real Anthropic + DeepSeek's proxy
+  //   both tolerate it fine). Sending a recognized Claude model id sidesteps the bug for free, since
+  //   DashScope ignores the field anyway.
+
   qwen: { baseUrl: '', apiKey: '', model: '' },
   // DeepSeek/GLM Anthropic-compatible endpoint (3rd in the chain, after qwen + gemini). Examples:
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)

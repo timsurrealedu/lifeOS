@@ -15,7 +15,7 @@
   "qwen": {
     "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
     "apiKey": "",
-    "model": "qwen3-coder-plus"
+    "model": "claude-sonnet-5"
   },
   "gemini": {
     "apiKey": "",

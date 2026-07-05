@@ -276,8 +276,12 @@ the run log. Configure them in **⚙ Settings → Fallback AI** (or in `config.j
    included.
 
 ```jsonc
-// 1. Qwen (Alibaba DashScope)
-"qwen":     { "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", "apiKey": "sk-…", "model": "qwen3-coder-plus" }
+// 1. Qwen (Alibaba DashScope) — model MUST be a recognized Claude id, not "qwen3-coder-plus": this
+//    app-scoped proxy ignores the model field (always answers with its own qwen3-coder-plus backend
+//    regardless what you send) and Claude Code only sends a spec-correct request for a model id it
+//    recognizes as first-party. Send an unrecognized id and Claude Code's generic fallback path
+//    stuffs the system prompt into messages[0] as {role:"system"}, which DashScope 500s on.
+"qwen":     { "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", "apiKey": "sk-…", "model": "claude-sonnet-5" }
 // 2. Gemini (Google AI Studio — free key at aistudio.google.com/apikey)
 "gemini":   { "apiKey": "AIza…", "model": "gemini-2.5-flash" }
 // 3a. DeepSeek (V4 native ids: deepseek-v4-pro = strongest, deepseek-v4-flash = cheap/fast)
