@@ -1043,12 +1043,9 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .code-sidebar-resize:hover::before, .code-sidebar.resizing .code-sidebar-resize::before { background: var(--accent); }
 .code-sidebar.resizing { user-select: none; }
-/* Collapse (desktop): hides the dock; the ☰ toggle next to the Back button brings it back. */
+/* Collapse (desktop): hides the dock; #code-files (☰, in the subbar below — always visible in
+   Saved mode) toggles it back, so there's no second dedicated "bring it back" button to duplicate it. */
 .view[data-view="code"].sidebar-hidden .code-sidebar { display: none; }
-#code-sidebar-toggle { display: none; }
-/* Scoped to .mode-saved (not just relying on .code-saved-only) so this never wins a specificity
-   tie against the scratch-mode hide rule if sidebar-hidden is still set from a prior Saved session. */
-.view[data-view="code"].mode-saved.sidebar-hidden #code-sidebar-toggle { display: inline-flex; }
 /* No file tree to show in Scratch mode, on any screen size. */
 .view[data-view="code"].mode-scratch .code-sidebar { display: none; }
 

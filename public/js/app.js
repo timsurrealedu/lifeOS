@@ -2766,7 +2766,8 @@ function codeToggleSidebar(force) {
   if (openIt) codeRefreshFiles();
 }
 // Desktop: toggle the persistent collapsible dock (mirrors toggleReaderSidebar), remembered across
-// sessions. Mobile: same as the drawer toggle above. Bound to the ☰ toggle, the in-sidebar ✕, and #code-files.
+// sessions. Mobile: same as the drawer toggle above. Bound to #code-files (☰, always visible in
+// Saved mode, so it doubles as the "bring it back" control) and the in-sidebar ✕.
 function codeSidebarToggle() {
   const view = $('.view[data-view="code"]');
   if (window.matchMedia('(min-width: 760px)').matches) {
@@ -3012,7 +3013,6 @@ function codeInitOnce() {
   $('#code-lang').addEventListener('change', (e) => codeSetScratchLang(e.target.value));
   $('#code-filename').addEventListener('input', () => { codeState.file.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
   $('#code-files').addEventListener('click', codeSidebarToggle);
-  $('#code-sidebar-toggle').addEventListener('click', codeSidebarToggle);
   $('#code-sidebar-new').addEventListener('click', codeNewFile);
   $('#code-sidebar-close').addEventListener('click', codeSidebarToggle);
   setupCodeSidebarResize();
