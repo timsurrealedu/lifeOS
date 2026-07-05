@@ -132,8 +132,9 @@ Endpoints behind this: `POST /api/notes` (create), `POST /api/note/save` (edit),
 `POST /api/folders` (create folder), `GET /api/search` (plain-text Find),
 `POST /api/upload/handwriting` (embed a drawing, no inbox item) / `POST /api/handwriting/update`
 (re-edit a saved ink page in place). Chat: `POST /api/chat` (streams a
-read-only answer). Calendar: `GET /api/calendar` (cached events) / `GET /api/calsync/stream` (pull from
-Google Calendar into `.cache/calendar.json`).
+read-only answer). Plan: `GET /api/tasks` / `POST /api/tasks` (add, incl. repeat) /
+`POST /api/tasks/edit` — local-only, no Google Calendar involved; reminders are server-scheduled Web
+Push (`server/notify.js`, `POST /api/push/subscribe`).
 
 ## Recordings & transcription
 
@@ -296,9 +297,9 @@ Claude — treat the chain as a safety net, not the default path.
 **Google Calendar (and every other claude.ai connector) is unavailable on any fallback provider.**
 Routing through Qwen/DeepSeek/GLM works by setting `ANTHROPIC_API_KEY`, and Claude Code disables all
 claude.ai connectors the moment that env var is set — connectors only load under your real claude.ai
-login. So `calsync` and any calendar step in `process` silently has no calendar tool while on a
-fallback (the app now surfaces a status warning when this happens); this is a Claude Code platform
-constraint, not something lifeOS can work around.
+login. So the `chat` kind (the vault advisor — the only one left using the calendar tool) silently
+has no calendar tool while on a fallback (the app surfaces a status warning when this happens); this
+is a Claude Code platform constraint, not something lifeOS can work around.
 
 ## Layout
 
@@ -306,7 +307,8 @@ constraint, not something lifeOS can work around.
 server/
   index.js     Express API + SSE + static host
   vault.js     scaffold + inbox/notes/graph/tasks logic
-  process.js   spawns & streams claude runs (process / research / review / home / chat / calsync / autosort)
+  process.js   spawns & streams claude runs (process / research / review / home / chat / autosort)
+  notify.js    Plan tab reminders: VAPID web push, server-scheduled every minute
   runner.js    Code tab: compile/run a snippet (py/js/c/cpp/java/go/rust/bash) with a timeout
   codefiles.js Code tab: list/read/write files inside run.dir (path-guarded)
   config.js    config load/save

@@ -3,8 +3,8 @@
 import spawn from 'cross-spawn';
 import { loadConfig, vaultDir } from './config.js';
 
-// Only one *writing* claude run at a time — process / research / review / home / calsync mutate the
-// vault. Read-only runs (chat) are exempt and may run concurrently. (Find no longer spawns claude.)
+// Only one *writing* claude run at a time — process / research / review / home mutate the vault.
+// Read-only runs (chat) are exempt and may run concurrently. (Find no longer spawns claude.)
 let writeRunning = false;
 export const isRunning = () => writeRunning;
 
@@ -22,7 +22,7 @@ const ALLOWED = {
   // No Google Calendar MCP tools here on purpose — every inbox-processing run declared 5 calendar
   // tool schemas whether or not an item needed them, which cost tokens on every single run. Dates
   // now go to the TODO checklist only (see SKILL.md §2A); the Plan tab's own local reminders +
-  // manual "+" add cover what calendar events used to (Sync stays read-only via `calsync` below).
+  // manual "+" add + repeat cover what calendar events used to (the Plan calendar is local-only now).
   process: ['Edit', 'Write', 'Read', 'Bash', 'Glob', 'Grep'],
   research: ['WebSearch', 'WebFetch', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
   review: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
@@ -38,8 +38,6 @@ const ALLOWED = {
   noteaugment: ['Read', 'Glob', 'Grep'],
   // Semantic "describe what you want" search — greps/reads to find relevant notes, prints a path list.
   search: ['Read', 'Glob', 'Grep'],
-  // Pull calendar events into a local cache file. Reads the calendar, writes only .cache/calendar.json.
-  calsync: ['Read', 'Write', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Propose a folder tidy-up. Reads structure, writes only the proposal to .cache/autosort.json.
   autosort: ['Read', 'Glob', 'Grep', 'Write'],
 };
@@ -196,15 +194,6 @@ const PROMPTS = {
     + '`<vault-relative/path/to/note.md> :: <one short line on why it matches>`\n'
     + 'Use real paths that exist in the vault (forward slashes). If nothing matches, output the single '
     + 'line `NONE`.',
-
-  calsync: (cfg) =>
-    `You are the "Sync Google Calendar" job in ${cfg.ownerName}'s lifeOS, no interactive user. `
-    + 'Today\'s date is in context. Use the Google Calendar `list_events` tool to fetch events from 7 '
-    + 'days ago through ~60 days ahead (timezone ' + cfg.timezone + '). Write them as JSON to '
-    + '`.cache/calendar.json` (create the `.cache/` folder if needed) — a single JSON array of objects '
-    + '`{ "date": "YYYY-MM-DD", "time": "HH:MM" or null, "title": "...", "calendar": "..." }`, sorted by '
-    + 'date then time. **Overwrite only that file; touch nothing else in the vault.** Finish with a '
-    + 'one-line summary of how many events you wrote.',
 };
 
 // Output that means "the primary account is out of capacity" — the only failure we retry on the
@@ -215,7 +204,7 @@ const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|spend limi
 // --output-format stream-json so the server can turn each event into a readable progress line
 // (instead of claude -p going silent until done). The chats + note-augment are NOT here: they
 // consume claude's plain-text output directly. Keyed by kind.
-const STREAM_JSON = new Set(['process', 'research', 'review', 'home', 'calsync', 'autosort']);
+const STREAM_JSON = new Set(['process', 'research', 'review', 'home', 'autosort']);
 
 // Bound MCP startup + per-tool-call time so a flaky MCP server (e.g. the Google Calendar tool over
 // Tailscale) can't hang an entire run. Claude proceeds without that tool once the bound elapses.
@@ -574,9 +563,6 @@ export function runNoteAugment(notePath, noteContent, topic, context, onEvent) {
     },
   );
 }
-
-export const runCalSync = (onEvent, forceProvider) =>
-  spawnClaude({ kind: 'calsync', prompt: PROMPTS.calsync(loadConfig()), forceProvider }, onEvent);
 
 export const runAutosort = (onEvent, forceProvider) =>
   spawnClaude({ kind: 'autosort', prompt: PROMPTS.autosort(loadConfig()), forceProvider }, onEvent);

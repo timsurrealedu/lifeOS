@@ -1883,12 +1883,8 @@ async function loadPlan() {
   $('#plan-calendar').hidden = state.planView !== 'calendar';
   $$('#plan-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.planView === state.planView));
   try {
-    const [{ tasks }, cal] = await Promise.all([
-      api('/api/tasks'),
-      state.planView === 'calendar' ? api('/api/calendar') : Promise.resolve({ events: [] }),
-    ]);
+    const { tasks } = await api('/api/tasks');
     state.tasks = tasks;
-    state.events = cal.events || [];
     if (state.planView === 'calendar') renderCalendar();
     else renderPlanList(tasks);
   } catch (e) { toast(e.message); }
@@ -2026,11 +2022,9 @@ function renderCalendar() {
   const { y, m } = state.calMonth;
   $('#cal-title').textContent = `${MON[m]} ${y}`;
 
-  // Bucket tasks + events by date.
+  // Bucket tasks by date.
   const byDate = {};
-  const add = (date, item) => { (byDate[date] = byDate[date] || []).push(item); };
-  for (const t of (state.tasks || [])) if (t.date) add(t.date, { kind: 'task', t });
-  for (const e of (state.events || [])) if (e.date) add(e.date, { kind: 'event', e });
+  for (const t of (state.tasks || [])) if (t.date) (byDate[t.date] = byDate[t.date] || []).push(t);
 
   // Grid starts on Monday.
   const first = new Date(y, m, 1);
@@ -2048,8 +2042,7 @@ function renderCalendar() {
       + (ds === today ? ' today' : '')
       + ([0, 6].includes(d.getDay()) ? ' weekend' : '')
       + (state.calSelected === ds ? ' sel' : '');
-    const dots = items.slice(0, 3).map((it) =>
-      `<i class="cal-dot ${it.kind === 'event' ? 'ev' : (it.t.done ? 'done' : 'tk')}"></i>`).join('');
+    const dots = items.slice(0, 3).map((t) => `<i class="cal-dot ${t.done ? 'done' : 'tk'}"></i>`).join('');
     cell.innerHTML = `<span class="cal-num">${d.getDate()}</span><span class="cal-dots">${dots}</span>`;
     cell.addEventListener('click', () => { state.calSelected = ds; renderCalendar(); });
     grid.appendChild(cell);
@@ -2057,21 +2050,13 @@ function renderCalendar() {
   renderAgenda(byDate[state.calSelected] || [], state.calSelected);
 }
 
-function renderAgenda(items, date) {
+function renderAgenda(tasks, date) {
   const wrap = $('#cal-agenda'); wrap.innerHTML = '';
   if (!date) { wrap.innerHTML = '<p class="hint">Tap a day to see what\'s on.</p>'; return; }
   const h = document.createElement('h3'); h.className = 'cal-agenda-h'; h.textContent = fmtDate(date);
   wrap.appendChild(h);
-  if (!items.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Nothing scheduled.'; wrap.appendChild(p); return; }
-  for (const it of items) {
-    if (it.kind === 'task') { wrap.appendChild(taskRow(it.t)); continue; }
-    const e = it.e;
-    const el = document.createElement('div');
-    el.className = 'cal-event';
-    el.innerHTML = `<span class="cal-ev-time">${e.time ? esc(e.time) : 'all-day'}</span>
-      <div class="cal-ev-title">${esc(e.title || '(untitled)')}</div>`;
-    wrap.appendChild(el);
-  }
+  if (!tasks.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Nothing scheduled.'; wrap.appendChild(p); return; }
+  for (const t of tasks) wrap.appendChild(taskRow(t));
 }
 
 // Plan view toggle + calendar nav.
@@ -2088,13 +2073,6 @@ function stepMonth(delta) {
   const { y, m } = state.calMonth || { y: new Date().getFullYear(), m: new Date().getMonth() };
   const d = new Date(y, m + delta, 1); state.calMonth = { y: d.getFullYear(), m: d.getMonth() }; renderCalendar();
 }
-$('#cal-sync').addEventListener('click', () => {
-  startStream(withProvider('/api/calsync/stream'), {
-    title: 'Syncing Google Calendar…',
-    onDone: async (_out, code) => { if (code === 0) { const { events } = await api('/api/calendar'); state.events = events || []; renderCalendar(); toast('Calendar synced'); } },
-  });
-});
-
 /* ---------- Plan reminders (Web Push — local, independent of Google Calendar) ---------- */
 function urlBase64ToUint8Array(base64) {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');

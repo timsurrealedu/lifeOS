@@ -1089,18 +1089,6 @@ export function markNotified(keys) {
   writeJsonArray('notified.json', [...merged].filter((k) => (k.split('#')[2] || '9999') >= cutoff));
 }
 
-// ---------- Calendar cache ----------
-
-/** Events pulled from Google Calendar by the `calsync` run (written to `.cache/calendar.json`). */
-export function readCalendarCache() {
-  const path = join(vaultDir(), '.cache', 'calendar.json');
-  if (!existsSync(path)) return [];
-  try {
-    const data = JSON.parse(readFileSync(path, 'utf8'));
-    return Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : []);
-  } catch { return []; }
-}
-
 /** Move proposal written by the `autosort` run (`.cache/autosort.json`). Validated: src must exist. */
 export function readAutosortPlan() {
   const root = vaultDir();

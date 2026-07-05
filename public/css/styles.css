@@ -134,7 +134,6 @@
 /* ---- Panels: flat, angular cut corner (the signature Netrunner motif) ---- */
 :root[data-theme="netrunner"] .card,
 :root[data-theme="netrunner"] .process-card,
-:root[data-theme="netrunner"] .cal-event,
 :root[data-theme="netrunner"] .doc-chip,
 :root[data-theme="netrunner"] .suggest {
   border-color: var(--border-soft);
@@ -251,7 +250,6 @@
 :root[data-theme="netrunner"] .cal-cell.today { border-color: var(--accent); }
 :root[data-theme="netrunner"] .cal-cell.today .cal-num { color: var(--accent); }
 :root[data-theme="netrunner"] .cal-dot { background: var(--accent); }
-:root[data-theme="netrunner"] .cal-dot.ev { background: var(--cyan); }
 
 /* ---- Graph frame ---- */
 :root[data-theme="netrunner"] .graph-wrap { border-color: var(--border); }
@@ -1203,13 +1201,9 @@ a.doc-link:hover { border-color: var(--accent); }
 .cal-cell.today .cal-num { color: var(--accent); font-weight: 700; }
 .cal-dots { display: flex; gap: 3px; min-height: 6px; }
 .cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.cal-dot.ev { background: #6ea8d8; }
 .cal-dot.done { background: var(--faint); }
 .cal-agenda { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .cal-agenda-h { margin: 0 0 2px; font-size: 14px; color: var(--muted); }
-.cal-event { display: flex; gap: 10px; align-items: baseline; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 12px; padding: 10px 13px; }
-.cal-ev-time { flex: none; font-size: 12px; color: #6ea8d8; min-width: 52px; font-variant-numeric: tabular-nums; }
-.cal-ev-title { font-size: 15px; }
 
 /* ---- Drag-to-move (tree) ---- */
 body.dragging-tree { -webkit-user-select: none; user-select: none; }

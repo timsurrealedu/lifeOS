@@ -9,11 +9,11 @@ import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
   moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, editTask, addTask, readLog,
-  listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
+  listIdeas, listNeedsFiling, hasDrafts, readAutosortPlan, augmentNoteFile,
   clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
 import {
-  runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
+  runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runAutosort,
   runNoteChat, runCodeChat, runNoteAugment, runAiSearch, isRunning,
 } from './process.js';
 import { runCode, availableLangs } from './runner.js';
@@ -288,7 +288,6 @@ app.get('/api/research/stream', (req, res) => {
 // ?provider=Qwen|DeepSeek on any of these forces that fallback (skipping Claude), same as /api/process/stream.
 app.get('/api/review/stream', (req, res) => sseRun(req, res, (on) => runWeeklyReview(on, req.query.provider || undefined)));
 app.get('/api/home/stream', (req, res) => sseRun(req, res, (on) => runRefreshHome(on, req.query.provider || undefined)));
-app.get('/api/calsync/stream', (req, res) => sseRun(req, res, (on) => runCalSync(on, req.query.provider || undefined)));
 app.get('/api/autosort/stream', (req, res) => sseRun(req, res, (on) => runAutosort(on, req.query.provider || undefined)));
 
 // ---- AI Chat (read-only advisor over the vault) ----
@@ -494,8 +493,6 @@ app.post('/api/tasks/edit', (req, res) => {
   } catch (e) { fail(res, e); }
 });
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));
-// Calendar events synced from Google Calendar by the `calsync` run (may be empty until first sync).
-app.get('/api/calendar', (_req, res) => ok(res, { events: readCalendarCache() }));
 
 // ---- Plan reminders (local Web Push — see notify.js; independent of Google Calendar) ----
 app.get('/api/push/public-key', (_req, res) => ok(res, { publicKey: getPublicKey() }));

@@ -120,11 +120,12 @@ consistent everywhere — PC, Android, Arch, and this VM are all just Syncthing 
 
 ## 8. (Optional) Re-auth the Google Calendar MCP
 
-The `calsync` / chat runs use the Google Calendar MCP. It's a **Claude.ai account connector**, so once
-you've logged `claude` in with the same subscription it appears automatically — usually already
-connected (`claude mcp list`). If it shows `! Needs authentication`, run `claude`, type `/mcp`, pick
-Google Calendar, and authenticate via the printed URL. Until then, calendar features sit idle but
-nothing else is affected.
+The `chat` run (the read-only vault advisor) uses the Google Calendar MCP so it can reference
+upcoming events when asked — the Plan tab's own calendar is local-only and doesn't need this. It's a
+**Claude.ai account connector**, so once you've logged `claude` in with the same subscription it
+appears automatically — usually already connected (`claude mcp list`). If it shows
+`! Needs authentication`, run `claude`, type `/mcp`, pick Google Calendar, and authenticate via the
+printed URL. Until then, the advisor just can't answer calendar questions; nothing else is affected.
 
 ## 9. Updating later — `git pull`, no re-setup
 

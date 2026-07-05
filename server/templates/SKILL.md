@@ -215,5 +215,5 @@ Only once every new note resolves up to a top-level hub — with no `/` inside a
 ## Notes
 - **Preserve the user's original language(s) — never translate.**
 - Never overwrite an existing note; append or create.
-- The Plan tab's calendar shows dated TODO entries **and** events synced (read-only) from the user's
-  Google Calendar via the app's own Sync button — this run doesn't touch Google Calendar at all.
+- The Plan tab's calendar is local-only, built entirely from dated TODO entries — this run doesn't
+  touch Google Calendar at all (only the read-only vault chat advisor does, separately).
