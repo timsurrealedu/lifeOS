@@ -65,6 +65,7 @@ $('#capture-seg').addEventListener('click', (e) => {
   const b = e.target.closest('.seg-btn'); if (!b) return;
   const chat = b.dataset.cap === 'chat';
   $$('#capture-seg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+  $('.view[data-view="capture"]').classList.toggle('chat-mode', chat);  // fills the scroll area → input bar pins above the tab bar
   $('#capture-main').hidden = chat;
   $('#capture-chat-panel').hidden = !chat;
   $('#capture-title').textContent = chat ? 'Chat' : 'Inbox';
@@ -1429,6 +1430,7 @@ window.addEventListener('popstate', () => {
   if (iv && !iv.hidden) { iv.hidden = true; $('#imgview-img').src = ''; return; }
   if (editorOpen) { editorOpen = false; $('#editor').hidden = true; }
   else if (readerOpen) { readerOpen = false; closeNoteChat(); $('#reader').hidden = true; }
+  else if (codeOpen) codeClose();
 });
 
 async function openNote(path, name) {
@@ -2399,16 +2401,22 @@ const codeState = {
   running: false, inited: false,
 };
 
-// Symbol keys. `v` inserts at caret; `close` makes it an auto-closing pair; `act` moves the caret.
+// Symbol keys. `v` inserts at caret; `close` = auto-closing pair (tap → pair, hold → just the closer,
+// so we only ever show the opener). Priority openers first: ( { [ " ;  Arrows live in a fixed cluster.
 const CODE_KEYS = [
+  { t: '(', v: '(', close: ')' }, { t: '{', v: '{', close: '}' }, { t: '[', v: '[', close: ']' },
+  { t: '"', v: '"', close: '"' }, { t: ';', v: ';' },
+  { t: ':', v: ':' }, { t: '=', v: '=' }, { t: '.', v: '.' }, { t: ',', v: ',' },
+  { t: "'", v: "'", close: "'" }, { t: '`', v: '`', close: '`' }, { t: '<', v: '<' }, { t: '>', v: '>' },
+  { t: '+', v: '+' }, { t: '-', v: '-' }, { t: '*', v: '*' }, { t: '/', v: '/' },
+  { t: '%', v: '%' }, { t: '&', v: '&' }, { t: '|', v: '|' }, { t: '!', v: '!' },
+  { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '\\', v: '\\' }, { t: '$', v: '$' }, { t: '@', v: '@' },
   { t: 'Tab', v: '    ', wide: true },
-  { t: '(', v: '(', close: ')' }, { t: ')', v: ')' }, { t: '{', v: '{', close: '}' }, { t: '}', v: '}' },
-  { t: '[', v: '[', close: ']' }, { t: ']', v: ']' }, { t: '<', v: '<' }, { t: '>', v: '>' },
-  { t: ';', v: ';' }, { t: ':', v: ':' }, { t: '=', v: '=' }, { t: '+', v: '+' }, { t: '-', v: '-' },
-  { t: '*', v: '*' }, { t: '/', v: '/' }, { t: '%', v: '%' }, { t: '&', v: '&' }, { t: '|', v: '|' }, { t: '!', v: '!' },
-  { t: '"', v: '"', close: '"' }, { t: "'", v: "'", close: "'" }, { t: '`', v: '`', close: '`' },
-  { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '.', v: '.' }, { t: ',', v: ',' }, { t: '\\', v: '\\' }, { t: '$', v: '$' },
-  { t: '@', v: '@' }, { t: '←', act: 'left', wide: true }, { t: '→', act: 'right', wide: true },
+];
+// Fixed cluster (never scrolls): collapse toggle + all four arrows, always reachable.
+const CODE_ARROWS = [
+  { t: '⌄', act: 'collapse' },
+  { t: '←', act: 'left' }, { t: '↑', act: 'up' }, { t: '↓', act: 'down' }, { t: '→', act: 'right' },
 ];
 const CODE_EXT_LANG = {
   py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', c: 'c', h: 'c',
@@ -2457,8 +2465,22 @@ function codeInsertPair(open, close) {
   codeReplaceRange(s, e, open + sel + close, s + open.length + sel.length); // wraps a selection, else caret between
 }
 function codeMoveCaret(dir) {
-  const ta = codeTA();
-  ta.selectionStart = ta.selectionEnd = Math.max(0, Math.min(ta.value.length, ta.selectionStart + (dir === 'left' ? -1 : 1)));
+  const ta = codeTA(), val = ta.value, p = ta.selectionStart;
+  if (dir === 'left' || dir === 'right') {
+    ta.selectionStart = ta.selectionEnd = Math.max(0, Math.min(val.length, p + (dir === 'left' ? -1 : 1)));
+  } else {                                    // up/down: keep the column, clamp to the target line
+    const ls = val.lastIndexOf('\n', p - 1) + 1, col = p - ls;
+    if (dir === 'up') {
+      if (ls === 0) { ta.focus(); return; }
+      const ps = val.lastIndexOf('\n', ls - 2) + 1;
+      ta.selectionStart = ta.selectionEnd = ps + Math.min(col, ls - 1 - ps);
+    } else {
+      const ne = val.indexOf('\n', p);
+      if (ne < 0) { ta.focus(); return; }
+      const ns = ne + 1; let nn = val.indexOf('\n', ns); if (nn < 0) nn = val.length;
+      ta.selectionStart = ta.selectionEnd = ns + Math.min(col, nn - ns);
+    }
+  }
   ta.focus();
 }
 // Enter: keep the line's indent, add a level after a trailing opener, and expand {|} into a block.
@@ -2478,7 +2500,13 @@ function codeEnter() {
 }
 // Vim on the code editor (attached lazily; toggled by prefs.vim). While vim owns the keys in
 // normal/visual mode, skip the auto-indent/bracket-pair handling below — those are insert-time helpers.
-let codeVim = null, codeVimMode = '';
+let codeVim = null, codeVimMode = '', codeOpen = false;
+// Code is a full-screen overlay reached from a bottom tab. Push a history entry on entry so the
+// phone's Back button (and #code-back) return to the previous tab instead of closing the app.
+function codeClose() {
+  if (!codeOpen) return;
+  codeOpen = false; codeViewportReset(); codeToggleSidebar(false); show(state.prevTab || 'discover');
+}
 function codeKeydown(ev) {
   if (codeVim && codeVim.isEnabled() && codeVimMode && codeVimMode !== 'INSERT') return;
   if (ev.key === 'Enter') { ev.preventDefault(); codeEnter(); return; }
@@ -2488,14 +2516,46 @@ function codeKeydown(ev) {
   if (CODE_PAIRS[ev.key]) { ev.preventDefault(); codeInsertPair(ev.key, CODE_PAIRS[ev.key]); return; }
   if (ev.key === 'Backspace' && s === e && CODE_PAIRS[val[s - 1]] && CODE_PAIRS[val[s - 1]] === val[s]) { ev.preventDefault(); codeReplaceRange(s - 1, s + 1, ''); } // delete empty pair
 }
+function codeToggleSymbols() {
+  const collapsed = $('#code-symbols-wrap').classList.toggle('collapsed');
+  const btn = $('#code-collapse-btn'); if (btn) btn.textContent = collapsed ? '⌃' : '⌄';
+}
+// Bind one key: pointerdown keeps the textarea focused; the bar scrolls via touch-action:pan-x, so we
+// tell a tap from a scroll by movement (act only on a still pointerup). Hold a pair key → its closer.
+function codeBindKey(b, k) {
+  let sx = 0, sy = 0, moved = false, held = false, lp = null;
+  const clear = () => { clearTimeout(lp); lp = null; };
+  b.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault(); sx = ev.clientX; sy = ev.clientY; moved = false; held = false;
+    if (k.close) lp = setTimeout(() => { held = true; codeInsert(k.close); }, 340);
+  });
+  b.addEventListener('pointermove', (ev) => { if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) { moved = true; clear(); } });
+  b.addEventListener('pointerup', (ev) => {
+    clear(); if (moved || held) return;                 // scrolled, or hold already inserted the closer
+    ev.preventDefault();
+    if (k.act === 'collapse') codeToggleSymbols();
+    else if (k.act) codeMoveCaret(k.act);
+    else if (k.close) codeInsertPair(k.v, k.close);
+    else codeInsert(k.v);
+  });
+  b.addEventListener('pointercancel', clear);
+}
 function codeBuildSymbols() {
   const bar = $('#code-symbols'); bar.innerHTML = '';
   for (const k of CODE_KEYS) {
     const b = document.createElement('button');
-    b.className = 'sym' + (k.wide ? ' sym-wide' : ''); b.textContent = k.t; b.type = 'button';
-    // pointerdown + preventDefault keeps the textarea focused (keyboard stays up) and acts immediately.
-    b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); if (k.act) codeMoveCaret(k.act); else if (k.close) codeInsertPair(k.v, k.close); else codeInsert(k.v); });
-    bar.appendChild(b);
+    b.className = 'sym' + (k.wide ? ' sym-wide' : '') + (k.close ? ' sym-pair' : '');
+    b.textContent = k.t; b.type = 'button';
+    if (k.close) b.dataset.close = k.close;             // shown in the corner only while held
+    codeBindKey(b, k); bar.appendChild(b);
+  }
+  const arr = $('#code-arrows'); arr.innerHTML = '';
+  for (const k of CODE_ARROWS) {
+    const b = document.createElement('button');
+    b.className = 'sym sym-arrow' + (k.act === 'collapse' ? ' sym-toggle' : '');
+    b.textContent = k.t; b.type = 'button';
+    if (k.act === 'collapse') b.id = 'code-collapse-btn';
+    codeBindKey(b, k); arr.appendChild(b);
   }
 }
 function codeMarkDirty(d) { codeState.file.dirty = d; $('#code-save').classList.toggle('dirty', d); }
@@ -2737,12 +2797,17 @@ function codeInitOnce() {
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
   $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
-  $('#code-back').addEventListener('click', () => { codeViewportReset(); codeToggleSidebar(false); show(state.prevTab || 'discover'); });
+  $('#code-back').addEventListener('click', () => { codeOpen ? history.back() : codeClose(); });
+  $('#code-output-collapse').addEventListener('click', () => {
+    const p = $('#code-output'), c = p.classList.toggle('collapsed');
+    $('#code-output-collapse').textContent = c ? '▸' : '▾';
+  });
   if (window.visualViewport) { visualViewport.addEventListener('resize', codeViewportFit); visualViewport.addEventListener('scroll', codeViewportFit); }
   codeLoadHljs();
 }
 async function loadCode() {
   if (!codeState.inited) { codeInitOnce(); codeState.inited = true; }
+  if (!codeOpen) { history.pushState({ code: true }, ''); codeOpen = true; }
   const d = codeLoadLS();
   if (d.mode === 'saved' || d.mode === 'scratch') codeState.mode = d.mode;
   if (d.scratchLang) codeState.scratchLang = d.scratchLang;

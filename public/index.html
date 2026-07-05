@@ -265,10 +265,11 @@
 
         <div class="code-panel" id="code-output" hidden>
           <div class="code-panel-head">
+            <button class="icon-btn code-collapse" id="code-output-collapse" aria-label="Collapse output" title="Collapse">▾</button>
             <span class="code-status" id="code-status">output</span>
             <div class="spacer"></div>
             <button class="chip code-copy" id="code-copy">Copy</button>
-            <button class="icon-btn" id="code-output-close" aria-label="Hide output">✕</button>
+            <button class="icon-btn" id="code-output-close" title="Close" aria-label="Close output">✕</button>
           </div>
           <pre class="code-out-body" id="code-out-body"></pre>
         </div>
@@ -288,7 +289,10 @@
         </div>
 
         <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
-        <div class="code-symbols" id="code-symbols"></div>
+        <div class="code-symbols-wrap" id="code-symbols-wrap">
+          <div class="code-symbols" id="code-symbols"></div>
+          <div class="code-arrows" id="code-arrows"></div>
+        </div>
 
         <!-- Project files drawer — swipe in from the left (Saved mode), like Browse -->
         <aside class="code-sidebar" id="code-sidebar">
