@@ -528,12 +528,11 @@ a.doc-link:hover { border-color: var(--accent); }
 .ink-top {
   position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 12px;
   padding: max(12px, env(safe-area-inset-top)) 14px 10px;
-  background: linear-gradient(rgba(13,14,18,.82), rgba(13,14,18,0)); pointer-events: none;
+  pointer-events: none;   /* no top fade — controls carry their own chrome over the white page */
 }
 .ink-top > * { pointer-events: auto; }
 .ink-top .icon-btn { background: var(--surface-3); border: 1px solid var(--border); }
-.ink-zoom { flex: 1; text-align: center; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.ink-zoom { flex: 1; text-align: center; color: #4a4a4a; font-size: 13px; font-variant-numeric: tabular-nums; }
 
 .ink-tools {
   position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px;
@@ -977,13 +976,14 @@ a.doc-link:hover { border-color: var(--accent); }
   transition: transform .08s, background .12s; }
 .sym:active { transform: scale(.9); background: var(--surface-3); }
 .sym-wide { min-width: 50px; font-size: 12px; letter-spacing: .02em; }
-/* Directional pad: one cell, four zones. Press/slide a direction to move the caret; hold repeats. */
-.code-joy { position: relative; width: 46px; min-width: 46px; height: 40px; padding: 0; touch-action: none; }
-.code-joy span { position: absolute; font-size: 9px; line-height: 1; color: var(--faint); pointer-events: none; }
-.code-joy .joy-u { top: 4px; left: 50%; transform: translateX(-50%); }
-.code-joy .joy-d { bottom: 4px; left: 50%; transform: translateX(-50%); }
-.code-joy .joy-l { left: 5px; top: 50%; transform: translateY(-50%); }
-.code-joy .joy-r { right: 5px; top: 50%; transform: translateY(-50%); }
+/* Directional pad: one cell, four zones. Press/slide a direction to move the caret; hold repeats.
+   Sized generously (esp. vertical) so the up/down zones are easy to hit on a small phone. */
+.code-joy { position: relative; width: 62px; min-width: 62px; height: 54px; padding: 0; touch-action: none; }
+.code-joy span { position: absolute; font-size: 12px; line-height: 1; color: var(--faint); pointer-events: none; }
+.code-joy .joy-u { top: 5px; left: 50%; transform: translateX(-50%); }
+.code-joy .joy-d { bottom: 5px; left: 50%; transform: translateX(-50%); }
+.code-joy .joy-l { left: 7px; top: 50%; transform: translateY(-50%); }
+.code-joy .joy-r { right: 7px; top: 50%; transform: translateY(-50%); }
 .code-joy:active { background: var(--surface-3); }
 .code-joy:active span { color: var(--accent); }
 /* Pair keys show only the opener; while held, reveal the closer in the corner (then it's inserted). */

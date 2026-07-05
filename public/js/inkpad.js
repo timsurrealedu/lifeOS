@@ -26,7 +26,8 @@ window.InkPad = (function () {
   const pointers = new Map();      // active pointers for multi-touch
   let pinch = null, pinchStart = null, lastTwoTap = 0;
   let selected = new Set();        // strokes currently selected (lasso tool)
-  let lasso = null, moveDrag = null;
+  let lasso = null, drag = null;   // drag = { mode:'move'|'scale'|'rotate', cx,cy(world pivot), xf, ... }
+  let selUI = null;                // last-drawn handle positions (screen px) for hit-testing on pointerdown
   let activePenId = null, penUpAt = 0; // palm rejection: ignore touch while a stylus is down (+ brief grace after lift)
   let raf = null, built = false, pushedState = false, manageHistory = true;
 
@@ -46,7 +47,7 @@ window.InkPad = (function () {
     // handed existing strokes to re-edit — clone them so the caller's copy isn't mutated as we draw.
     strokes = Array.isArray(opts.strokes) ? JSON.parse(JSON.stringify(opts.strokes)) : [];
     undoStack = []; redoStack = []; live = null; pinch = null; pinchStart = null; panning = false; pointers.clear();
-    selected = new Set(); lasso = null; moveDrag = null; activePenId = null; penUpAt = 0; lastTwoTap = 0;
+    selected = new Set(); lasso = null; drag = null; selUI = null; activePenId = null; penUpAt = 0; lastTwoTap = 0;
     el('inkpad').hidden = false;
     if (manageHistory && !pushedState) { history.pushState({ inkpad: true }, ''); pushedState = true; }
     resize();
@@ -87,7 +88,7 @@ window.InkPad = (function () {
     el('ink-toolset').querySelectorAll('.ink-t').forEach((b) =>
       b.addEventListener('click', () => {
         tool = b.dataset.tool;
-        if (tool !== 'select') { selected = new Set(); lasso = null; moveDrag = null; }
+        if (tool !== 'select') { selected = new Set(); lasso = null; drag = null; selUI = null; }
         render(); updateUI();
       }));
     el('ink-sizes').querySelectorAll('.ink-s').forEach((b) =>
@@ -158,26 +159,54 @@ window.InkPad = (function () {
     ctx.clearRect(0, 0, cssW, cssH);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cssW, cssH); // the infinite page
     ctx.translate(view.x, view.y); ctx.scale(view.scale, view.scale);
-    const dx = moveDrag ? moveDrag.dx : 0, dy = moveDrag ? moveDrag.dy : 0;
-    for (const s of strokes) drawStroke(ctx, selected.has(s) ? withOffset(s, dx, dy) : s);
+    const xf = drag && drag.xf ? drag.xf : null;
+    for (const s of strokes) drawStroke(ctx, (xf && selected.has(s)) ? applyXform(s, xf) : s);
     if (live) drawStroke(ctx, live);
-    if (selected.size) drawSelectionBox(dx, dy);
+    if (selected.size) drawSelectionUI(xf);
     if (lasso && lasso.length > 1) drawLasso();
   }
 
-  // Shifted copy of a stroke (used to preview a drag before it's committed to history).
-  function withOffset(s, dx, dy) {
-    if (!dx && !dy) return s;
-    if (s.tool === 'pen') return { ...s, points: s.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
-    return { ...s, a: { x: s.a.x + dx, y: s.a.y + dy }, b: { x: s.b.x + dx, y: s.b.y + dy } };
+  const toScreen = (w) => ({ x: w.x * view.scale + view.x, y: w.y * view.scale + view.y });
+  const idXf = (c) => ({ cx: c.x, cy: c.y, rot: 0, scale: 1, dx: 0, dy: 0 });
+  function selCenter() { const b = boundsOf(selected, 0); return b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 }; }
+
+  // Map a world point through a selection transform (rotate + uniform scale about pivot, then translate).
+  function xformPoint(p, xf) {
+    const dx = (p.x - xf.cx) * xf.scale, dy = (p.y - xf.cy) * xf.scale;
+    const c = Math.cos(xf.rot), s = Math.sin(xf.rot);
+    return { x: xf.cx + dx * c - dy * s + xf.dx, y: xf.cy + dx * s + dy * c + xf.dy };
+  }
+  // Apply the transform to a stroke. Pen/ruler/arrow rotate+scale fully; rect/ellipse orbit+scale but
+  // stay axis-aligned (ponytail: shapes carry no rotation field — the box moves & resizes, doesn't spin).
+  function applyXform(s, xf) {
+    if (s.tool === 'pen') return { ...s, points: s.points.map((p) => xformPoint(p, xf)), size: s.size * xf.scale };
+    if (s.tool === 'ruler' || s.tool === 'arrow') return { ...s, a: xformPoint(s.a, xf), b: xformPoint(s.b, xf), size: s.size * xf.scale };
+    const cx = (s.a.x + s.b.x) / 2, cy = (s.a.y + s.b.y) / 2;
+    const nc = xformPoint({ x: cx, y: cy }, xf);
+    const hw = Math.abs(s.b.x - s.a.x) / 2 * xf.scale, hh = Math.abs(s.b.y - s.a.y) / 2 * xf.scale;
+    return { ...s, a: { x: nc.x - hw, y: nc.y - hh }, b: { x: nc.x + hw, y: nc.y + hh }, size: s.size * xf.scale };
   }
 
-  function drawSelectionBox(dx, dy) {
-    const b = boundsOf(selected, 10);
-    if (!b) return;
-    ctx.save();
-    ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 1.5 / view.scale; ctx.setLineDash([6 / view.scale, 5 / view.scale]);
-    ctx.strokeRect(b.minX + dx, b.minY + dy, b.maxX - b.minX, b.maxY - b.minY);
+  // Selection box + a rotate knob (above top-center) and a scale knob (bottom-right), drawn in screen
+  // space so the handles stay a constant size. Records their screen positions in selUI for hit-testing.
+  function drawSelectionUI(xf) {
+    const disp = xf ? [...selected].map((s) => applyXform(s, xf)) : [...selected];
+    const b = boundsOf(disp, 8 / view.scale);
+    if (!b) { selUI = null; return; }
+    const tl = toScreen({ x: b.minX, y: b.minY }), br = toScreen({ x: b.maxX, y: b.maxY });
+    const cxS = (tl.x + br.x) / 2;
+    const rotH = { x: cxS, y: tl.y - 26 }, scaleH = { x: br.x, y: br.y };
+    selUI = { rotH, scaleH, center: { x: cxS, y: (tl.y + br.y) / 2 } };
+    ctx.save(); ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+    ctx.strokeStyle = '#1f6feb'; ctx.fillStyle = '#1f6feb'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]); ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cxS, tl.y); ctx.lineTo(rotH.x, rotH.y); ctx.stroke();
+    const knob = (h, glyph) => {
+      ctx.fillStyle = '#1f6feb'; ctx.beginPath(); ctx.arc(h.x, h.y, 9, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(glyph, h.x, h.y + 0.5);
+    };
+    knob(rotH, '↻'); knob(scaleH, '⤡');
     ctx.restore();
   }
 
@@ -243,7 +272,7 @@ window.InkPad = (function () {
     pointers.set(e.pointerId, p);
 
     if (pointers.size === 2) { // start pinch — abandon any in-progress draw/select
-      live = null; panning = false; moveDrag = null; lasso = null;
+      live = null; panning = false; drag = null; lasso = null;
       const pts = [...pointers.values()];
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
@@ -259,8 +288,14 @@ window.InkPad = (function () {
 
     const w = toWorld(p.x, p.y);
     if (tool === 'select') {
+      if (selected.size && selUI) {   // grab a handle first (rotate / scale), then a stroke to move
+        const near = (h, r) => Math.hypot(p.x - h.x, p.y - h.y) <= r;
+        const c = selCenter();
+        if (near(selUI.rotH, 18)) { drag = { mode: 'rotate', cx: c.x, cy: c.y, startAng: Math.atan2(p.y - selUI.center.y, p.x - selUI.center.x), xf: idXf(c) }; render(); return; }
+        if (near(selUI.scaleH, 18)) { drag = { mode: 'scale', cx: c.x, cy: c.y, startDist: Math.max(8, Math.hypot(p.x - selUI.center.x, p.y - selUI.center.y)), xf: idXf(c) }; render(); return; }
+      }
       const hit = [...selected].find((s) => strokeHit(s, w, Math.max(8, s.size * 2.2) / view.scale + 2));
-      if (hit) moveDrag = { start: w, dx: 0, dy: 0 };
+      if (hit) { const c = selCenter(); drag = { mode: 'move', cx: c.x, cy: c.y, start: w, xf: idXf(c) }; }
       else { selected = new Set(); lasso = [w]; }
       render();
       return;
@@ -289,7 +324,12 @@ window.InkPad = (function () {
     if (tool === 'eraser' && pointers.size === 1) { eraseAt(toWorld(p.x, p.y)); return; }
     if (tool === 'select' && pointers.size === 1) {
       const w = toWorld(p.x, p.y);
-      if (moveDrag) { moveDrag.dx = w.x - moveDrag.start.x; moveDrag.dy = w.y - moveDrag.start.y; requestRender(); return; }
+      if (drag) {
+        if (drag.mode === 'move') drag.xf = { cx: drag.cx, cy: drag.cy, rot: 0, scale: 1, dx: w.x - drag.start.x, dy: w.y - drag.start.y };
+        else if (drag.mode === 'rotate') drag.xf = { cx: drag.cx, cy: drag.cy, rot: Math.atan2(p.y - selUI.center.y, p.x - selUI.center.x) - drag.startAng, scale: 1, dx: 0, dy: 0 };
+        else if (drag.mode === 'scale') drag.xf = { cx: drag.cx, cy: drag.cy, rot: 0, scale: Math.max(0.1, Math.hypot(p.x - selUI.center.x, p.y - selUI.center.y) / drag.startDist), dx: 0, dy: 0 };
+        requestRender(); return;
+      }
       if (lasso) { lasso.push(w); requestRender(); return; }
     }
     if (!live) return;
@@ -322,12 +362,13 @@ window.InkPad = (function () {
     if (pointers.size === 0) {
       panning = false; panLast = null;
       if (tool === 'select') {
-        if (moveDrag) {
-          const { dx, dy } = moveDrag; moveDrag = null;
-          if (dx || dy) {
+        if (drag) {
+          const xf = drag.xf; drag = null;
+          const changed = xf && (xf.rot || xf.scale !== 1 || xf.dx || xf.dy);
+          if (changed) {
             const next = [], newSelected = new Set();
             for (const s of strokes) {
-              if (selected.has(s)) { const t = withOffset(s, dx, dy); newSelected.add(t); next.push(t); }
+              if (selected.has(s)) { const t = applyXform(s, xf); newSelected.add(t); next.push(t); }
               else next.push(s);
             }
             commit(next); selected = newSelected;
