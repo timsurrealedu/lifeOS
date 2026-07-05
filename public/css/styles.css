@@ -965,8 +965,8 @@ a.doc-link:hover { border-color: var(--accent); }
 .code-symbols-wrap { flex: none; display: flex; align-items: stretch;
   background: var(--surface); border-top: 1px solid var(--border-soft);
   padding-bottom: env(safe-area-inset-bottom); }
-.code-symbols { flex: 1 1 auto; display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none;
-  padding: 7px 8px 7px 10px; touch-action: pan-x; }  /* pan-x lets the row scroll; taps still register */
+.code-symbols { flex: 1 1 auto; display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none;
+  padding: 7px 8px 7px 10px; touch-action: pan-x; }  /* center: keys sit mid-bar so the joystick's extra height splits evenly, not all below */
 .code-symbols::-webkit-scrollbar { display: none; }
 .code-arrows { flex: none; display: flex; align-items: center; padding: 7px 10px 7px 8px;
   border-left: 1px solid var(--border-soft); }
