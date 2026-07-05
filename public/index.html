@@ -401,6 +401,24 @@
         <label class="switch-row"><span>Live preview <small>(Obsidian-style — click a block to edit)</small></span><input type="checkbox" id="cfg-livepreview" /></label>
         <label class="switch-row"><span>Vim keybindings <small>(source mode)</small></span><input type="checkbox" id="cfg-vim" /></label>
         <label class="switch-row"><span>Line numbers <small>(source mode)</small></span><input type="checkbox" id="cfg-lineno" /></label>
+        <div class="seg-field">
+          <span class="seg-field-label">Notes width <small>(reading &amp; writing)</small></span>
+          <div class="seg seg-width" id="note-width-seg">
+            <button class="seg-btn" type="button" data-width-opt="narrow">Narrow</button>
+            <button class="seg-btn" type="button" data-width-opt="default">Default</button>
+            <button class="seg-btn" type="button" data-width-opt="wide">Wide</button>
+            <button class="seg-btn" type="button" data-width-opt="full">Full</button>
+          </div>
+        </div>
+        <div class="seg-field">
+          <span class="seg-field-label">Code width</span>
+          <div class="seg seg-width" id="code-width-seg">
+            <button class="seg-btn" type="button" data-width-opt="narrow">Narrow</button>
+            <button class="seg-btn" type="button" data-width-opt="default">Default</button>
+            <button class="seg-btn" type="button" data-width-opt="wide">Wide</button>
+            <button class="seg-btn" type="button" data-width-opt="full">Full</button>
+          </div>
+        </div>
       </div>
 
       <h4 class="settings-sub">Document tools</h4>

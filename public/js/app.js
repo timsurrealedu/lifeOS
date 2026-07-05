@@ -19,11 +19,15 @@ const state = { inbox: [], notes: [], folders: null, systemFolders: [], stagingF
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
 const THEME_BG = { dark: '#15110d', light: '#f7f4ee', netrunner: '#07090d' };
+const WIDTHS = ['narrow', 'default', 'wide', 'full'];
+const WIDTH_PX = { narrow: '560px', default: 'var(--max)', wide: '960px', full: 'none' };
 const prefs = {
   get theme() { return localStorage.getItem('lifeos.theme') || 'light'; },
   get vim() { return localStorage.getItem('lifeos.vim') === '1'; },
   get lineno() { return localStorage.getItem('lifeos.lineno') === '1'; },
   get livepreview() { return localStorage.getItem('lifeos.livepreview') !== '0'; }, // default on
+  get noteWidth() { return localStorage.getItem('lifeos.noteWidth') || 'default'; },
+  get codeWidth() { return localStorage.getItem('lifeos.codeWidth') || 'full'; },
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
@@ -40,6 +44,12 @@ function cycleTheme() {
   const next = THEMES[(THEMES.indexOf(prefs.theme) + 1) % THEMES.length];
   applyTheme(next);
   toast('Theme: ' + next[0].toUpperCase() + next.slice(1));
+}
+function applyWidth(kind, name) {
+  if (!WIDTHS.includes(name)) name = kind === 'code' ? 'full' : 'default';
+  prefs.set(kind + 'Width', name);
+  document.documentElement.style.setProperty('--' + kind + '-w', WIDTH_PX[name]);
+  $$('#' + kind + '-width-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.widthOpt === name));
 }
 
 /* ---------- Navigation ----------
@@ -144,6 +154,15 @@ document.addEventListener('click', (e) => {
 $('#theme-seg').addEventListener('click', (e) => {
   const b = e.target.closest('.seg-btn'); if (!b) return;
   applyTheme(b.dataset.themeOpt);
+});
+// Reading/writing width pickers inside Settings.
+$('#note-width-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  applyWidth('note', b.dataset.widthOpt);
+});
+$('#code-width-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  applyWidth('code', b.dataset.widthOpt);
 });
 
 /* ---------- Capture ---------- */
@@ -2145,6 +2164,8 @@ async function openSettings() {
     renderDocTools(docTools || []);
     // Appearance / editor prefs (client-side, localStorage).
     applyTheme(prefs.theme);
+    applyWidth('note', prefs.noteWidth);
+    applyWidth('code', prefs.codeWidth);
     $('#cfg-livepreview').checked = prefs.livepreview;
     $('#cfg-vim').checked = prefs.vim;
     $('#cfg-lineno').checked = prefs.lineno;
@@ -3054,6 +3075,8 @@ async function loadCode() {
 /* ---------- Boot ---------- */
 (async function boot() {
   applyTheme(prefs.theme);
+  applyWidth('note', prefs.noteWidth);
+  applyWidth('code', prefs.codeWidth);
   await refreshInbox();
   await loadNotes(true);
   show('inbox');

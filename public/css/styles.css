@@ -32,6 +32,9 @@
   /* z-scale */
   --z-tabbar: 30; --z-backdrop: 40; --z-code: 44; --z-sheet: 50; --z-toast: 60;
   color-scheme: dark;
+  /* Reading/writing width — overridden inline (px or 'none') by the Settings > Appearance width pickers */
+  --note-w: var(--max);
+  --code-w: none;
 }
 
 /* ---- Light theme: warm editorial paper (the mockup look) ---- */
@@ -690,8 +693,8 @@ a.doc-link:hover { border-color: var(--accent); }
 .appearance { display: flex; flex-direction: column; gap: 14px; }
 .seg-field { display: flex; flex-direction: column; gap: 8px; }
 .seg-field-label { font-size: 13px; color: var(--muted); }
-.seg-theme { align-self: flex-start; max-width: 100%; flex-wrap: wrap; }
-.seg-theme .seg-btn { font-size: 13px; }
+.seg-theme, .seg-width { align-self: flex-start; max-width: 100%; flex-wrap: wrap; }
+.seg-theme .seg-btn, .seg-width .seg-btn { font-size: 13px; }
 .switch-row { flex-direction: row !important; align-items: center; justify-content: space-between; gap: 12px; }
 .switch-row span { color: var(--text); font-size: 14px; }
 .switch-row span small { color: var(--faint); font-weight: 400; }
@@ -720,7 +723,7 @@ a.doc-link:hover { border-color: var(--accent); }
    and out of the way as you read/write instead of staying pinned at the top. */
 .reader-scroll { flex: 1; overflow: auto; }
 .reader-body {
-  width: 100%; max-width: var(--max); margin: 0 auto;
+  width: 100%; max-width: var(--note-w); margin: 0 auto;
   padding: 14px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
 
@@ -753,7 +756,9 @@ a.doc-link:hover { border-color: var(--accent); }
 /* Collapsed (desktop) → full-screen reading. The toggle (☰) is always available in the header. */
 .reader.sidebar-hidden .reader-sidebar { display: none; }
 #reader-sidebar-toggle { display: none; }            /* desktop: collapse via header toggle only when wanted */
-.reader.sidebar-hidden #reader-sidebar-toggle { display: inline-flex; }
+/* grid, not inline-flex — .icon-btn centers its icon via place-items:center, which is
+   grid-only and silently no-ops under flex (defaults to flex-start, icon lands top-left) */
+.reader.sidebar-hidden #reader-sidebar-toggle { display: grid; }
 
 /* Mobile: the sidebar is an off-canvas drawer you swipe in (right) / out (left). The toggle button
    stays hidden here (see the no-hamburger rule further down) — swipe is the only entry point. */
@@ -886,14 +891,14 @@ a.doc-link:hover { border-color: var(--accent); }
 .fmt-ink { border-color: var(--accent-soft); }
 .fmt-ink:hover { border-color: var(--accent); }
 /* Editor body lives in a flex row alongside an optional line-number gutter. */
-.editor-area { flex: 1 1 auto; min-height: 0; display: flex; width: 100%; max-width: var(--max); margin: 0 auto; }
+.editor-area { flex: 1 1 auto; min-height: 0; display: flex; width: 100%; max-width: var(--note-w); margin: 0 auto; }
 .editor-body {
   flex: 1; min-width: 0; resize: none; border: none; outline: none;
   background: transparent; color: var(--text); font-family: var(--mono); font-size: 15px; line-height: 1.65;
   padding: 16px 20px calc(env(safe-area-inset-bottom) + 48px);
 }
 .editor-body::placeholder { color: var(--faint); }
-.editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
+.editor-preview { flex: 1; width: 100%; max-width: var(--note-w); margin: 0 auto; }
 
 /* ============ Code tab — phone-first write + run ============ */
 /* Full-screen focused surface (covers topbar+tabbar); the Back button exits. A row so the file
@@ -943,7 +948,7 @@ a.doc-link:hover { border-color: var(--accent); }
 .code-stdin::placeholder { color: var(--faint); }
 
 /* Editor: gutter + (highlight layer under a transparent textarea) */
-.code-editor { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+.code-editor { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; width: 100%; max-width: var(--code-w); margin: 0 auto; }
 .code-gutter { flex: none; overflow: hidden; padding: 12px 8px 0 12px; background: var(--bg); }
 .code-gutter-inner { font-family: var(--mono); font-size: 13px; line-height: 21px; color: var(--faint);
   text-align: right; white-space: pre; user-select: none; will-change: transform; }
@@ -1082,7 +1087,7 @@ a.doc-link:hover { border-color: var(--accent); }
 /* ---- Live preview editor (Obsidian-style: render blocks, click one to edit its source) ---- */
 .lp-editor {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  width: 100%; max-width: var(--max); margin: 0 auto;
+  width: 100%; max-width: var(--note-w); margin: 0 auto;
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 48px);
 }
 .lp-block { border-radius: 8px; padding: 1px 8px; margin: 1px 0; cursor: text; }
