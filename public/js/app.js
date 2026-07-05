@@ -2757,20 +2757,38 @@ function codeRenderTree() {
   };
   render(codeBuildTree(), '', 0);
 }
+// Mobile drawer open/close (transient overlay). Harmless no-op on desktop — `sidebar-open` isn't
+// styled there; the persistent desktop dock is controlled separately by codeSidebarToggle().
 function codeToggleSidebar(force) {
   const view = $('.view[data-view="code"]');
   const openIt = force !== undefined ? force : !view.classList.contains('sidebar-open');
   view.classList.toggle('sidebar-open', openIt);
   if (openIt) codeRefreshFiles();
 }
+// Desktop: toggle the persistent collapsible dock (mirrors toggleReaderSidebar), remembered across
+// sessions. Mobile: same as the drawer toggle above. Bound to the ☰ toggle, the in-sidebar ✕, and #code-files.
+function codeSidebarToggle() {
+  const view = $('.view[data-view="code"]');
+  if (window.matchMedia('(min-width: 760px)').matches) {
+    const hidden = view.classList.toggle('sidebar-hidden');
+    localStorage.setItem('lifeos.codeSidebarHidden', hidden ? '1' : '0');
+    if (!hidden) codeRefreshFiles();
+  } else {
+    codeToggleSidebar();
+  }
+}
 async function codeOpenFile(rel) {
   let j; try { j = await api('/api/code/file?path=' + encodeURIComponent(rel)); } catch (e) { toast(e.message); return; }
   codeState.mode = 'saved'; codeState.file = { name: j.path, content: j.content, dirty: false };
-  codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeToggleSidebar(false); codeTA().focus();
+  codeApplyMode(); codeLoadBuffer(); codeSaveLS();
+  // Only auto-close the mobile drawer — the desktop dock stays put, like picking a note in Notes.
+  if (!window.matchMedia('(min-width: 760px)').matches) codeToggleSidebar(false);
+  codeTA().focus();
 }
 function codeNewFile() {
   codeState.mode = 'saved'; codeState.file = { name: 'untitled.py', content: CODE_STARTER, dirty: false };
-  codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeToggleSidebar(false);
+  codeApplyMode(); codeLoadBuffer(); codeSaveLS();
+  if (!window.matchMedia('(min-width: 760px)').matches) codeToggleSidebar(false);
   const fn = $('#code-filename'); fn.focus(); fn.select();
 }
 async function codeSave() {
@@ -2829,6 +2847,37 @@ function codeSetupSwipe() {
   view.addEventListener('pointerdown', (e) => {
     if (view.classList.contains('sidebar-open') && !e.target.closest('.code-sidebar') && !e.target.closest('#code-files')) codeToggleSidebar(false);
   }, true);
+}
+// Drag the sidebar's right edge to resize; width persists (desktop only), mirroring the notes file
+// sidebar. Sets a CSS var the sidebar reads, so code-main (flex:1) reflows to fill the rest.
+function setupCodeSidebarResize() {
+  const handle = $('#code-sidebar-resize'), sidebar = $('#code-sidebar');
+  if (!handle) return;
+  const saved = localStorage.getItem('lifeos.codeSidebarW');
+  if (saved) document.documentElement.style.setProperty('--code-sidebar-w', saved + 'px');
+  let startX = 0, startW = 0, dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    let w = startW + (e.clientX - startX);
+    w = Math.max(180, Math.min(w, 560, window.innerWidth - 300));
+    document.documentElement.style.setProperty('--code-sidebar-w', Math.round(w) + 'px');
+  };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; sidebar.classList.remove('resizing');
+    const w = document.documentElement.style.getPropertyValue('--code-sidebar-w').replace('px', '').trim();
+    if (w) localStorage.setItem('lifeos.codeSidebarW', Math.round(parseFloat(w)));
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', end);
+  };
+  handle.addEventListener('pointerdown', (e) => {
+    if (!window.matchMedia('(min-width: 760px)').matches) return;
+    dragging = true; startX = e.clientX; startW = sidebar.getBoundingClientRect().width;
+    sidebar.classList.add('resizing');
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', end);
+    e.preventDefault();
+  });
 }
 function codeShowStatus(t, cls) { const el = $('#code-status'); el.textContent = t; el.className = 'code-status' + (cls ? ' ' + cls : ''); }
 function codeSetOut(parts) {
@@ -2962,9 +3011,15 @@ function codeInitOnce() {
   $$('#code-mode .seg-btn').forEach((b) => b.addEventListener('click', () => codeSetMode(b.dataset.mode)));
   $('#code-lang').addEventListener('change', (e) => codeSetScratchLang(e.target.value));
   $('#code-filename').addEventListener('input', () => { codeState.file.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
-  $('#code-files').addEventListener('click', () => codeToggleSidebar());
+  $('#code-files').addEventListener('click', codeSidebarToggle);
+  $('#code-sidebar-toggle').addEventListener('click', codeSidebarToggle);
   $('#code-sidebar-new').addEventListener('click', codeNewFile);
-  $('#code-sidebar-close').addEventListener('click', () => codeToggleSidebar(false));
+  $('#code-sidebar-close').addEventListener('click', codeSidebarToggle);
+  setupCodeSidebarResize();
+  // Desktop-only collapse preference, restored on first init (mirrors the notes file sidebar).
+  if (window.matchMedia('(min-width: 760px)').matches) {
+    $('.view[data-view="code"]').classList.toggle('sidebar-hidden', localStorage.getItem('lifeos.codeSidebarHidden') === '1');
+  }
   $('#code-save').addEventListener('click', codeSave);
   $('#code-undo').addEventListener('click', codeUndo);
   $('#code-redo').addEventListener('click', codeRedo);

@@ -890,14 +890,17 @@ a.doc-link:hover { border-color: var(--accent); }
 .editor-preview { flex: 1; width: 100%; max-width: var(--max); margin: 0 auto; }
 
 /* ============ Code tab — phone-first write + run ============ */
-/* Full-screen focused surface (covers topbar+tabbar); the Back button exits. Fixed flex column so
-   the symbol bar stays glued above the on-screen keyboard (helped by interactive-widget + VisualViewport). */
+/* Full-screen focused surface (covers topbar+tabbar); the Back button exits. A row so the file
+   sidebar can dock to the left on desktop (see further down); .code-main is the flex column that
+   used to be this element's own direct children — the symbol bar stays glued above the on-screen
+   keyboard there (helped by interactive-widget + VisualViewport). */
 .view[data-view="code"]:not([hidden]) {
-  position: fixed; inset: 0; z-index: var(--z-code); display: flex; flex-direction: column;
+  position: fixed; inset: 0; z-index: var(--z-code); display: flex; flex-direction: row;
   background: var(--bg); background-image: var(--bg-tint);
   padding-top: env(safe-area-inset-top);
   animation: readerin .2s cubic-bezier(.2,.9,.25,1);
 }
+.code-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .code-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
 .code-back { font-size: 22px; }
 .code-lang {
@@ -1023,14 +1026,42 @@ a.doc-link:hover { border-color: var(--accent); }
 }
 .code-save[disabled] { opacity: .4; }
 
-/* project files drawer — swipe in from the left, off-canvas like Browse */
+/* Project files sidebar (Obsidian-style, like the notes file sidebar): desktop = persistent,
+   collapsible, resizable dock; mobile = swipe-in overlay drawer (see the max-width override below). */
 .code-sidebar {
-  position: absolute; top: 0; left: 0; bottom: 0; z-index: 8; width: min(80vw, 300px);
+  flex: none; width: var(--code-sidebar-w, 260px); position: relative; z-index: 8;
   display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border);
-  transform: translateX(-100%); transition: transform .24s cubic-bezier(.2,.9,.25,1);
-  padding-top: env(safe-area-inset-top);
+  overflow: hidden;
 }
-.view[data-view="code"].sidebar-open .code-sidebar { transform: none; box-shadow: var(--shadow); }
+/* Drag the right edge to resize; code-main (flex:1) takes the remaining space. Desktop only. */
+.code-sidebar-resize {
+  position: absolute; top: 0; right: -3px; bottom: 0; width: 9px; cursor: ew-resize; z-index: 2; touch-action: none;
+}
+.code-sidebar-resize::before {
+  content: ""; position: absolute; top: 50%; right: 2px; width: 3px; height: 42px; margin-top: -21px;
+  border-radius: 3px; background: var(--border); transition: background .15s;
+}
+.code-sidebar-resize:hover::before, .code-sidebar.resizing .code-sidebar-resize::before { background: var(--accent); }
+.code-sidebar.resizing { user-select: none; }
+/* Collapse (desktop): hides the dock; the ☰ toggle next to the Back button brings it back. */
+.view[data-view="code"].sidebar-hidden .code-sidebar { display: none; }
+#code-sidebar-toggle { display: none; }
+/* Scoped to .mode-saved (not just relying on .code-saved-only) so this never wins a specificity
+   tie against the scratch-mode hide rule if sidebar-hidden is still set from a prior Saved session. */
+.view[data-view="code"].mode-saved.sidebar-hidden #code-sidebar-toggle { display: inline-flex; }
+/* No file tree to show in Scratch mode, on any screen size. */
+.view[data-view="code"].mode-scratch .code-sidebar { display: none; }
+
+@media (max-width: 759px) {
+  .code-sidebar {
+    position: absolute; top: 0; left: 0; bottom: 0; width: min(80vw, 300px);
+    transform: translateX(-100%); transition: transform .24s cubic-bezier(.2,.9,.25,1);
+    padding-top: env(safe-area-inset-top);
+  }
+  .view[data-view="code"].sidebar-open .code-sidebar { transform: none; box-shadow: var(--shadow); }
+  .view[data-view="code"].sidebar-hidden .code-sidebar { display: flex; }  /* ignore desktop-collapse on phones */
+  .code-sidebar-resize { display: none; }
+}
 .code-sidebar.dragging { transition: none; }
 .code-sidebar-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--border-soft); }
 .code-sidebar-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

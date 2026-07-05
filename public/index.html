@@ -244,74 +244,79 @@
 
       <!-- CODE (phone-first: write + run code with an on-screen symbol bar) -->
       <section class="view mode-scratch" data-view="code" hidden>
-        <div class="code-top">
-          <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
-          <div class="seg code-mode" id="code-mode">
-            <button class="seg-btn active" data-mode="scratch" type="button">Scratch</button>
-            <button class="seg-btn" data-mode="saved" type="button">Saved</button>
-          </div>
-          <div class="spacer"></div>
-          <button class="icon-btn" id="code-chat-toggle" title="Code tutor" aria-label="Code tutor">💬</button>
-          <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
-          <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
-        </div>
-        <div class="code-subbar" id="code-subbar">
-          <button class="icon-btn code-saved-only" id="code-files" title="Project files" aria-label="Files">☰</button>
-          <input id="code-filename" class="code-filename code-saved-only" placeholder="untitled.py" spellcheck="false"
-            autocapitalize="off" autocorrect="off" autocomplete="off" />
-          <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
-          <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
-          <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
-          <div class="spacer"></div>
-          <button class="icon-btn" id="code-undo" title="Undo" aria-label="Undo">↶</button>
-          <button class="icon-btn" id="code-redo" title="Redo" aria-label="Redo">↷</button>
-        </div>
-
-        <div class="code-panel" id="code-output" hidden>
-          <div class="code-panel-head">
-            <button class="icon-btn code-collapse" id="code-output-collapse" aria-label="Collapse output" title="Collapse">▾</button>
-            <span class="code-status" id="code-status">output</span>
-            <div class="spacer"></div>
-            <button class="chip code-copy" id="code-copy">Copy</button>
-            <button class="icon-btn" id="code-output-close" title="Close" aria-label="Close output">✕</button>
-          </div>
-          <pre class="code-out-body" id="code-out-body"></pre>
-        </div>
-
-        <div class="code-stdin-wrap" id="code-stdin-wrap" hidden>
-          <textarea id="code-stdin" class="code-stdin" rows="2" spellcheck="false" autocapitalize="off"
-            autocorrect="off" autocomplete="off" placeholder="stdin — input fed to your program…"></textarea>
-        </div>
-
-        <div class="code-editor" id="code-editor">
-          <div class="code-gutter" id="code-gutter"><div class="code-gutter-inner" id="code-gutter-inner">1</div></div>
-          <div class="code-stack">
-            <pre class="code-hl" aria-hidden="true"><code id="code-hl-code"></code></pre>
-            <textarea id="code-body" class="code-body" spellcheck="false" autocapitalize="off" autocorrect="off"
-              autocomplete="off" wrap="off" placeholder="write code, then tap Run…"></textarea>
-          </div>
-        </div>
-
-        <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
-        <div class="code-symbols-wrap" id="code-symbols-wrap">
-          <div class="code-symbols" id="code-symbols"></div>
-          <div class="code-arrows" id="code-arrows">
-            <button class="sym code-joy" id="code-joy" type="button" aria-label="Move caret (press a direction, hold to repeat)">
-              <span class="joy-u">▲</span><span class="joy-l">◀</span><span class="joy-r">▶</span><span class="joy-d">▼</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Project files drawer — swipe in from the left (Saved mode), like Browse -->
+        <!-- Project files sidebar (Obsidian-style): docked on the left + collapsible on desktop
+             (like the notes file sidebar), swipe-in overlay on mobile. Saved mode only. -->
         <aside class="code-sidebar" id="code-sidebar">
           <div class="code-sidebar-head">
             <span class="code-sidebar-title" id="code-sidebar-title">mycode</span>
             <div class="spacer"></div>
             <button class="icon-btn" id="code-sidebar-new" title="New file" aria-label="New file">＋</button>
-            <button class="icon-btn" id="code-sidebar-close" aria-label="Close">✕</button>
+            <button class="icon-btn" id="code-sidebar-close" title="Hide files" aria-label="Hide files">✕</button>
           </div>
           <div class="code-tree" id="code-tree"></div>
+          <div class="code-sidebar-resize" id="code-sidebar-resize" title="Drag to resize"></div>
         </aside>
+
+        <div class="code-main" id="code-main">
+          <div class="code-top">
+            <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
+            <button class="icon-btn code-saved-only" id="code-sidebar-toggle" title="Files" aria-label="Toggle files">☰</button>
+            <div class="seg code-mode" id="code-mode">
+              <button class="seg-btn active" data-mode="scratch" type="button">Scratch</button>
+              <button class="seg-btn" data-mode="saved" type="button">Saved</button>
+            </div>
+            <div class="spacer"></div>
+            <button class="icon-btn" id="code-chat-toggle" title="Code tutor" aria-label="Code tutor">💬</button>
+            <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
+            <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
+          </div>
+          <div class="code-subbar" id="code-subbar">
+            <button class="icon-btn code-saved-only" id="code-files" title="Project files" aria-label="Files">☰</button>
+            <input id="code-filename" class="code-filename code-saved-only" placeholder="untitled.py" spellcheck="false"
+              autocapitalize="off" autocorrect="off" autocomplete="off" />
+            <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
+            <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
+            <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
+            <div class="spacer"></div>
+            <button class="icon-btn" id="code-undo" title="Undo" aria-label="Undo">↶</button>
+            <button class="icon-btn" id="code-redo" title="Redo" aria-label="Redo">↷</button>
+          </div>
+
+          <div class="code-panel" id="code-output" hidden>
+            <div class="code-panel-head">
+              <button class="icon-btn code-collapse" id="code-output-collapse" aria-label="Collapse output" title="Collapse">▾</button>
+              <span class="code-status" id="code-status">output</span>
+              <div class="spacer"></div>
+              <button class="chip code-copy" id="code-copy">Copy</button>
+              <button class="icon-btn" id="code-output-close" title="Close" aria-label="Close output">✕</button>
+            </div>
+            <pre class="code-out-body" id="code-out-body"></pre>
+          </div>
+
+          <div class="code-stdin-wrap" id="code-stdin-wrap" hidden>
+            <textarea id="code-stdin" class="code-stdin" rows="2" spellcheck="false" autocapitalize="off"
+              autocorrect="off" autocomplete="off" placeholder="stdin — input fed to your program…"></textarea>
+          </div>
+
+          <div class="code-editor" id="code-editor">
+            <div class="code-gutter" id="code-gutter"><div class="code-gutter-inner" id="code-gutter-inner">1</div></div>
+            <div class="code-stack">
+              <pre class="code-hl" aria-hidden="true"><code id="code-hl-code"></code></pre>
+              <textarea id="code-body" class="code-body" spellcheck="false" autocapitalize="off" autocorrect="off"
+                autocomplete="off" wrap="off" placeholder="write code, then tap Run…"></textarea>
+            </div>
+          </div>
+
+          <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
+          <div class="code-symbols-wrap" id="code-symbols-wrap">
+            <div class="code-symbols" id="code-symbols"></div>
+            <div class="code-arrows" id="code-arrows">
+              <button class="sym code-joy" id="code-joy" type="button" aria-label="Move caret (press a direction, hold to repeat)">
+                <span class="joy-u">▲</span><span class="joy-l">◀</span><span class="joy-r">▶</span><span class="joy-d">▼</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- Code tutor: read-only chat scoped to the current buffer (mirrors the per-note tutor) -->
         <aside class="note-chat code-chat" id="code-chat" hidden>
