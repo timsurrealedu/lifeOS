@@ -14,7 +14,7 @@ import {
 } from './vault.js';
 import {
   runProcessInbox, runResearch, runWeeklyReview, runRefreshHome, runChat, runCalSync, runAutosort,
-  runNoteChat, runNoteAugment, runAiSearch, isRunning,
+  runNoteChat, runCodeChat, runNoteAugment, runAiSearch, isRunning,
 } from './process.js';
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
@@ -323,6 +323,23 @@ app.post('/api/note/chat', (req, res) => {
   // Kill the run only if the *client* disconnects before we finish. Must watch the response, not
   // the request: express.json() drains the POST body, which ends the request stream and fires its
   // 'close' immediately — watching req here would kill claude the instant it starts.
+  res.on('close', () => { if (!res.writableEnded) kill(); });
+});
+
+// ---- Per-code-buffer tutor chat (read-only, scoped to the open editor buffer) ----
+// The buffer is sent inline (scratch code has no path), so we don't read from disk here.
+app.post('/api/code/chat', (req, res) => {
+  const b = req.body || {};
+  const code = String(b.code || '');
+  const messages = Array.isArray(b.messages) ? b.messages : [];
+  if (!code.trim() || !messages.length) return fail(res, new Error('code and messages required'));
+  res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.flushHeaders?.();
+  const kill = runCodeChat(String(b.name || ''), String(b.lang || ''), code, messages, (type, data) => {
+    if (type === 'log' && data.channel === 'out') res.write(data.line + '\n');
+    else if (type === 'error') { res.write('\n[error] ' + data.message); res.end(); }
+    else if (type === 'done') res.end();
+  });
   res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 

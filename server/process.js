@@ -12,7 +12,7 @@ export const isRunning = () => writeRunning;
 // after Qwen and before DeepSeek). `noteaugment` is here
 // too — it now only *generates* the overview text (the server does the actual file insertion), so
 // it needs no edit tools and can fall back to Gemini/DeepSeek exactly like the chats.
-const READ_ONLY = new Set(['chat', 'notechat', 'noteaugment', 'search']);
+const READ_ONLY = new Set(['chat', 'notechat', 'codechat', 'noteaugment', 'search']);
 
 // Separator the augment run prints between its placement anchor and the markdown body. Kept rare so
 // it won't collide with note content; the server splits on it (see parseAugment + the augment route).
@@ -30,6 +30,8 @@ const ALLOWED = {
   chat: ['Read', 'Glob', 'Grep', 'mcp__claude_ai_Google_Calendar__list_events'],
   // Read-only tutor scoped to one open note. Reads related notes for context; never writes.
   notechat: ['Read', 'Glob', 'Grep'],
+  // Read-only tutor scoped to the code buffer the user has open. May read related files; never writes.
+  codechat: ['Read', 'Glob', 'Grep'],
   // Augment ONE note: the model only *writes the overview text* (read-only — server inserts it),
   // so it may read related notes for context but never edits anything.
   noteaugment: ['Read', 'Glob', 'Grep'],
@@ -116,6 +118,25 @@ const PROMPTS = {
       + 'concise and concrete; preserve the user\'s language(s), never translate. You cannot edit the '
       + 'note here — if they want something saved into it, tell them to tap **➕ Add to note**. Reply '
       + `in plain Markdown, no preamble.\n\nConversation so far:\n${transcript}\n\nAnswer the latest message.`;
+  },
+
+  // Tutor scoped to the code the user has open in the lifeOS editor. The buffer is inlined so it
+  // needs no tools to see it; Read/Glob/Grep let it pull in related project files when it helps.
+  codechat: (cfg, name, lang, code, messages) => {
+    const recent = (messages || []).slice(-8);
+    const transcript = recent
+      .map((m) => `${m.role === 'assistant' ? 'Assistant' : 'You'}: ${String(m.text || '').trim()}`)
+      .join('\n');
+    return `You are ${cfg.ownerName}'s coding tutor, helping them with **one piece of code** they have `
+      + `open in the lifeOS code editor (timezone ${cfg.timezone}).\n\n`
+      + `The code is${name ? ` \`${name}\`` : ''} (language: ${lang || 'unknown'}). Its full current content is:\n`
+      + `"""\n${code}\n"""\n\n`
+      + 'Answer their questions about this code — explain what it does, find and explain bugs, suggest '
+      + 'clearer or more idiomatic approaches, work through the logic step by step, and give small '
+      + 'illustrative snippets in fenced code blocks with language tags. You are **read-only**: you '
+      + 'cannot edit their buffer — if they want a change, show the exact code to paste and tell them to '
+      + 'apply it in the editor. Be warm, concise and concrete; preserve the user\'s language(s), never '
+      + `translate. Reply in plain Markdown, no preamble.\n\nConversation so far:\n${transcript}\n\nAnswer the latest message.`;
   },
 
   // Write an overview of a topic the user felt weak on, to be inserted INTO their open note. The
@@ -497,6 +518,9 @@ export const runChat = (messages, onEvent) =>
 
 export const runNoteChat = (notePath, noteContent, messages, onEvent) =>
   spawnClaude({ kind: 'notechat', prompt: PROMPTS.notechat(loadConfig(), notePath, noteContent, messages) }, onEvent);
+
+export const runCodeChat = (name, lang, code, messages, onEvent) =>
+  spawnClaude({ kind: 'codechat', prompt: PROMPTS.codechat(loadConfig(), name, lang, code, messages) }, onEvent);
 
 // Semantic search: streams nothing to the client — the route collects the model's plain-text path
 // list and hands it back on `done` as `raw` (so the route can validate the paths against the vault).

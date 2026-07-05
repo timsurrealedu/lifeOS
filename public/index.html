@@ -251,6 +251,7 @@
             <button class="seg-btn" data-mode="saved" type="button">Saved</button>
           </div>
           <div class="spacer"></div>
+          <button class="icon-btn" id="code-chat-toggle" title="Code tutor" aria-label="Code tutor">💬</button>
           <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
           <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
         </div>
@@ -307,6 +308,26 @@
             <button class="icon-btn" id="code-sidebar-close" aria-label="Close">✕</button>
           </div>
           <div class="code-tree" id="code-tree"></div>
+        </aside>
+
+        <!-- Code tutor: read-only chat scoped to the current buffer (mirrors the per-note tutor) -->
+        <aside class="note-chat code-chat" id="code-chat" hidden>
+          <div class="note-chat-resize" id="code-chat-resize" title="Drag to resize"></div>
+          <div class="note-chat-head">
+            <span class="note-chat-title">💬 Code tutor</span>
+            <div class="spacer"></div>
+            <button class="chip" id="code-chat-clear">Clear</button>
+            <button class="icon-btn" id="code-chat-close" aria-label="Close chat">✕</button>
+          </div>
+          <div class="chat-thread" id="code-chat-thread">
+            <div class="chat-intro" id="code-chat-intro">
+              <p class="chat-hi">Ask about the code you're writing — what it does, bugs, how to improve it. I read the current buffer (read-only).</p>
+            </div>
+          </div>
+          <form class="chat-bar" id="code-chat-bar">
+            <input id="code-chat-input" class="chat-input" placeholder="Ask about this code…" autocomplete="off" />
+            <button class="btn primary" id="code-chat-send" type="submit">Send</button>
+          </form>
         </aside>
       </section>
 

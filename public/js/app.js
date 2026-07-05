@@ -1277,25 +1277,26 @@ $('#reader-chat').addEventListener('click', () => {
 $('#note-chat-close').addEventListener('click', closeNoteChat);
 $('#note-chat-clear').addEventListener('click', () => { state.noteChat = []; renderNoteChat(); });
 
-// Drag the dock's left edge to widen it; the chosen width persists across notes and sessions.
-(function setupNoteChatResize() {
+// Drag a dock's left edge to widen it; the chosen width persists (shared by the note + code tutors).
+(function setupChatDocks() {
   const saved = parseInt(localStorage.getItem('noteChatW') || '', 10);
   if (saved) document.documentElement.style.setProperty('--note-chat-w', saved + 'px');
-  const handle = $('#note-chat-resize'), dock = $('#note-chat');
   const clamp = (w) => Math.min(Math.max(w, 300), Math.min(window.innerWidth - 40, 900));
-  handle.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); handle.setPointerCapture(e.pointerId); dock.classList.add('resizing');
-    const move = (ev) => {
-      const w = clamp(window.innerWidth - ev.clientX);
-      document.documentElement.style.setProperty('--note-chat-w', w + 'px');
-    };
-    const up = (ev) => {
-      handle.releasePointerCapture(ev.pointerId); dock.classList.remove('resizing');
-      handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up);
-      const w = clamp(window.innerWidth - ev.clientX); localStorage.setItem('noteChatW', String(w));
-    };
-    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
-  });
+  const bind = (handle, dock) => {
+    if (!handle || !dock) return;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); handle.setPointerCapture(e.pointerId); dock.classList.add('resizing');
+      const move = (ev) => document.documentElement.style.setProperty('--note-chat-w', clamp(window.innerWidth - ev.clientX) + 'px');
+      const up = (ev) => {
+        handle.releasePointerCapture(ev.pointerId); dock.classList.remove('resizing');
+        handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up);
+        localStorage.setItem('noteChatW', String(clamp(window.innerWidth - ev.clientX)));
+      };
+      handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+    });
+  };
+  bind($('#note-chat-resize'), $('#note-chat'));
+  bind($('#code-chat-resize'), $('#code-chat'));
 })();
 
 function renderNoteChat() {
@@ -2500,7 +2501,7 @@ let codeVim = null, codeVimMode = '', codeOpen = false;
 // phone's Back button (and #code-back) return to the previous tab instead of closing the app.
 function codeClose() {
   if (!codeOpen) return;
-  codeOpen = false; codeViewportReset(); codeToggleSidebar(false); show(state.prevTab || 'discover');
+  codeOpen = false; codeViewportReset(); codeToggleSidebar(false); closeCodeChat(); show(state.prevTab || 'discover');
 }
 function codeKeydown(ev) {
   if (codeVim && codeVim.isEnabled() && codeVimMode && codeVimMode !== 'INSERT') return;
@@ -2770,8 +2771,77 @@ async function codeRun() {
   finally { codeState.running = false; btn.classList.remove('running'); btn.disabled = false; }
 }
 
+/* ---- Code tutor: read-only chat scoped to the current buffer (same mechanics as the note tutor) ---- */
+const codeChat = { msgs: [], busy: false };
+function codeChatOutsideClose(e) {
+  if (window.innerWidth >= 760) return;                 // desktop: dock sits beside, no tap-away needed
+  if (e.target.closest('#code-chat') || e.target.closest('#code-chat-toggle')) return;
+  closeCodeChat();
+}
+function closeCodeChat() {
+  $('#code-chat').hidden = true;
+  document.removeEventListener('click', codeChatOutsideClose, true);
+}
+function openCodeChat() {
+  $('#code-chat').hidden = false;
+  document.addEventListener('click', codeChatOutsideClose, true);
+  renderCodeChat();
+  setTimeout(() => $('#code-chat-input').focus(), 50);
+}
+function renderCodeChat() {
+  const thread = $('#code-chat-thread');
+  $('#code-chat-intro').hidden = codeChat.msgs.length > 0;
+  thread.querySelectorAll('.bubble, .bubble-wrap').forEach((b) => b.remove());
+  for (const m of codeChat.msgs) {
+    if (m.role === 'user') {
+      const b = document.createElement('div');
+      b.className = 'bubble me'; b.innerHTML = esc(m.text).replace(/\n/g, '<br>');
+      thread.appendChild(b); continue;
+    }
+    const b = document.createElement('div');
+    b.className = 'bubble ai';
+    b.innerHTML = m.text ? mdToHtml(m.text) : '<span class="typing">…</span>';
+    thread.appendChild(b);
+  }
+  thread.scrollTop = thread.scrollHeight;
+}
+async function sendCodeChat(text) {
+  const q = (text || '').trim();
+  if (!q || codeChat.busy) return;
+  const code = codeTA().value;
+  if (!code.trim()) { toast('Write some code first'); return; }
+  codeChat.msgs.push({ role: 'user', text: q });
+  const ai = { role: 'ai', text: '' }; codeChat.msgs.push(ai);
+  codeChat.busy = true;
+  $('#code-chat-input').value = ''; $('#code-chat-send').disabled = true;
+  renderCodeChat();
+  try {
+    const name = codeState.mode === 'saved' ? codeState.file.name : (codeState.scratchLang + ' · scratch');
+    const resp = await fetch('/api/code/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, lang: codeCurLang() || '', code,
+        messages: codeChat.msgs.filter((m) => m.text || m.role === 'user').map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
+      }),
+    });
+    if (!resp.ok || !resp.body) throw new Error('chat failed (' + resp.status + ')');
+    const reader = resp.body.getReader(); const dec = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      ai.text += dec.decode(value, { stream: true }); renderCodeChat();
+    }
+    if (!ai.text.trim()) ai.text = '_(no answer)_';
+  } catch (e) { ai.text = '⚠️ ' + e.message; }
+  finally { codeChat.busy = false; $('#code-chat-send').disabled = false; renderCodeChat(); $('#code-chat-input').focus(); }
+}
+
 function codeInitOnce() {
   codeBuildSymbols(); codeSetupSwipe();
+  $('#code-chat-toggle').addEventListener('click', () => { $('#code-chat').hidden ? openCodeChat() : closeCodeChat(); });
+  $('#code-chat-close').addEventListener('click', closeCodeChat);
+  $('#code-chat-clear').addEventListener('click', () => { codeChat.msgs = []; renderCodeChat(); });
+  $('#code-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendCodeChat($('#code-chat-input').value); });
   const ta = codeTA();
   ta.addEventListener('input', codeOnInput);
   ta.addEventListener('scroll', codeSyncScroll);
