@@ -291,7 +291,11 @@
         <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
         <div class="code-symbols-wrap" id="code-symbols-wrap">
           <div class="code-symbols" id="code-symbols"></div>
-          <div class="code-arrows" id="code-arrows"></div>
+          <div class="code-arrows" id="code-arrows">
+            <button class="sym code-joy" id="code-joy" type="button" aria-label="Move caret (press a direction, hold to repeat)">
+              <span class="joy-u">▲</span><span class="joy-l">◀</span><span class="joy-r">▶</span><span class="joy-d">▼</span>
+            </button>
+          </div>
         </div>
 
         <!-- Project files drawer — swipe in from the left (Saved mode), like Browse -->

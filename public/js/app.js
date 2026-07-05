@@ -2413,11 +2413,6 @@ const CODE_KEYS = [
   { t: '#', v: '#' }, { t: '_', v: '_' }, { t: '\\', v: '\\' }, { t: '$', v: '$' }, { t: '@', v: '@' },
   { t: 'Tab', v: '    ', wide: true },
 ];
-// Fixed cluster (never scrolls): collapse toggle + all four arrows, always reachable.
-const CODE_ARROWS = [
-  { t: '⌄', act: 'collapse' },
-  { t: '←', act: 'left' }, { t: '↑', act: 'up' }, { t: '↓', act: 'down' }, { t: '→', act: 'right' },
-];
 const CODE_EXT_LANG = {
   py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', c: 'c', h: 'c',
   cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', java: 'java', go: 'go', rs: 'rust', sh: 'bash', bash: 'bash',
@@ -2516,10 +2511,6 @@ function codeKeydown(ev) {
   if (CODE_PAIRS[ev.key]) { ev.preventDefault(); codeInsertPair(ev.key, CODE_PAIRS[ev.key]); return; }
   if (ev.key === 'Backspace' && s === e && CODE_PAIRS[val[s - 1]] && CODE_PAIRS[val[s - 1]] === val[s]) { ev.preventDefault(); codeReplaceRange(s - 1, s + 1, ''); } // delete empty pair
 }
-function codeToggleSymbols() {
-  const collapsed = $('#code-symbols-wrap').classList.toggle('collapsed');
-  const btn = $('#code-collapse-btn'); if (btn) btn.textContent = collapsed ? '⌃' : '⌄';
-}
 // Bind one key: pointerdown keeps the textarea focused; the bar scrolls via touch-action:pan-x, so we
 // tell a tap from a scroll by movement (act only on a still pointerup). Hold a pair key → its closer.
 function codeBindKey(b, k) {
@@ -2533,12 +2524,30 @@ function codeBindKey(b, k) {
   b.addEventListener('pointerup', (ev) => {
     clear(); if (moved || held) return;                 // scrolled, or hold already inserted the closer
     ev.preventDefault();
-    if (k.act === 'collapse') codeToggleSymbols();
-    else if (k.act) codeMoveCaret(k.act);
-    else if (k.close) codeInsertPair(k.v, k.close);
+    if (k.close) codeInsertPair(k.v, k.close);
     else codeInsert(k.v);
   });
   b.addEventListener('pointercancel', clear);
+}
+// Directional pad in place of four arrow keys — one cell wide. Press/slide toward a direction to move
+// the caret; hold to repeat; slide across zones without lifting for a joystick feel.
+function codeBuildJoystick() {
+  const pad = $('#code-joy'); let rep = null, dir = null;
+  const dirAt = (ev) => {
+    const r = pad.getBoundingClientRect();
+    const dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+    if (Math.hypot(dx, dy) < 6) return null;            // center deadzone
+    return Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+  };
+  const stop = () => { clearInterval(rep); rep = null; dir = null; };
+  pad.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault(); pad.setPointerCapture?.(ev.pointerId);
+    dir = dirAt(ev); if (dir) codeMoveCaret(dir);
+    clearInterval(rep); rep = setInterval(() => { if (dir) codeMoveCaret(dir); }, 110);
+  });
+  pad.addEventListener('pointermove', (ev) => { if (rep) dir = dirAt(ev) || dir; });
+  pad.addEventListener('pointerup', stop);
+  pad.addEventListener('pointercancel', stop);
 }
 function codeBuildSymbols() {
   const bar = $('#code-symbols'); bar.innerHTML = '';
@@ -2549,14 +2558,7 @@ function codeBuildSymbols() {
     if (k.close) b.dataset.close = k.close;             // shown in the corner only while held
     codeBindKey(b, k); bar.appendChild(b);
   }
-  const arr = $('#code-arrows'); arr.innerHTML = '';
-  for (const k of CODE_ARROWS) {
-    const b = document.createElement('button');
-    b.className = 'sym sym-arrow' + (k.act === 'collapse' ? ' sym-toggle' : '');
-    b.textContent = k.t; b.type = 'button';
-    if (k.act === 'collapse') b.id = 'code-collapse-btn';
-    codeBindKey(b, k); arr.appendChild(b);
-  }
+  codeBuildJoystick();
 }
 function codeMarkDirty(d) { codeState.file.dirty = d; $('#code-save').classList.toggle('dirty', d); }
 
