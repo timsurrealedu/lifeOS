@@ -4,7 +4,7 @@ import { join, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
-import { loadConfig, saveConfig, vaultDir, checkDocTools, PROJECT_ROOT } from './config.js';
+import { loadConfig, saveConfig, vaultDir, checkDocTools, maskConfig, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
@@ -283,10 +283,11 @@ app.get('/api/research/stream', (req, res) => {
   sseRun(req, res, (on) => runResearch(idea, on));
 });
 
-app.get('/api/review/stream', (req, res) => sseRun(req, res, runWeeklyReview));
-app.get('/api/home/stream', (req, res) => sseRun(req, res, runRefreshHome));
-app.get('/api/calsync/stream', (req, res) => sseRun(req, res, runCalSync));
-app.get('/api/autosort/stream', (req, res) => sseRun(req, res, runAutosort));
+// ?provider=Qwen|DeepSeek on any of these forces that fallback (skipping Claude), same as /api/process/stream.
+app.get('/api/review/stream', (req, res) => sseRun(req, res, (on) => runWeeklyReview(on, req.query.provider || undefined)));
+app.get('/api/home/stream', (req, res) => sseRun(req, res, (on) => runRefreshHome(on, req.query.provider || undefined)));
+app.get('/api/calsync/stream', (req, res) => sseRun(req, res, (on) => runCalSync(on, req.query.provider || undefined)));
+app.get('/api/autosort/stream', (req, res) => sseRun(req, res, (on) => runAutosort(on, req.query.provider || undefined)));
 
 // ---- AI Chat (read-only advisor over the vault) ----
 // Plain-text streaming (not SSE) so the client can POST the conversation transcript.
@@ -490,13 +491,13 @@ app.get('/api/calendar', (_req, res) => ok(res, { events: readCalendarCache() })
 // ---- Config ----
 app.get('/api/config', (_req, res) => {
   const c = loadConfig();
-  ok(res, { config: c, vaultDir: vaultDir(c), docTools: checkDocTools() });
+  ok(res, { config: maskConfig(c), vaultDir: vaultDir(c), docTools: checkDocTools() });
 });
 app.post('/api/config', (req, res) => {
   try {
     const c = saveConfig(req.body || {});
     ensureVault(c);
-    ok(res, { config: c, vaultDir: vaultDir(c) });
+    ok(res, { config: maskConfig(c), vaultDir: vaultDir(c) });
   } catch (e) { fail(res, e); }
 });
 

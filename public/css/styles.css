@@ -833,15 +833,6 @@ a.doc-link:hover { border-color: var(--accent); }
 @media (min-width: 760px) {
   .reader.chat-open { padding-right: min(var(--note-chat-w, 420px), 60vw); }
 }
-/* Mobile: same off-canvas-drag treatment as the reader file drawer, so swiping it open tracks the
-   finger live instead of only the desktop dock-in animation. Stay laid out (but transformed off
-   screen) even while [hidden] so a drag can measure and preview it before JS flips the attribute. */
-@media (max-width: 759px) {
-  .note-chat { animation: none; transform: translateX(100%); transition: transform .24s cubic-bezier(.2,.9,.25,1); }
-  .note-chat[hidden] { display: flex; }
-  .note-chat:not([hidden]) { transform: none; }
-  .note-chat.dragging { transition: none; }
-}
 
 /* AI answer + ➕ add-to-note action */
 .bubble-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; max-width: 86%; align-self: flex-start; }
@@ -1040,6 +1031,7 @@ a.doc-link:hover { border-color: var(--accent); }
   padding-top: env(safe-area-inset-top);
 }
 .view[data-view="code"].sidebar-open .code-sidebar { transform: none; box-shadow: var(--shadow); }
+.code-sidebar.dragging { transition: none; }
 .code-sidebar-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--border-soft); }
 .code-sidebar-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-tree { flex: 1; overflow: auto; padding: 6px 4px calc(env(safe-area-inset-bottom) + 20px); }

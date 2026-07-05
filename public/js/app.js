@@ -324,7 +324,12 @@ $('#btn-handwrite').addEventListener('click', () => {
 });
 
 /* ---------- Claude runs (SSE) ---------- */
-$('#btn-process').addEventListener('click', () => startProcess());
+// Settings has one shared "run manually via" provider picker (Claude/Qwen/DeepSeek) that every
+// manual trigger below (Process inbox, Weekly review, Refresh home, Auto-sort, Calendar sync) reads
+// before starting — so testing/forcing a fallback doesn't need a separate button per job.
+const manualProvider = () => { const v = $('#cfg-manual-provider')?.value; return v && v !== 'default' ? v : undefined; };
+const withProvider = (url) => { const p = manualProvider(); return p ? url + '?provider=' + encodeURIComponent(p) : url; };
+$('#btn-process').addEventListener('click', () => startProcess(manualProvider()));
 
 // Generic streaming-run sheet. Collects stdout and hands it to onDone(text, exitCode).
 function startStream(url, { title = 'Working…', onDone } = {}) {
@@ -431,9 +436,9 @@ async function runFind() {
 }
 
 $('#btn-weekly').addEventListener('click', () =>
-  startStream('/api/review/stream', { title: 'Weekly review…', onDone: () => { state.notes = []; } }));
+  startStream(withProvider('/api/review/stream'), { title: 'Weekly review…', onDone: () => { state.notes = []; } }));
 $('#btn-home').addEventListener('click', () =>
-  startStream('/api/home/stream', { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
+  startStream(withProvider('/api/home/stream'), { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
 
 async function loadDiscover() {
   try {
@@ -832,7 +837,7 @@ async function createInFolder(folderPath) {
 
 /* ---------- Auto-sort (AI proposes → preview → apply) ---------- */
 $('#btn-autosort').addEventListener('click', () => {
-  startStream('/api/autosort/stream', {
+  startStream(withProvider('/api/autosort/stream'), {
     title: 'Auto-sort: planning…',
     onDone: async (_out, code) => {
       if (code !== 0) return;
@@ -1044,14 +1049,13 @@ $('#reader-new-folder').addEventListener('click', async () => {
   });
 })();
 // Mobile: swipe right (from a generous left-edge zone) opens the file drawer; swipe left closes it.
-// Swipe left elsewhere opens the AI tutor. Live (Obsidian-style): the drawer tracks the finger frame
-// by frame during the drag, then snaps open/closed at release based on how far it got dragged —
-// rather than a fixed gesture that only fires once, all-or-nothing, at touchend.
+// Live (Obsidian-style): the drawer tracks the finger frame by frame during the drag, then snaps
+// open/closed at release based on how far it got dragged — rather than a fixed gesture that only
+// fires once, all-or-nothing, at touchend. (The AI tutor opens only via its 💬 button, not a swipe.)
 // Tapping the note area while the drawer is open also closes it (tap-to-dismiss).
 (function setupReaderSwipe() {
   const reader = $('#reader');
   const fileDrawer = $('#reader-sidebar');
-  const chatDock = $('#note-chat');
   const isMobile = () => !window.matchMedia('(min-width: 760px)').matches;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -1059,21 +1063,17 @@ $('#reader-new-folder').addEventListener('click', async () => {
 
   function lockIn(m) {
     mode = m;
-    w = (mode === 'chat' ? chatDock : fileDrawer).offsetWidth;
-    (mode === 'chat' ? chatDock : fileDrawer).classList.add('dragging');
+    w = fileDrawer.offsetWidth;
+    fileDrawer.classList.add('dragging');
   }
   function drag(dx) {
-    const el = mode === 'chat' ? chatDock : fileDrawer;
-    if (mode === 'file-open') el.style.transform = `translateX(${clamp(-w + dx, -w, 0)}px)`;
-    else if (mode === 'file-close') el.style.transform = `translateX(${clamp(dx, -w, 0)}px)`;
-    else if (mode === 'chat') el.style.transform = `translateX(${clamp(w + dx, 0, w)}px)`;
+    if (mode === 'file-open') fileDrawer.style.transform = `translateX(${clamp(-w + dx, -w, 0)}px)`;
+    else if (mode === 'file-close') fileDrawer.style.transform = `translateX(${clamp(dx, -w, 0)}px)`;
   }
   function settle(dx) {
-    const el = mode === 'chat' ? chatDock : fileDrawer;
-    el.classList.remove('dragging'); el.style.transform = '';
+    fileDrawer.classList.remove('dragging'); fileDrawer.style.transform = '';
     if (mode === 'file-open') reader.classList.toggle('sidebar-open', dx > w * 0.35);
     else if (mode === 'file-close') reader.classList.toggle('sidebar-open', dx > -w * 0.35);
-    else if (mode === 'chat') { if (-dx > w * 0.35) openNoteChat(); else chatDock.hidden = true; }
     mode = null;
   }
 
@@ -1087,10 +1087,8 @@ $('#reader-new-folder').addEventListener('click', async () => {
     if (!mode) {
       if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;  // not a clear horizontal drag yet
       const fileOpen = reader.classList.contains('sidebar-open');
-      const chatOpen = !chatDock.hidden;
       if (fileOpen && dx < 0) lockIn('file-close');
-      else if (!fileOpen && !chatOpen && dx > 0 && sx < 120) lockIn('file-open'); // wide left-edge zone
-      else if (!fileOpen && !chatOpen && dx < 0) lockIn('chat');                  // swipe left → AI tutor
+      else if (!fileOpen && dx > 0 && sx < 120) lockIn('file-open');       // wide left-edge zone
       else { live = false; return; }
     }
     e.preventDefault();
@@ -2024,7 +2022,7 @@ function stepMonth(delta) {
   const d = new Date(y, m + delta, 1); state.calMonth = { y: d.getFullYear(), m: d.getMonth() }; renderCalendar();
 }
 $('#cal-sync').addEventListener('click', () => {
-  startStream('/api/calsync/stream', {
+  startStream(withProvider('/api/calsync/stream'), {
     title: 'Syncing Google Calendar…',
     onDone: async (_out, code) => { if (code === 0) { const { events } = await api('/api/calendar'); state.events = events || []; renderCalendar(); toast('Calendar synced'); } },
   });
@@ -2201,13 +2199,6 @@ $('#btn-save-cfg').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
-// Test a fallback: run Process inbox forced through the chosen provider (skips Claude), so you can
-// confirm it drives a write job without waiting for a real usage limit. Close Settings → process sheet.
-$('#btn-test-fallback').addEventListener('click', () => {
-  const provider = $('#cfg-test-provider').value;
-  closeSheets();
-  startProcess(provider);
-});
 
 /* ---------- Helpers ---------- */
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -2792,19 +2783,47 @@ async function codeSave() {
     toast('Saved · ' + j.path); codeRefreshFiles();
   } catch (e) { toast(e.message); }
 }
+// Live (Obsidian-style), same as the notes file drawer: tracks the finger frame by frame during the
+// drag, then snaps open/closed at release based on how far it got dragged.
 function codeSetupSwipe() {
-  const view = $('.view[data-view="code"]'); let sx = 0, sy = 0, track = false;
+  const view = $('.view[data-view="code"]');
+  const drawer = $('#code-sidebar');
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  let sx = 0, sy = 0, live = false, mode = null, w = 0;
+
+  function lockIn(m) { mode = m; w = drawer.offsetWidth; drawer.classList.add('dragging'); }
+  function drag(dx) {
+    if (mode === 'open') drawer.style.transform = `translateX(${clamp(-w + dx, -w, 0)}px)`;
+    else if (mode === 'close') drawer.style.transform = `translateX(${clamp(dx, -w, 0)}px)`;
+  }
+  function settle(dx) {
+    drawer.classList.remove('dragging'); drawer.style.transform = '';
+    if (mode === 'open') codeToggleSidebar(dx > w * 0.35);
+    else if (mode === 'close') codeToggleSidebar(dx > -w * 0.35);
+    mode = null;
+  }
+
   view.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { track = false; return; }
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; track = true;
+    if (e.touches.length !== 1) { live = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; live = true; mode = null;
   }, { passive: true });
+  view.addEventListener('touchmove', (e) => {
+    if (!live || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;  // not a clear horizontal drag yet
+      const open = view.classList.contains('sidebar-open');
+      if (open && dx < 0) lockIn('close');
+      else if (!open && dx > 0 && sx < 28 && codeState.mode === 'saved') lockIn('open'); // left-edge zone, Saved mode only
+      else { live = false; return; }
+    }
+    e.preventDefault();
+    drag(dx);
+  }, { passive: false });
   view.addEventListener('touchend', (e) => {
-    if (!track) return; track = false;
-    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-    const open = view.classList.contains('sidebar-open');
-    if (dx > 0 && !open && sx < 28 && codeState.mode === 'saved') codeToggleSidebar(true); // left-edge → open
-    else if (dx < 0 && open) codeToggleSidebar(false);                                     // swipe left → close
+    if (!live) return; live = false;
+    if (!mode) return;
+    settle(e.changedTouches[0].clientX - sx);
   }, { passive: true });
   // tap outside the drawer while open → close it
   view.addEventListener('pointerdown', (e) => {

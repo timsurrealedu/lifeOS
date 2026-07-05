@@ -65,14 +65,30 @@ export function loadConfig() {
   return cfg;
 }
 
+// Never echo real API keys back to the browser (GET /api/config) — a devtools/network-tab peek
+// would otherwise hand out a working key in plaintext. maskConfig() is what the client sees;
+// the sentinel below is what the client re-sends for a field it never touched, which the merge
+// in saveConfig() recognizes and resolves to "keep the existing key" rather than overwriting it.
+export const KEY_MASK = '••••••••';
+export function maskConfig(cfg) {
+  const mask = (o) => ({ ...o, apiKey: o.apiKey ? KEY_MASK : '' });
+  return { ...cfg, qwen: mask(cfg.qwen), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini) };
+}
+function mergeProvider(prev, patch) {
+  if (!patch) return prev;
+  const p = { ...patch };
+  if (p.apiKey === KEY_MASK) delete p.apiKey;      // unchanged sentinel → keep the existing key
+  return { ...prev, ...p };
+}
+
 export function saveConfig(patch) {
   const prev = loadConfig();
   const cfg = { ...prev, ...patch };
   // Merge nested objects rather than letting a partial patch clobber them.
   if (patch.models) cfg.models = { ...prev.models, ...patch.models };
-  if (patch.qwen) cfg.qwen = { ...prev.qwen, ...patch.qwen };
-  if (patch.fallback) cfg.fallback = { ...prev.fallback, ...patch.fallback };
-  if (patch.gemini) cfg.gemini = { ...prev.gemini, ...patch.gemini };
+  cfg.qwen = mergeProvider(prev.qwen, patch.qwen);
+  cfg.fallback = mergeProvider(prev.fallback, patch.fallback);
+  cfg.gemini = mergeProvider(prev.gemini, patch.gemini);
   if (patch.run) cfg.run = { ...prev.run, ...patch.run };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
   return cfg;

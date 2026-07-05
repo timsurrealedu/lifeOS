@@ -22,6 +22,10 @@ const ALLOWED = {
   process: [
     'Edit', 'Write', 'Read', 'Bash', 'Glob', 'Grep',
     'mcp__claude_ai_Google_Calendar__create_event',
+    'mcp__claude_ai_Google_Calendar__list_calendars',
+    'mcp__claude_ai_Google_Calendar__list_events',
+    'mcp__claude_ai_Google_Calendar__update_event',
+    'mcp__claude_ai_Google_Calendar__delete_event',
   ],
   research: ['WebSearch', 'WebFetch', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
   review: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
@@ -507,11 +511,11 @@ export const runProcessInbox = (onEvent, forceProvider) =>
 export const runResearch = (idea, onEvent) =>
   spawnClaude({ kind: 'research', prompt: PROMPTS.research(loadConfig(), idea) }, onEvent);
 
-export const runWeeklyReview = (onEvent) =>
-  spawnClaude({ kind: 'review', prompt: PROMPTS.review(loadConfig()) }, onEvent);
+export const runWeeklyReview = (onEvent, forceProvider) =>
+  spawnClaude({ kind: 'review', prompt: PROMPTS.review(loadConfig()), forceProvider }, onEvent);
 
-export const runRefreshHome = (onEvent) =>
-  spawnClaude({ kind: 'home', prompt: PROMPTS.home(loadConfig()) }, onEvent);
+export const runRefreshHome = (onEvent, forceProvider) =>
+  spawnClaude({ kind: 'home', prompt: PROMPTS.home(loadConfig()), forceProvider }, onEvent);
 
 export const runChat = (messages, onEvent) =>
   spawnClaude({ kind: 'chat', prompt: PROMPTS.chat(loadConfig(), messages) }, onEvent);
@@ -567,8 +571,8 @@ export function runNoteAugment(notePath, noteContent, topic, context, onEvent) {
   );
 }
 
-export const runCalSync = (onEvent) =>
-  spawnClaude({ kind: 'calsync', prompt: PROMPTS.calsync(loadConfig()) }, onEvent);
+export const runCalSync = (onEvent, forceProvider) =>
+  spawnClaude({ kind: 'calsync', prompt: PROMPTS.calsync(loadConfig()), forceProvider }, onEvent);
 
-export const runAutosort = (onEvent) =>
-  spawnClaude({ kind: 'autosort', prompt: PROMPTS.autosort(loadConfig()) }, onEvent);
+export const runAutosort = (onEvent, forceProvider) =>
+  spawnClaude({ kind: 'autosort', prompt: PROMPTS.autosort(loadConfig()), forceProvider }, onEvent);

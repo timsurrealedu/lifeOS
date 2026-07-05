@@ -199,7 +199,11 @@ this is what was getting skipped:
 Only once every new note resolves up to a top-level hub — with no `/` inside any `[[link]]` — do you move on.
 
 ## 4. Log + clear
-- Append a one-line summary per item to `Captures/Inbox Log.md` under a `## <YYYY-MM-DD>` heading.
+- Append a one-line summary per item to `Captures/Inbox Log/<YYYY-MM-DD>.md` (append if it exists,
+  same as the archive above — **create it fresh if not**). This is one small file per day **on
+  purpose**: never read or append into a different day's log, and never create/touch a combined
+  `Captures/Inbox Log.md` — that single-file shape is what makes a run's read cost grow with the
+  vault's entire history instead of staying flat.
   Each line should name the note(s) created **and the hub they were linked under**, so the log is
   auditable (e.g. `Turunan Numerik & Richardson → linked under [[Scientific Computing]] › UAS`).
 - Reset `inbox.md` to its empty template (header + an empty `- ` under `## Unprocessed`).

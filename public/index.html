@@ -422,14 +422,14 @@
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">Test a fallback</h4>
-      <p class="hint">Run <b>Process inbox</b> straight through one provider (skipping Claude) to confirm it actually drives a write job — no need to wait to hit a real usage limit. Save your keys first. Gemini is read-only, so it can't run this write job.</p>
+      <h4 class="settings-sub">Run manually via</h4>
+      <p class="hint">Forces every manual run — <b>Process inbox</b>, <b>Weekly review</b>, <b>Refresh Home</b>, <b>Auto-sort</b>, <b>Calendar sync</b> — straight through the chosen provider (skipping Claude) until switched back. Useful to test a fallback actually drives a write job, or to dodge a Claude usage limit. Save your keys first. Gemini is read-only, so it's not offered here.</p>
       <div class="settings-actions">
-        <select id="cfg-test-provider" class="settings-select">
+        <select id="cfg-manual-provider" class="settings-select">
+          <option value="default">Claude (default)</option>
           <option value="Qwen">Qwen</option>
           <option value="DeepSeek">DeepSeek</option>
         </select>
-        <button class="btn" id="btn-test-fallback">Run Process inbox via this</button>
       </div>
 
       <div class="settings-actions">
