@@ -19,14 +19,11 @@ const READ_ONLY = new Set(['chat', 'notechat', 'codechat', 'noteaugment', 'searc
 export const AUGMENT_SEP = '<<<INSERT-BELOW>>>';
 
 const ALLOWED = {
-  process: [
-    'Edit', 'Write', 'Read', 'Bash', 'Glob', 'Grep',
-    'mcp__claude_ai_Google_Calendar__create_event',
-    'mcp__claude_ai_Google_Calendar__list_calendars',
-    'mcp__claude_ai_Google_Calendar__list_events',
-    'mcp__claude_ai_Google_Calendar__update_event',
-    'mcp__claude_ai_Google_Calendar__delete_event',
-  ],
+  // No Google Calendar MCP tools here on purpose — every inbox-processing run declared 5 calendar
+  // tool schemas whether or not an item needed them, which cost tokens on every single run. Dates
+  // now go to the TODO checklist only (see SKILL.md §2A); the Plan tab's own local reminders +
+  // manual "+" add cover what calendar events used to (Sync stays read-only via `calsync` below).
+  process: ['Edit', 'Write', 'Read', 'Bash', 'Glob', 'Grep'],
   research: ['WebSearch', 'WebFetch', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
   review: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
   home: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],

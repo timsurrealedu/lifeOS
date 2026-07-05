@@ -838,16 +838,25 @@ export function listTasks() {
       // try to pull a "DD Mon" date prefix
       const dm = desc.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s*/);
       let date = null;
+      let time = null;
       if (dm) {
         const mon = MONTHS.findIndex((mo) => dm[2].toLowerCase().startsWith(mo.toLowerCase()));
         if (mon >= 0) {
           const year = (f.path.match(/(\d{4})/) || [])[1] || String(new Date().getFullYear());
           date = `${year}-${String(mon + 1).padStart(2, '0')}-${String(+dm[1]).padStart(2, '0')}`;
           desc = desc.slice(dm[0].length).trim(); // drop the "DD Mon " prefix now it's captured as `date`
+          // an optional "HH:MM " time prefix right after the date (only meaningful once a date matched)
+          const tm = desc.match(/^(\d{1,2}):(\d{2})\s+/);
+          if (tm) { time = `${tm[1].padStart(2, '0')}:${tm[2]}`; desc = desc.slice(tm[0].length).trim(); }
         }
       }
+      // an optional trailing "#remindN" reminder tag (N = minutes before) — reminders only fire for
+      // timed tasks (see notify.js), so this is written/read but ignored for an all-day task.
+      let reminderMinutes = null;
+      const rm = desc.match(/\s*#remind(\d+)\s*$/);
+      if (rm) { reminderMinutes = Number(rm[1]); desc = desc.slice(0, rm.index).trim(); }
       // `line` lets the UI toggle/edit the exact checkbox in its source file.
-      out.push({ done, desc, date, file: f.path, line: i });
+      out.push({ done, desc, date, time, reminderMinutes, file: f.path, line: i });
     }
   }
   out.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
@@ -870,9 +879,13 @@ export function toggleTask(relPath, line) {
 
 /** Best-effort: link a freshly-created TODO month file into the [[TODO]] hub under its `## {year}`
  *  heading (creating the heading if it's the first month filed for that year) — mirrors what
- *  process-inbox does when it creates a month file, so a manual cross-year edit doesn't orphan one. */
+ *  process-inbox does when it creates a month file, so a manual cross-year edit doesn't orphan one.
+ *  The hub note may live at the vault root (fresh scaffold) or have been moved inside its own `TODO/`
+ *  folder (e.g. by Auto-sort) — search for it like `noteExists` does rather than assuming either. */
 function linkMonthInTodoHub(year, monthTitle) {
-  const hubPath = join(dirPath('TODO'), 'TODO.md');
+  const root = vaultDir();
+  const hit = walk(root, root, []).find((n) => n.name.toLowerCase() === 'todo');
+  const hubPath = hit ? join(root, hit.path) : join(root, 'TODO.md');
   if (!existsSync(hubPath)) return;
   let text = readFileSync(hubPath, 'utf8').replace(/\r/g, '');
   const escTitle = monthTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -896,15 +909,53 @@ function linkMonthInTodoHub(year, monthTitle) {
   writeFileSync(hubPath, text);
 }
 
+/** Ensure `TODO/{year}/{Month}.md` exists (creating + linking it into the `[[TODO]]` hub if not). */
+function ensureMonthFile(year, monIdx) {
+  const destDir = join(dirPath('TODO'), year);
+  mkdirSync(destDir, { recursive: true });
+  const destFull = join(destDir, `${FULL_MONTHS[monIdx]}.md`);
+  if (!existsSync(destFull)) {
+    writeFileSync(destFull, `# ${FULL_MONTHS[monIdx]} ${year}\n\n→ [[TODO]]\n`);
+    try { linkMonthInTodoHub(year, FULL_MONTHS[monIdx]); } catch { /* best-effort, never fail the caller */ }
+  }
+  return destFull;
+}
+
+/** Append one checkbox line to a month file, keeping any trailing `→ [[hub]]` footer last. */
+function appendTaskLine(destFull, lineText) {
+  let destText = readFileSync(destFull, 'utf8').replace(/\r/g, '');
+  const fm = destText.match(/(?:^|\n)((?:→[^\n]*\n?)+)\s*$/);
+  destText = fm
+    ? destText.slice(0, fm.index).replace(/\s+$/, '') + `\n${lineText}\n\n${fm[1].trim()}\n`
+    : destText.replace(/\s+$/, '') + `\n${lineText}\n`;
+  writeFileSync(destFull, destText);
+}
+
+/** Build a `- [ ] DD Mon HH:MM DESC #remindN` checkbox line from its parts (any part optional). */
+function buildTaskLine(mark, dayMonthPrefix, time, desc, reminderMinutes) {
+  const timePart = (dayMonthPrefix && time) ? `${time} ` : '';
+  const remindPart = reminderMinutes != null ? ` #remind${reminderMinutes}` : '';
+  return `- [${mark}] ${dayMonthPrefix}${timePart}${desc}${remindPart}`;
+}
+
+/** `''`/null/undefined → no reminder; otherwise a minutes-before integer ≥ 0 (0 = "at the time" —
+ *  falsy in JS, so this can't just be `reminderMinutes ? … : null`). Invalid input → no reminder. */
+function normalizeReminder(reminderMinutes) {
+  if (reminderMinutes === null || reminderMinutes === undefined || reminderMinutes === '') return null;
+  const n = Number(reminderMinutes);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 /**
- * Edit a task's description and/or date in place, writing back in the exact `- [ ] DD Mon DESC`
- * format process-inbox itself reads/writes, so the next AI run parses it the same as ever. The line
- * never stores a year (only day + 3-letter month) — its year is inferred from the file's own
- * `TODO/{year}/{month}.md` path — so an edit that crosses into a different year moves the line to
- * that year's month file instead of silently mislabeling it. `date` is `'YYYY-MM-DD'`, or `''` to
- * clear it (leaves the line undated, in place). Returns the refreshed task list.
+ * Edit a task's description/date/time/reminder in place, writing back in the exact
+ * `- [ ] DD Mon HH:MM DESC #remindN` format process-inbox and addTask() read/write, so the next AI
+ * run parses it the same as ever. The line never stores a year (only day + 3-letter month) — its
+ * year is inferred from the file's own `TODO/{year}/{month}.md` path — so an edit that crosses into
+ * a different year moves the line to that year's month file instead of silently mislabeling it.
+ * `date`/`time` are `'YYYY-MM-DD'`/`'HH:MM'`, or `''` to clear (time only meaningful with a date).
+ * Returns the refreshed task list.
  */
-export function editTask(relPath, line, { desc, date } = {}) {
+export function editTask(relPath, line, { desc, date, time, reminderMinutes } = {}) {
   const root = vaultDir();
   const full = join(root, relPath);
   if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
@@ -926,18 +977,12 @@ export function editTask(relPath, line, { desc, date } = {}) {
     if (monIdx < 0 || monIdx > 11) throw new Error('bad date');
     prefix = `${d} ${MONTHS[monIdx]} `;
     const fileYear = (relPath.match(/(\d{4})/) || [])[1];
-    if (fileYear && y !== fileYear) {
-      const destDir = join(dirPath('TODO'), y);
-      mkdirSync(destDir, { recursive: true });
-      const destFull = join(destDir, `${FULL_MONTHS[monIdx]}.md`);
-      if (!existsSync(destFull)) {
-        writeFileSync(destFull, `# ${FULL_MONTHS[monIdx]} ${y}\n\n→ [[TODO]]\n`);
-        try { linkMonthInTodoHub(y, FULL_MONTHS[monIdx]); } catch { /* best-effort, never fail the edit */ }
-      }
-      targetPath = relative(root, destFull).split(sep).join('/');
-    }
+    if (fileYear && y !== fileYear) targetPath = relative(root, ensureMonthFile(y, monIdx)).split(sep).join('/');
   }
-  const newLine = `${m[1]}${m[2]}${m[3]}${prefix}${cleanDesc}`;
+  const timeStr = String(time || '').trim();
+  if (timeStr && !/^\d{1,2}:\d{2}$/.test(timeStr)) throw new Error('bad time');
+  const remind = normalizeReminder(reminderMinutes);
+  const newLine = buildTaskLine(m[2], prefix, timeStr, cleanDesc, remind);
 
   if (targetPath === relPath) {
     lines[line] = newLine;
@@ -945,13 +990,51 @@ export function editTask(relPath, line, { desc, date } = {}) {
   } else {
     lines.splice(line, 1);
     writeFileSync(full, lines.join('\n'));
-    const destFull = join(root, targetPath);
-    let destText = readFileSync(destFull, 'utf8').replace(/\r/g, '');
-    const fm = destText.match(/(?:^|\n)((?:→[^\n]*\n?)+)\s*$/);
-    destText = fm
-      ? destText.slice(0, fm.index).replace(/\s+$/, '') + `\n${newLine}\n\n${fm[1].trim()}\n`
-      : destText.replace(/\s+$/, '') + `\n${newLine}\n`;
-    writeFileSync(destFull, destText);
+    appendTaskLine(join(root, targetPath), newLine);
+  }
+  return listTasks();
+}
+
+/** One date per occurrence, `startDate` inclusive through `until` inclusive (or just `[startDate]`
+ *  when not repeating). Pure calendar-date arithmetic (UTC, no time-of-day) — no DST concerns. Capped
+ *  so a mistyped `until` decades out can't generate an unbounded number of files/lines. */
+function expandDates(startDate, repeat, until) {
+  if (!repeat || repeat === 'none') return [startDate];
+  const step = { daily: 1, weekly: 7, monthly: 0, yearly: 0 }[repeat];
+  if (step === undefined) return [startDate];
+  const end = until && /^\d{4}-\d{2}-\d{2}$/.test(until) ? until : startDate;
+  const dates = [];
+  const d = new Date(startDate + 'T00:00:00Z');
+  const endMs = new Date(end + 'T00:00:00Z').getTime();
+  const MAX_OCCURRENCES = 366;
+  while (d.getTime() <= endMs && dates.length < MAX_OCCURRENCES) {
+    dates.push(d.toISOString().slice(0, 10));
+    if (repeat === 'monthly') d.setUTCMonth(d.getUTCMonth() + 1);
+    else if (repeat === 'yearly') d.setUTCFullYear(d.getUTCFullYear() + 1);
+    else d.setUTCDate(d.getUTCDate() + step);
+  }
+  return dates.length ? dates : [startDate];
+}
+
+/**
+ * Create a new task (Plan tab "+" — manual add, not via inbox capture). `repeat` ('none'/'daily'/
+ * 'weekly'/'monthly'/'yearly') with `until` ('YYYY-MM-DD') materializes one checkbox line per
+ * occurrence up front — ponytail: no ongoing "series" link, each occurrence is an independent line
+ * editable/deletable on its own, same as any manually-added task. Returns the refreshed task list.
+ */
+export function addTask({ desc, date, time, reminderMinutes, repeat, until } = {}) {
+  const cleanDesc = String(desc || '').trim();
+  if (!cleanDesc) throw new Error('description required');
+  const dateStr = String(date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('date required');
+  const timeStr = String(time || '').trim();
+  if (timeStr && !/^\d{1,2}:\d{2}$/.test(timeStr)) throw new Error('bad time');
+  const remind = normalizeReminder(reminderMinutes);
+  for (const d of expandDates(dateStr, repeat, until)) {
+    const [y, mo, day] = d.split('-');
+    const monIdx = Number(mo) - 1;
+    const line = buildTaskLine(' ', `${Number(day)} ${MONTHS[monIdx]} `, timeStr, cleanDesc, remind);
+    appendTaskLine(ensureMonthFile(y, monIdx), line);
   }
   return listTasks();
 }
@@ -969,6 +1052,41 @@ export function readLog() {
   }
   const legacy = join(dirPath('Captures'), 'Inbox Log.md'); // pre-split vaults
   return existsSync(legacy) ? readFileSync(legacy, 'utf8') : '';
+}
+
+// ---------- Push subscriptions + reminder dedupe (Plan tab notifications, notify.js) ----------
+
+function cachePath(name) {
+  const dir = join(vaultDir(), '.cache');
+  mkdirSync(dir, { recursive: true });
+  return join(dir, name);
+}
+function readJsonArray(name) {
+  const path = cachePath(name);
+  if (!existsSync(path)) return [];
+  try { const data = JSON.parse(readFileSync(path, 'utf8')); return Array.isArray(data) ? data : []; }
+  catch { return []; }
+}
+function writeJsonArray(name, arr) { writeFileSync(cachePath(name), JSON.stringify(arr, null, 2)); }
+
+/** Browser push subscriptions registered via the Plan tab's 🔔 toggle (one per device). */
+export const readPushSubs = () => readJsonArray('push-subs.json');
+export function addPushSub(sub) {
+  const subs = readPushSubs().filter((s) => s.endpoint !== sub.endpoint);
+  subs.push(sub);
+  writeJsonArray('push-subs.json', subs);
+}
+export function removePushSub(endpoint) {
+  writeJsonArray('push-subs.json', readPushSubs().filter((s) => s.endpoint !== endpoint));
+}
+
+/** Keys of reminders already sent (`file#line#date#time`), so a restart doesn't re-notify. Trimmed to
+ *  the last few days on every write — this file is only ever a short-lived dedupe window. */
+export const readNotifiedKeys = () => new Set(readJsonArray('notified.json'));
+export function markNotified(keys) {
+  const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const merged = new Set([...readNotifiedKeys(), ...keys]);
+  writeJsonArray('notified.json', [...merged].filter((k) => (k.split('#')[2] || '9999') >= cutoff));
 }
 
 // ---------- Calendar cache ----------

@@ -1,6 +1,6 @@
 ---
 name: process-inbox
-description: Sort everything dumped into the vault's inbox.md — photos, dictated/typed notes, dates, and fleeting thoughts — into proper Obsidian notes, push deadlines/events to Google Calendar, add links/tags, then clear the inbox. Use when the user says "process inbox", "sort my inbox", "process my notes", or on a scheduled nightly run.
+description: Sort everything dumped into the vault's inbox.md — photos, dictated/typed notes, dates, and fleeting thoughts — into proper Obsidian notes and TODO checklist entries, add links/tags, then clear the inbox. Use when the user says "process inbox", "sort my inbox", "process my notes", or on a scheduled nightly run.
 ---
 <!-- MANAGED FILE — this is the source of truth at server/templates/SKILL.md. ensureVault() copies
      it into each vault's .claude/skills/process-inbox/SKILL.md on server start (re-syncing when it
@@ -9,7 +9,7 @@ description: Sort everything dumped into the vault's inbox.md — photos, dictat
 
 # Process Inbox
 
-Turn the raw dump in `inbox.md` into an organized vault + up-to-date calendar.
+Turn the raw dump in `inbox.md` into an organized vault + an up-to-date TODO checklist.
 Read `CLAUDE.md` in the vault root first — it defines this user's timezone, language(s),
 folder structure, TODO format, and any **current term / active period** that new material
 defaults into. Follow those, not any examples baked in here.
@@ -58,10 +58,10 @@ List each optimized note (and which kind) in the report. If there are no `#draft
 Go line by line. An item is one of:
 
 **A) Event / deadline / date** — contains a date, time, or scheduling words (exam, deadline, due, meeting, a day name, etc., in any of the user's languages).
-  → Create a **Google Calendar** event using the timezone from `CLAUDE.md`. Use the stated time, or an all-day event if only a date is given. Title = the short description; extra detail → event description.
-  → **Also** add a checkbox to the user's TODO file (format defined in `CLAUDE.md`). **Find the existing `TODO/` folder wherever it lives** (it may have been moved under a domain, e.g. `Personal/TODO/`) and write into that one — **never create a second `TODO/` at the root.** If the period/month file doesn't exist, create it inside the existing `TODO/`, add `→ [[TODO]]` at the bottom, and list it under the `[[TODO]]` hub.
+  → Add a checkbox to the user's TODO file (format defined in `CLAUDE.md`) — include the stated time right after the date if one was given (e.g. `- [ ] 14 Jul 09:00 Description`), so it shows at the right time in the Plan tab's calendar. **Find the existing `TODO/` folder wherever it lives** (it may have been moved under a domain, e.g. `Personal/TODO/`) and write into that one — **never create a second `TODO/` at the root.** If the period/month file doesn't exist, create it inside the existing `TODO/`, add `→ [[TODO]]` at the bottom, and list it under the `[[TODO]]` hub.
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
+  → This only files the item — it does **not** set a reminder or repeat it. The user can add either from the Plan tab (✎ edit → reminder; ＋ add → repeat) if they want one.
 
 **B) Media embed** — a line with `![[…]]` (photo, handwriting, audio, or document).
   *Photo* (`.jpg/.png/…`): Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`. If it's a screenshot of a chat mentioning a date, treat that date like case A instead.
@@ -210,9 +210,10 @@ Only once every new note resolves up to a top-level hub — with no `/` inside a
 
 ## 5. Release lock + report
 - Delete `inbox.lock`.
-- Give a concise summary: item count, what went to the calendar, notes created/updated, and anything `#needs-filing`.
+- Give a concise summary: item count, dated TODO entries added, notes created/updated, and anything `#needs-filing`.
 
 ## Notes
 - **Preserve the user's original language(s) — never translate.**
 - Never overwrite an existing note; append or create.
-- Calendar events use the user's connected Google account and work from any machine.
+- The Plan tab's calendar shows dated TODO entries **and** events synced (read-only) from the user's
+  Google Calendar via the app's own Sync button — this run doesn't touch Google Calendar at all.

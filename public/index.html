@@ -210,7 +210,13 @@
       <!-- PLAN (tasks list + calendar) -->
       <section class="view" data-view="plan" hidden>
         <div class="view-head vhead">
-          <div class="crumb-row"><span class="crumb" id="plan-crumb">0 open tasks</span></div>
+          <div class="crumb-row">
+            <span class="crumb" id="plan-crumb">0 open tasks</span>
+            <span class="crumb-r">
+              <button class="icon-btn" id="btn-plan-notify" title="Enable reminders" aria-label="Enable reminders">🔔</button>
+              <button class="crumb-btn" id="btn-new-task">+ Add</button>
+            </span>
+          </div>
           <div class="title-row"><h2>Plan</h2></div>
           <div class="seg seg-wide" id="plan-seg">
             <button class="seg-btn active" data-plan-view="list">List</button>
@@ -461,17 +467,65 @@
     </div>
   </div>
 
-  <!-- Edit task sheet (Plan tab) — desc + date; native <input type="date"> for the picker -->
+  <!-- Edit task sheet (Plan tab) — desc + date/time + reminder; native inputs for the pickers -->
   <div class="sheet" id="sheet-task-edit" hidden>
     <div class="sheet-grab"></div>
     <div class="sheet-head"><h3>Edit task</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <div class="settings">
       <label>Description<input id="task-edit-desc" autocomplete="off" /></label>
       <label>Date<input id="task-edit-date" type="date" /></label>
-      <p class="hint">Changing the date keeps this task in sync with how lifeOS &amp; the AI file tasks — it can move to a different month/year file if needed. It won't move any linked Google Calendar event.</p>
+      <label>Time <small>(optional — needed for a reminder)</small><input id="task-edit-time" type="time" /></label>
+      <label>Remind me
+        <select id="task-edit-remind">
+          <option value="">No reminder</option>
+          <option value="0">At the time</option>
+          <option value="5">5 minutes before</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+          <option value="60">1 hour before</option>
+          <option value="1440">1 day before</option>
+        </select>
+      </label>
+      <p class="hint">Changing the date keeps this task in sync with how lifeOS &amp; the AI file tasks — it can move to a different month/year file if needed.</p>
       <div class="settings-actions">
         <button class="btn primary" id="task-edit-save">Save</button>
         <button class="btn sm" id="task-edit-clear-date" type="button">Clear date</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add task sheet (Plan tab "+ Add") — desc + date/time + reminder + optional repeat -->
+  <div class="sheet" id="sheet-task-new" hidden>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head"><h3>Add to Plan</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
+    <div class="settings">
+      <label>Description<input id="task-new-desc" autocomplete="off" placeholder="What's happening?" /></label>
+      <label>Date<input id="task-new-date" type="date" /></label>
+      <label>Time <small>(optional — needed for a reminder)</small><input id="task-new-time" type="time" /></label>
+      <label>Remind me
+        <select id="task-new-remind">
+          <option value="">No reminder</option>
+          <option value="0">At the time</option>
+          <option value="5">5 minutes before</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+          <option value="60">1 hour before</option>
+          <option value="1440">1 day before</option>
+        </select>
+      </label>
+      <label>Repeat
+        <select id="task-new-repeat">
+          <option value="none">Doesn't repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+      </label>
+      <label id="task-new-until-row" hidden>Repeat until<input id="task-new-until" type="date" /></label>
+      <p class="hint">Repeating creates one checkbox per occurrence up front — each is its own task afterwards (edit/delete them individually).</p>
+      <div class="settings-actions">
+        <button class="btn primary" id="task-new-save">Add</button>
       </div>
     </div>
   </div>

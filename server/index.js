@@ -8,7 +8,7 @@ import { loadConfig, saveConfig, vaultDir, checkDocTools, maskConfig, PROJECT_RO
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
   addHandwritingItem, addDocumentItem, listNotes, readNote, createNote, updateNote, renameNote, deleteNote, deleteFolder,
-  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, editTask, readLog,
+  moveEntry, listFolders, createFolder, renameFolder, SYSTEM_FOLDER_NAMES, STAGING_FOLDER_NAMES, searchNotes, buildGraph, listTasks, toggleTask, editTask, addTask, readLog,
   listIdeas, listNeedsFiling, hasDrafts, readCalendarCache, readAutosortPlan, augmentNoteFile,
   clearInboxLock, clearStaleInboxLock,
 } from './vault.js';
@@ -18,6 +18,7 @@ import {
 } from './process.js';
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
+import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -25,6 +26,7 @@ ensureVault(cfg);
 // A `pm2 restart` mid-run kills the claude child without cleanup; drop any stale inbox.lock on boot
 // so processing isn't blocked by a leftover from before the restart.
 if (clearStaleInboxLock()) console.log('  • cleared a stale inbox.lock from a previous run');
+startScheduler();
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -472,21 +474,41 @@ app.get('/api/needs-filing', (_req, res) => ok(res, { items: listNeedsFiling() }
 // ---- Graph / Calendar / Log ----
 app.get('/api/graph', (_req, res) => ok(res, buildGraph()));
 app.get('/api/tasks', (_req, res) => ok(res, { tasks: listTasks() }));
+// Manually add a task/event (Plan tab "+"), optionally repeating — see addTask()'s doc comment.
+app.post('/api/tasks', (req, res) => {
+  try {
+    const { desc, date, time, reminderMinutes, repeat, until } = req.body || {};
+    ok(res, { tasks: addTask({ desc, date, time, reminderMinutes, repeat, until }) });
+  } catch (e) { fail(res, e); }
+});
 app.post('/api/tasks/toggle', (req, res) => {
   try { ok(res, { tasks: toggleTask(String(req.body.file), Number(req.body.line)) }); }
   catch (e) { fail(res, e); }
 });
-// Edit a task's description/date (Plan tab). May move the line to a different TODO/{year}/{month}.md
-// file if the date crosses a year boundary — see editTask()'s doc comment in vault.js.
+// Edit a task's description/date/time/reminder (Plan tab). May move the line to a different
+// TODO/{year}/{month}.md file if the date crosses a year boundary — see editTask()'s doc comment.
 app.post('/api/tasks/edit', (req, res) => {
   try {
-    const { file, line, desc, date } = req.body || {};
-    ok(res, { tasks: editTask(String(file), Number(line), { desc, date }) });
+    const { file, line, desc, date, time, reminderMinutes } = req.body || {};
+    ok(res, { tasks: editTask(String(file), Number(line), { desc, date, time, reminderMinutes }) });
   } catch (e) { fail(res, e); }
 });
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));
 // Calendar events synced from Google Calendar by the `calsync` run (may be empty until first sync).
 app.get('/api/calendar', (_req, res) => ok(res, { events: readCalendarCache() }));
+
+// ---- Plan reminders (local Web Push — see notify.js; independent of Google Calendar) ----
+app.get('/api/push/public-key', (_req, res) => ok(res, { publicKey: getPublicKey() }));
+app.post('/api/push/subscribe', (req, res) => {
+  try {
+    if (!req.body || !req.body.endpoint) throw new Error('bad subscription');
+    subscribe(req.body); ok(res, {});
+  } catch (e) { fail(res, e); }
+});
+app.post('/api/push/unsubscribe', (req, res) => {
+  try { unsubscribe(String((req.body || {}).endpoint || '')); ok(res, {}); }
+  catch (e) { fail(res, e); }
+});
 
 // ---- Config ----
 app.get('/api/config', (_req, res) => {

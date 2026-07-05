@@ -55,6 +55,9 @@ const DEFAULTS = {
   // Code runner (the phone "Code" tab). `dir` = a folder the tab reads/writes files in (e.g. a
   // Syncthing-synced ~/mycode so phone edits sync to your other machines); empty → files disabled.
   run: { timeoutMs: 10000, maxOutputBytes: 262144, dir: '' },
+  // Web Push keypair for Plan reminders (local task notifications — not Google Calendar). Generated
+  // once on first boot by notify.js and persisted here; never sent to the client except publicKey.
+  push: { publicKey: '', privateKey: '' },
 };
 
 export function loadConfig() {
@@ -69,6 +72,7 @@ export function loadConfig() {
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
     cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
     cfg.run = { ...DEFAULTS.run, ...(saved.run || {}) };
+    cfg.push = { ...DEFAULTS.push, ...(saved.push || {}) };
   } catch {
     /* first run: defaults */
   }
@@ -82,7 +86,10 @@ export function loadConfig() {
 export const KEY_MASK = '••••••••';
 export function maskConfig(cfg) {
   const mask = (o) => ({ ...o, apiKey: o.apiKey ? KEY_MASK : '' });
-  return { ...cfg, qwen: mask(cfg.qwen), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini) };
+  return {
+    ...cfg, qwen: mask(cfg.qwen), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini),
+    push: { publicKey: cfg.push.publicKey },   // privateKey never leaves the server
+  };
 }
 function mergeProvider(prev, patch) {
   if (!patch) return prev;
@@ -100,6 +107,7 @@ export function saveConfig(patch) {
   cfg.fallback = mergeProvider(prev.fallback, patch.fallback);
   cfg.gemini = mergeProvider(prev.gemini, patch.gemini);
   if (patch.run) cfg.run = { ...prev.run, ...patch.run };
+  if (patch.push) cfg.push = { ...prev.push, ...patch.push };
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
   return cfg;
 }

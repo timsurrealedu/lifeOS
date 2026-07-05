@@ -82,7 +82,10 @@ Rules:
 - **Math:** write maths as LaTeX so it renders (the app uses KaTeX) — inline `$…$`, display `$$…$$`. e.g. `$\int_0^1 x^2\,dx = \tfrac13$`. **Actively convert natural-language / ASCII math** the user typed ("integral of", "root of", "x^2", "a/b", "lim x->0") into LaTeX — never leave equations as plain ASCII.
 
 ## Connectors available (tied to the user's account, work from any machine)
-- **Google Calendar** — events/deadlines.
+- **Google Calendar** — read-only: the app's own **Sync** button pulls events into the Plan tab's
+  calendar. process-inbox does not write to it — dated items go to the TODO checklist instead (§2A
+  of the process-inbox skill), where the Plan tab's own reminders/repeat cover what calendar events
+  used to.
 
 ## Safety
 - Never overwrite an existing note's content — append or create a new note.

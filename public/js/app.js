@@ -1925,6 +1925,8 @@ function openTaskEdit(t) {
   editingTask = t;
   $('#task-edit-desc').value = t.desc;
   $('#task-edit-date').value = t.date || '';
+  $('#task-edit-time').value = t.time || '';
+  $('#task-edit-remind').value = t.reminderMinutes != null ? String(t.reminderMinutes) : '';
   openSheet('sheet-task-edit');
   $('#task-edit-desc').focus();
 }
@@ -1935,7 +1937,12 @@ async function saveTaskEdit(date) {
   try {
     await api('/api/tasks/edit', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: editingTask.file, line: editingTask.line, desc, date: date ?? $('#task-edit-date').value }),
+      body: JSON.stringify({
+        file: editingTask.file, line: editingTask.line, desc,
+        date: date ?? $('#task-edit-date').value,
+        time: $('#task-edit-time').value,
+        reminderMinutes: $('#task-edit-remind').value || null,
+      }),
     });
     closeSheets();
     await loadPlan();
@@ -1944,6 +1951,46 @@ async function saveTaskEdit(date) {
 }
 $('#task-edit-save').addEventListener('click', () => saveTaskEdit());
 $('#task-edit-clear-date').addEventListener('click', () => saveTaskEdit(''));
+
+// ---- Add task (Plan tab "+ Add") — manual add, independent of inbox capture/process-inbox.
+function openTaskNew(date) {
+  $('#task-new-desc').value = '';
+  $('#task-new-date').value = date || todayStr();
+  $('#task-new-time').value = '';
+  $('#task-new-remind').value = '';
+  $('#task-new-repeat').value = 'none';
+  $('#task-new-until').value = '';
+  $('#task-new-until-row').hidden = true;
+  openSheet('sheet-task-new');
+  $('#task-new-desc').focus();
+}
+$('#btn-new-task').addEventListener('click', () => openTaskNew(state.planView === 'calendar' ? state.calSelected : ''));
+$('#task-new-repeat').addEventListener('change', (e) => {
+  $('#task-new-until-row').hidden = e.target.value === 'none';
+  if (e.target.value !== 'none' && !$('#task-new-until').value) {
+    const d = new Date($('#task-new-date').value || todayStr());
+    d.setMonth(d.getMonth() + 3);
+    $('#task-new-until').value = ymd(d);
+  }
+});
+$('#task-new-save').addEventListener('click', async () => {
+  const desc = $('#task-new-desc').value.trim();
+  const date = $('#task-new-date').value;
+  if (!desc) { toast('Description required'); return; }
+  if (!date) { toast('Date required'); return; }
+  try {
+    await api('/api/tasks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        desc, date, time: $('#task-new-time').value, reminderMinutes: $('#task-new-remind').value || null,
+        repeat: $('#task-new-repeat').value, until: $('#task-new-until').value,
+      }),
+    });
+    closeSheets();
+    await loadPlan();
+    toast('Added');
+  } catch (e) { toast(e.message); }
+});
 
 function renderPlanList(tasks) {
   const wrap = $('#plan-groups'); wrap.innerHTML = '';
@@ -2046,6 +2093,41 @@ $('#cal-sync').addEventListener('click', () => {
     title: 'Syncing Google Calendar…',
     onDone: async (_out, code) => { if (code === 0) { const { events } = await api('/api/calendar'); state.events = events || []; renderCalendar(); toast('Calendar synced'); } },
   });
+});
+
+/* ---------- Plan reminders (Web Push — local, independent of Google Calendar) ---------- */
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(padded);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+async function syncNotifyButton() {
+  const btn = $('#btn-plan-notify');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) { btn.hidden = true; return; }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  btn.textContent = sub ? '🔕' : '🔔';
+  btn.title = sub ? 'Turn off reminders on this device' : 'Enable reminders on this device';
+}
+$('#btn-plan-notify').addEventListener('click', async () => {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) { toast('Push not supported on this browser'); return; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      await api('/api/push/unsubscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) });
+      await existing.unsubscribe();
+      toast('Reminders off on this device');
+    } else {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast('Notifications permission denied'); return; }
+      const { publicKey } = await api('/api/push/public-key');
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+      await api('/api/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
+      toast('Reminders on for this device');
+    }
+  } catch (e) { toast(e.message); }
+  syncNotifyButton();
 });
 
 /* ---------- Chat (read-only advisor — its own tab) ---------- */
@@ -3084,5 +3166,5 @@ async function loadCode() {
   await refreshInbox();
   await loadNotes(true);
   show('inbox');
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
 })();
