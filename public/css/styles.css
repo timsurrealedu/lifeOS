@@ -294,6 +294,12 @@ body {
   display: grid; place-items: center; transition: background .15s, transform .1s;
 }
 .icon-btn:active { transform: scale(.92); background: var(--surface-2); }
+/* Drawn, not the ☰ glyph — that character sits off-center within its own em-box in most fonts
+   (fallback-symbol-font metrics), so no amount of container centering fixes it reliably. */
+.icon-hamburger {
+  width: 16px; height: 2px; background: currentColor; border-radius: 1px;
+  box-shadow: 0 -5px currentColor, 0 5px currentColor;
+}
 
 /* Keyboard focus: buttons/links had outline:none everywhere and no replacement — invisible on desktop
    tab-nav. One shared ring (only for keyboard focus, not taps/clicks). Inputs keep their border-color. */
