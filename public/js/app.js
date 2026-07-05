@@ -1044,22 +1044,62 @@ $('#reader-new-folder').addEventListener('click', async () => {
   });
 })();
 // Mobile: swipe right (from a generous left-edge zone) opens the file drawer; swipe left closes it.
+// Swipe left elsewhere opens the AI tutor. Live (Obsidian-style): the drawer tracks the finger frame
+// by frame during the drag, then snaps open/closed at release based on how far it got dragged —
+// rather than a fixed gesture that only fires once, all-or-nothing, at touchend.
 // Tapping the note area while the drawer is open also closes it (tap-to-dismiss).
 (function setupReaderSwipe() {
   const reader = $('#reader');
-  let sx = 0, sy = 0, tracking = false;
+  const fileDrawer = $('#reader-sidebar');
+  const chatDock = $('#note-chat');
+  const isMobile = () => !window.matchMedia('(min-width: 760px)').matches;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  let sx = 0, sy = 0, live = false, mode = null, w = 0;
+
+  function lockIn(m) {
+    mode = m;
+    w = (mode === 'chat' ? chatDock : fileDrawer).offsetWidth;
+    (mode === 'chat' ? chatDock : fileDrawer).classList.add('dragging');
+  }
+  function drag(dx) {
+    const el = mode === 'chat' ? chatDock : fileDrawer;
+    if (mode === 'file-open') el.style.transform = `translateX(${clamp(-w + dx, -w, 0)}px)`;
+    else if (mode === 'file-close') el.style.transform = `translateX(${clamp(dx, -w, 0)}px)`;
+    else if (mode === 'chat') el.style.transform = `translateX(${clamp(w + dx, 0, w)}px)`;
+  }
+  function settle(dx) {
+    const el = mode === 'chat' ? chatDock : fileDrawer;
+    el.classList.remove('dragging'); el.style.transform = '';
+    if (mode === 'file-open') reader.classList.toggle('sidebar-open', dx > w * 0.35);
+    else if (mode === 'file-close') reader.classList.toggle('sidebar-open', dx > -w * 0.35);
+    else if (mode === 'chat') { if (-dx > w * 0.35) openNoteChat(); else chatDock.hidden = true; }
+    mode = null;
+  }
+
   reader.addEventListener('touchstart', (e) => {
-    if (window.matchMedia('(min-width: 760px)').matches || e.touches.length !== 1) { tracking = false; return; }
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+    if (!isMobile() || e.touches.length !== 1) { live = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; live = true; mode = null;
   }, { passive: true });
+  reader.addEventListener('touchmove', (e) => {
+    if (!live || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;  // not a clear horizontal drag yet
+      const fileOpen = reader.classList.contains('sidebar-open');
+      const chatOpen = !chatDock.hidden;
+      if (fileOpen && dx < 0) lockIn('file-close');
+      else if (!fileOpen && !chatOpen && dx > 0 && sx < 120) lockIn('file-open'); // wide left-edge zone
+      else if (!fileOpen && !chatOpen && dx < 0) lockIn('chat');                  // swipe left → AI tutor
+      else { live = false; return; }
+    }
+    e.preventDefault();
+    drag(dx);
+  }, { passive: false });
   reader.addEventListener('touchend', (e) => {
-    if (!tracking) return; tracking = false;
-    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.2) return;   // clear-ish horizontal swipe
-    const open = reader.classList.contains('sidebar-open');
-    if (dx > 0 && !open && sx < 120) reader.classList.add('sidebar-open'); // wide left-edge zone → open
-    else if (dx < 0 && open) reader.classList.remove('sidebar-open');      // → close
-    else if (dx < 0 && !open && !reader.classList.contains('chat-open')) openNoteChat(); // swipe left on the note → AI assistant
+    if (!live) return; live = false;
+    if (!mode) return;
+    settle(e.changedTouches[0].clientX - sx);
   }, { passive: true });
   // Tap the exposed note (outside the drawer) to slide back to it. Capture phase + stop so the
   // dismissing tap doesn't also fire a wikilink/note click underneath.
@@ -2505,6 +2545,8 @@ function codeClose() {
 }
 function codeKeydown(ev) {
   if (codeVim && codeVim.isEnabled() && codeVimMode && codeVimMode !== 'INSERT') return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? codeRedo() : codeUndo(); return; }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); codeRedo(); return; }
   if (ev.key === 'Enter') { ev.preventDefault(); codeEnter(); return; }
   if (ev.key === 'Tab') { ev.preventDefault(); codeInsert('    '); return; }
   const ta = codeTA(), s = ta.selectionStart, e = ta.selectionEnd, val = ta.value;
@@ -2563,11 +2605,51 @@ function codeBuildSymbols() {
 }
 function codeMarkDirty(d) { codeState.file.dirty = d; $('#code-save').classList.toggle('dirty', d); }
 
+// ---- Undo/redo ----
+// Symbol keys, bracket auto-pairing, and Tab/Enter auto-indent all write ta.value directly, which
+// clears a textarea's native undo history — so native ctrl+Z can't be trusted here. This is a manual
+// stack instead. Rapid typing coalesces into one step (edits <600ms apart merge), so undo doesn't
+// just erase a single keystroke. ponytail: linear stack of full-buffer snapshots, not a diff — fine
+// at code-buffer sizes, revisit if this needs to hold huge files.
+const codeHist = { stack: [''], idx: 0, last: 0 };
+function codeHistButtons() {
+  $('#code-undo').disabled = codeHist.idx <= 0;
+  $('#code-redo').disabled = codeHist.idx >= codeHist.stack.length - 1;
+}
+function codeHistReset() {
+  codeHist.stack = [codeTA().value]; codeHist.idx = 0; codeHist.last = 0;
+  codeHistButtons();
+}
+function codeHistPush() {
+  const v = codeTA().value;
+  if (v === codeHist.stack[codeHist.idx]) return;
+  const now = Date.now(), atTip = codeHist.idx === codeHist.stack.length - 1;
+  if (atTip && now - codeHist.last < 600) { codeHist.stack[codeHist.idx] = v; }
+  else {
+    codeHist.stack = codeHist.stack.slice(0, codeHist.idx + 1);
+    codeHist.stack.push(v); codeHist.idx++;
+    if (codeHist.stack.length > 200) { codeHist.stack.shift(); codeHist.idx--; }
+  }
+  codeHist.last = now;
+  codeHistButtons();
+}
+function codeHistNav(dir) {
+  const next = codeHist.idx + dir;
+  if (next < 0 || next >= codeHist.stack.length) return;
+  codeHist.idx = next; codeHist.last = 0;
+  codeSetContent(codeHist.stack[codeHist.idx]);
+  if (codeState.mode === 'saved') { codeState.file.content = codeTA().value; codeMarkDirty(true); }
+  else codeState.scratchBuffers[codeState.scratchLang] = codeTA().value;
+  codeSaveLS(); codeTA().focus(); codeHistButtons();
+}
+const codeUndo = () => codeHistNav(-1);
+const codeRedo = () => codeHistNav(1);
+
 function codeOnInput() {
   const v = codeTA().value;
   if (codeState.mode === 'saved') { codeState.file.content = v; codeMarkDirty(true); }
   else codeState.scratchBuffers[codeState.scratchLang] = v;
-  codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll();
+  codeSaveLS(); codeRenderGutter(); codeHighlight(); codeSyncScroll(); codeHistPush();
 }
 function codeStash() { const v = codeTA().value; if (codeState.mode === 'saved') codeState.file.content = v; else codeState.scratchBuffers[codeState.scratchLang] = v; }
 function codeSetContent(text) { codeTA().value = text; codeRenderGutter(); codeHighlight(); codeSyncScroll(); }
@@ -2626,12 +2708,12 @@ function codeLoadBuffer() {
   } else {
     codeSetContent(codeState.scratchBuffers[codeState.scratchLang] ?? CODE_STARTER); $('#code-lang').value = codeState.scratchLang;
   }
-  codeHighlight();
+  codeHighlight(); codeHistReset();
 }
 function codeSetMode(mode) { codeStash(); codeState.mode = mode; codeApplyMode(); codeLoadBuffer(); codeSaveLS(); codeTA().focus(); }
 function codeSetScratchLang(lang) {
   codeStash(); codeState.scratchLang = lang; $('#code-lang').value = lang;
-  codeSetContent(codeState.scratchBuffers[lang] ?? CODE_STARTER); codeHighlight(); codeSaveLS();
+  codeSetContent(codeState.scratchBuffers[lang] ?? CODE_STARTER); codeHighlight(); codeSaveLS(); codeHistReset();
 }
 async function codeLoadLangs() {
   try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
@@ -2865,6 +2947,8 @@ function codeInitOnce() {
   $('#code-sidebar-new').addEventListener('click', codeNewFile);
   $('#code-sidebar-close').addEventListener('click', () => codeToggleSidebar(false));
   $('#code-save').addEventListener('click', codeSave);
+  $('#code-undo').addEventListener('click', codeUndo);
+  $('#code-redo').addEventListener('click', codeRedo);
   $('#code-run').addEventListener('click', codeRun);
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });

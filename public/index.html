@@ -262,6 +262,9 @@
           <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
           <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
           <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
+          <div class="spacer"></div>
+          <button class="icon-btn" id="code-undo" title="Undo" aria-label="Undo">↶</button>
+          <button class="icon-btn" id="code-redo" title="Redo" aria-label="Redo">↷</button>
         </div>
 
         <div class="code-panel" id="code-output" hidden>
@@ -326,7 +329,7 @@
           </div>
           <form class="chat-bar" id="code-chat-bar">
             <input id="code-chat-input" class="chat-input" placeholder="Ask about this code…" autocomplete="off" />
-            <button class="btn primary" id="code-chat-send" type="submit">Send</button>
+            <button class="btn primary sm" id="code-chat-send" type="submit" title="Send" aria-label="Send">➤</button>
           </form>
         </aside>
       </section>
@@ -607,7 +610,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
       </div>
       <form class="chat-bar" id="note-chat-bar">
         <input id="note-chat-input" class="chat-input" placeholder="Ask a follow-up about this note…" autocomplete="off" />
-        <button class="btn primary" id="note-chat-send" type="submit">Send</button>
+        <button class="btn primary sm" id="note-chat-send" type="submit" title="Send" aria-label="Send">➤</button>
       </form>
     </div>
   </div>
