@@ -7,7 +7,7 @@ import webpush from 'web-push';
 import { loadConfig, saveConfig } from './config.js';
 import { listTasks, readPushSubs, addPushSub, removePushSub, readNotifiedKeys, markNotified } from './vault.js';
 
-const CHECK_MS = 60 * 1000;
+const CHECK_MS = 15 * 1000;   // avg delivery delay ≈ half this — 60s felt laggy in practice
 // Skip a reminder more than this far past its trigger time — e.g. after the server was down — so
 // catching up doesn't dump a backlog of stale notifications on you all at once.
 const STALE_MS = 15 * 60 * 1000;

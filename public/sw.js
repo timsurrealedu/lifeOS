@@ -1,6 +1,6 @@
 /* lifeOS service worker — cache the app shell so capture works offline-ish.
    Network-first for API; cache-first for static shell. */
-const CACHE = 'lifeos-v38';
+const CACHE = 'lifeos-v39';
 const SHELL = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/graph.js', '/js/inkpad.js',
   '/icons/icon.svg', '/manifest.webmanifest',
   '/vendor/katex/katex.min.css', '/vendor/katex/katex.min.js',
@@ -18,6 +18,7 @@ self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification(data.title || 'lifeOS', {
     body: data.body || '', tag: data.tag || undefined, icon: '/icons/icon.svg',
     vibrate: [200, 100, 200],   // Chrome shows push notifications silently unless a pattern is given
+    renotify: true,             // re-alert (incl. vibrate) even if a notification with this tag already showed
   }));
 });
 self.addEventListener('notificationclick', (e) => {
