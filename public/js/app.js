@@ -1900,7 +1900,7 @@ function taskRow(t) {
   const el = document.createElement('div');
   el.className = 'task' + (t.done ? ' done' : '') + (overdue ? ' overdue' : '');
   el.innerHTML = `<div class="box">${t.done ? '✓' : ''}</div>
-    <div class="t-main"><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}</div>` : ''}</div>
+    <div class="t-main"><div class="t-desc">${esc(t.desc)}</div>${t.date ? `<div class="t-meta">${fmtDate(t.date)}${t.time ? ' · ' + esc(t.time) : ''}</div>` : ''}</div>
     <button class="t-edit" type="button" aria-label="Edit task" title="Edit">✎</button>`;
   el.addEventListener('click', async () => {
     el.classList.add('busy');
