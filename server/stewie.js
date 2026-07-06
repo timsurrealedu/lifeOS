@@ -58,6 +58,20 @@ export async function approve(stamps, all = false) {
   return await ssh(`cd ${dir} && python3 publish.py approve ${args}`);
 }
 
+export async function reject(stamps) {
+  const { dir } = box();
+  const args = stamps.filter((s) => STAMP.test(s)).join(' ');
+  if (!args) throw new Error('nothing to reject');
+  return await ssh(`cd ${dir} && python3 publish.py reject ${args}`);
+}
+
+export async function deleteLocal(stamps) {
+  const { dir } = box();
+  const args = stamps.filter((s) => STAMP.test(s)).join(' ');
+  if (!args) throw new Error('nothing to delete');
+  return await ssh(`cd ${dir} && python3 publish.py delete ${args}`);
+}
+
 export async function uploadApproved() {
   const { dir } = box();
   return await ssh(`cd ${dir} && python3 publish.py upload`, { timeoutMs: 900000 });

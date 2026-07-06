@@ -19,7 +19,7 @@ import {
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
-import { listVideos, videoStats, approve as stewieApprove, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
+import { listVideos, videoStats, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -516,6 +516,12 @@ app.get('/api/stewie/stats', async (_req, res) => ok(res, { stats: await videoSt
 app.post('/api/stewie/approve', async (req, res) => {
   try { ok(res, { out: await stewieApprove(req.body?.stamps || [], !!req.body?.all) }); }
   catch (e) { fail(res, e); }
+});
+app.post('/api/stewie/reject', async (req, res) => {
+  try { ok(res, { out: await stewieReject(req.body?.stamps || []) }); } catch (e) { fail(res, e); }
+});
+app.post('/api/stewie/delete', async (req, res) => {
+  try { ok(res, { out: await stewieDelete(req.body?.stamps || []) }); } catch (e) { fail(res, e); }
 });
 app.post('/api/stewie/upload', async (_req, res) => {
   try { ok(res, { out: await uploadApproved() }); } catch (e) { fail(res, e, 502); }
