@@ -11,10 +11,18 @@ const DEFAULTS = {
 };
 const box = () => ({ ...DEFAULTS, ...(loadConfig().stewie || {}) });
 
-function ssh(cmd, { timeoutMs = 30000 } = {}) {
+// host: "local" runs on this machine (the box hosts the pipeline itself); anything
+// else is `ssh -i key host` (dev machine driving the box remotely).
+function spawnBox(cmd) {
   const { host, key } = box();
+  return host === 'local'
+    ? spawn('sh', ['-c', cmd])
+    : spawn('ssh', ['-i', key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, cmd]);
+}
+
+function ssh(cmd, { timeoutMs = 30000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('ssh', ['-i', key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, cmd]);
+    const child = spawnBox(cmd);
     let out = '', err = '';
     const t = setTimeout(() => { child.kill(); reject(new Error('box timed out')); }, timeoutMs);
     child.stdout.on('data', (d) => (out += d));
@@ -70,8 +78,8 @@ export async function tailLog(lines = 40) {
 // Stream an mp4 from the box for in-browser preview (+faststart mp4s play progressively).
 export function streamVideo(stamp, res) {
   if (!STAMP.test(stamp)) { res.status(400).end('bad stamp'); return; }
-  const { host, key, dir } = box();
-  const child = spawn('ssh', ['-i', key, '-o', 'BatchMode=yes', host, `cat ${dir}/out/${stamp}.mp4`]);
+  const { dir } = box();
+  const child = spawnBox(`cat ${dir}/out/${stamp}.mp4`);
   res.set('Content-Type', 'video/mp4');
   child.stdout.pipe(res);
   child.on('close', (code) => { if (code !== 0 && !res.headersSent) res.status(404); if (!res.writableEnded) res.end(); });
