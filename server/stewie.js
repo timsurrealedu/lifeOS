@@ -58,6 +58,12 @@ export async function approve(stamps, all = false) {
   return await ssh(`cd ${dir} && python3 publish.py approve ${args}`);
 }
 
+export async function channelAnalytics() {
+  const { dir } = box();
+  try { return JSON.parse(await ssh(`cd ${dir} && python3 publish.py channel`, { timeoutMs: 60000 })); }
+  catch (e) { return { now: {}, history: [], error: e.message }; }   // box/creds down — Stats degrades softly
+}
+
 export async function reject(stamps) {
   const { dir } = box();
   const args = stamps.filter((s) => STAMP.test(s)).join(' ');

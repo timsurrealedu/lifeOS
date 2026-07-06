@@ -19,7 +19,7 @@ import {
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
-import { listVideos, videoStats, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
+import { listVideos, videoStats, channelAnalytics, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -513,6 +513,7 @@ app.get('/api/stewie/videos', async (_req, res) => {
   try { ok(res, { videos: await listVideos() }); } catch (e) { fail(res, e, 502); }
 });
 app.get('/api/stewie/stats', async (_req, res) => ok(res, { stats: await videoStats() }));
+app.get('/api/stewie/analytics', async (_req, res) => ok(res, { analytics: await channelAnalytics() }));
 app.post('/api/stewie/approve', async (req, res) => {
   try { ok(res, { out: await stewieApprove(req.body?.stamps || [], !!req.body?.all) }); }
   catch (e) { fail(res, e); }

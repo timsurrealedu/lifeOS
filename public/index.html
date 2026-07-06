@@ -138,23 +138,12 @@
           <ul id="find-results" class="list find-results"></ul>
         </div>
 
-        <div class="card tool-hero stewie">
-          <div class="stewie-head">
-            <h3 class="tool-title">Stewie Studio</h3>
-            <span class="stewie-live" id="stewie-live" hidden></span>
-          </div>
-          <p class="tool-desc" id="stewie-sub">Video pipeline on the Oracle box — queue, uploads &amp; views</p>
-          <div class="stewie-stats" id="stewie-stats" hidden></div>
-          <div class="tool-hero-row stewie-actions">
-            <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>
-            <button class="btn" id="btn-stewie-render">🎬 Render</button>
-            <button class="btn" id="btn-stewie-upload">⬆ Upload approved</button>
-          </div>
-          <ul id="stewie-list" class="list stewie-list"></ul>
-          <pre id="stewie-log" class="muted-sm stewie-log" hidden></pre>
-        </div>
-
         <div class="tool-grid">
+          <button class="tool-tile" id="tile-stewie" type="button">
+            <span class="tool-ico">🎬</span>
+            <span class="tool-tname">Stewie Studio</span>
+            <span class="tool-tdesc" id="tile-stewie-sub">Video pipeline — queue, uploads &amp; channel stats</span>
+          </button>
           <button class="tool-tile" id="btn-home" type="button">
             <span class="tool-ico">↻</span>
             <span class="tool-tname">Refresh Home note</span>
@@ -369,6 +358,38 @@
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="code"><span class="ti">❯</span><span>Code</span></button>
     </nav>
+  </div>
+
+  <!-- STEWIE STUDIO (full-screen, opened from the Discover tile) -->
+  <div class="reader stewie-view" id="stewie-view" hidden>
+    <div class="reader-main">
+      <header class="reader-head">
+        <button class="icon-btn" id="stewie-back" aria-label="Back">←</button>
+        <h2>Stewie Studio</h2>
+        <span class="stewie-live" id="stewie-live" hidden></span>
+      </header>
+      <div class="seg sv-tabs" id="stewie-tabs">
+        <button class="seg-btn active" data-sv="queue" type="button">Queue</button>
+        <button class="seg-btn" data-sv="stats" type="button">Stats</button>
+      </div>
+      <div class="reader-scroll">
+        <div class="sv-pane" id="sv-queue">
+          <div class="tool-hero-row stewie-actions">
+            <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>
+            <button class="btn" id="btn-stewie-render">🎬 Render</button>
+            <button class="btn" id="btn-stewie-upload">⬆ Upload approved</button>
+          </div>
+          <div class="stewie-stats" id="stewie-stats" hidden></div>
+          <ul id="stewie-list" class="list stewie-list"></ul>
+          <div class="sv-listfoot muted-sm" id="stewie-listfoot" hidden></div>
+          <button class="btn sm sv-logbtn" id="btn-stewie-log" type="button">Show run log</button>
+          <pre id="stewie-log" class="muted-sm stewie-log" hidden></pre>
+        </div>
+        <div class="sv-pane" id="sv-stats" hidden>
+          <div id="stewie-analytics" class="sv-analytics"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Sheets / overlays -->

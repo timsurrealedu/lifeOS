@@ -461,7 +461,6 @@ $('#btn-home').addEventListener('click', () =>
   startStream(withProvider('/api/home/stream'), { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
 
 async function loadDiscover() {
-  loadStewie();   // independent + fail-soft (box may be asleep); don't block vault tools on it
   try {
     const [needs, ideas] = await Promise.all([api('/api/needs-filing'), api('/api/ideas')]);
     state.ideas = ideas.items || [];
@@ -488,58 +487,95 @@ $('#tile-playground').addEventListener('click', () => {
 $('#tile-editor').addEventListener('click', () => {
   window.open(`${location.protocol}//${location.hostname}:7681`, '_blank');
 });
+$('#tile-stewie').addEventListener('click', openStewie);
 
-/* ---------- Stewie Studio (video pipeline on the Oracle box) ---------- */
+/* ---------- Stewie Studio (video pipeline on the Oracle box) ----------
+   Its own full-screen view (opened from the Discover tile) so the queue never
+   clutters Discover. Queue tab = filterable/capped list; Stats tab = channel graph. */
 const STATUS_ICON = { pending: '🕓', approved: '✅', uploaded: '🚀', rejected: '🚫' };
+const STEWIE_CAP = 40;   // list never renders more than this — filter to find the rest
+let stewieVideos = [], stewieVideoStats = null;
+
 function setStewieLive(on, label) {
   const el = $('#stewie-live');
   el.hidden = false; el.textContent = label; el.classList.toggle('off', !on);
 }
+function openStewie() {
+  state.stewieFilter = 'all';
+  $('#stewie-view').hidden = false;
+  stewieTab('queue');
+  loadStewie();
+}
+function closeStewie() { $('#stewie-view').hidden = true; }
+function stewieTab(which) {
+  $$('#stewie-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.sv === which));
+  $('#sv-queue').hidden = which !== 'queue';
+  $('#sv-stats').hidden = which !== 'stats';
+  if (which === 'stats') loadStewieStats();
+}
+$('#stewie-back').addEventListener('click', closeStewie);
+$('#stewie-tabs').addEventListener('click', (e) => { const b = e.target.closest('.seg-btn'); if (b) stewieTab(b.dataset.sv); });
+
 async function loadStewie() {
-  const ul = $('#stewie-list'), stats = $('#stewie-stats');
+  const stats = $('#stewie-stats');
   try {
     const { videos } = await api('/api/stewie/videos');
-    const counts = videos.reduce((m, v) => ((m[v.status] = (m[v.status] || 0) + 1), m), {});
+    stewieVideos = videos; stewieVideoStats = null;
     setStewieLive(true, 'box online');
-    stats.hidden = false;
-    const pillDefs = [['pending', counts.pending || 0], ['approved', counts.approved || 0], ['uploaded', counts.uploaded || 0]];
+    const counts = videos.reduce((m, v) => ((m[v.status] = (m[v.status] || 0) + 1), m), {});
+    const pillDefs = [['all', videos.length], ['pending', counts.pending || 0], ['approved', counts.approved || 0], ['uploaded', counts.uploaded || 0]];
     if (counts.rejected) pillDefs.push(['rejected', counts.rejected]);
-    stats.innerHTML =
-      `<span class="stewie-pill"><b>${videos.length}</b> videos</span>` +
-      pillDefs.map(([k, n]) => `<span class="stewie-pill st-${k}"><b>${n}</b> ${k}</span>`).join('');
-    ul.innerHTML = '';
-    for (const v of videos.slice(0, 12)) {
-      const li = document.createElement('li');
-      li.className = 'list-item';
-      const yt = v.youtube_id
-        ? ` · <a href="https://youtu.be/${esc(v.youtube_id)}" target="_blank">youtube</a><span data-yt="${esc(v.youtube_id)}"></span>` : '';
-      const s = esc(v.stamp), notFinal = v.status === 'pending' || v.status === 'approved';
-      const actions = [
-        !v.local_deleted ? `<button class="crumb-btn" data-watch="${s}">▶</button>` : '',
-        v.status === 'pending' ? `<button class="crumb-btn" data-approve="${s}">Approve</button>` : '',
-        notFinal ? `<button class="crumb-btn danger" data-reject="${s}">Reject</button>` : '',
-        !v.local_deleted ? `<button class="crumb-btn danger" data-del="${s}" title="Delete local file to free storage">🗑</button>` : '',
-      ].join(' ');
-      li.innerHTML = `<span class="li-emoji">${STATUS_ICON[v.status] || '🎞'}</span>
-        <div class="li-main"><div class="li-title">${esc(v.title || v.topic || v.stamp)}</div>
-        <div class="li-sub">${s} · ${esc(v.status)}${v.local_deleted ? ' · file removed' : ''}${yt}</div></div>
-        <span class="crumb-r">${actions}</span>`;
-      ul.appendChild(li);
-    }
-    // views ride in lazily — the box asks YouTube, which can be slow / unconfigured
-    api('/api/stewie/stats').then(({ stats }) => {
-      for (const el of $$('[data-yt]', ul)) {
-        const s = stats[el.dataset.yt];
-        if (s) el.textContent = ` · ${Number(s.viewCount || 0).toLocaleString()} views · ${s.likeCount || 0} 👍`;
-      }
-    }).catch(() => {});
+    stats.hidden = false;
+    stats.innerHTML = pillDefs.map(([k, n]) =>
+      `<button class="stewie-pill st-${k}" data-filter="${k}"><b>${n}</b> ${k === 'all' ? 'all' : k}</button>`).join('');
+    renderStewieQueue();
+    // per-video views ride in lazily — the box asks YouTube, which can be slow / unconfigured
+    api('/api/stewie/stats').then(({ stats }) => { stewieVideoStats = stats; applyVideoStats(); }).catch(() => {});
   } catch (e) {
     setStewieLive(false, 'box unreachable');
-    stats.hidden = true;
-    ul.innerHTML = '';
+    stats.hidden = true; $('#stewie-list').innerHTML = ''; $('#stewie-listfoot').hidden = true;
     toast('Stewie: ' + e.message);
   }
 }
+function stewieVideoLi(v) {
+  const li = document.createElement('li');
+  li.className = 'list-item';
+  const s = esc(v.stamp), notFinal = v.status === 'pending' || v.status === 'approved';
+  const yt = v.youtube_id
+    ? ` · <a href="https://youtu.be/${esc(v.youtube_id)}" target="_blank">youtube</a><span data-yt="${esc(v.youtube_id)}"></span>` : '';
+  const actions = [
+    !v.local_deleted ? `<button class="crumb-btn" data-watch="${s}">▶</button>` : '',
+    v.status === 'pending' ? `<button class="crumb-btn" data-approve="${s}">Approve</button>` : '',
+    notFinal ? `<button class="crumb-btn danger" data-reject="${s}">Reject</button>` : '',
+    !v.local_deleted ? `<button class="crumb-btn danger" data-del="${s}" title="Delete local file to free storage">🗑</button>` : '',
+  ].join(' ');
+  li.innerHTML = `<span class="li-emoji">${STATUS_ICON[v.status] || '🎞'}</span>
+    <div class="li-main"><div class="li-title">${esc(v.title || v.topic || v.stamp)}</div>
+    <div class="li-sub">${s} · ${esc(v.status)}${v.local_deleted ? ' · file removed' : ''}${yt}</div></div>
+    <span class="crumb-r">${actions}</span>`;
+  return li;
+}
+function renderStewieQueue() {
+  const ul = $('#stewie-list'), foot = $('#stewie-listfoot'), f = state.stewieFilter || 'all';
+  $$('#stewie-stats [data-filter]').forEach((p) => p.classList.toggle('active', p.dataset.filter === f));
+  const list = f === 'all' ? stewieVideos : stewieVideos.filter((v) => v.status === f);
+  ul.innerHTML = '';
+  for (const v of list.slice(0, STEWIE_CAP)) ul.appendChild(stewieVideoLi(v));
+  foot.hidden = list.length <= STEWIE_CAP;
+  if (!foot.hidden) foot.textContent = `showing ${STEWIE_CAP} of ${list.length} — filter to narrow`;
+  applyVideoStats();
+}
+function applyVideoStats() {
+  if (!stewieVideoStats) return;
+  for (const el of $$('#stewie-list [data-yt]')) {
+    const d = stewieVideoStats[el.dataset.yt];
+    if (d) el.textContent = ` · ${Number(d.viewCount || 0).toLocaleString()} views · ${d.likeCount || 0} 👍`;
+  }
+}
+$('#stewie-stats').addEventListener('click', (e) => {
+  const p = e.target.closest('[data-filter]'); if (!p) return;
+  state.stewieFilter = p.dataset.filter; renderStewieQueue();
+});
 async function stewieAct(btn, url, stamp, okMsg) {
   btn.disabled = true;
   try {
@@ -571,11 +607,75 @@ $('#btn-stewie-upload').addEventListener('click', async (e) => {
   catch (err) { toast(err.message); }
   finally { e.target.disabled = false; e.target.textContent = '⬆ Upload approved'; }
 });
+$('#btn-stewie-log').addEventListener('click', showStewieLog);
 async function showStewieLog() {
   try {
     const { log } = await api('/api/stewie/log');
     const pre = $('#stewie-log'); pre.textContent = log; pre.hidden = false;
   } catch {}
+}
+
+/* ---- Stats tab: channel growth (daily snapshots) + monetization path ---- */
+// Tiny inline SVG line chart — no library. Sparse data is fine; <2 points shows an empty state.
+function growthChart(label, values, color) {
+  if (values.length < 2) return '<div class="sv-spark-empty muted-sm">collecting daily — the line fills in from here</div>';
+  const w = 300, h = 68, pad = 6, max = Math.max(...values), min = Math.min(...values), range = (max - min) || 1;
+  const pts = values.map((v, i) => [pad + (i / (values.length - 1)) * (w - 2 * pad), h - pad - ((v - min) / range) * (h - 2 * pad)]);
+  const line = pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg class="sv-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${label} over time">
+    <polygon points="${pad},${h - pad} ${line} ${w - pad},${h - pad}" fill="${color}" opacity=".13"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${color}"/></svg>`;
+}
+function metricCard(label, series, color) {
+  const cur = series[series.length - 1] || 0, first = series[0] || 0, delta = cur - first;
+  const deltaTag = series.length > 1
+    ? `<span class="sv-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta.toLocaleString()}</span>` : '';
+  return `<div class="sv-metric">
+    <div class="sv-metric-top"><span class="sv-metric-label">${label}</span>${deltaTag}</div>
+    <div class="sv-metric-val">${Number(cur).toLocaleString()}</div>
+    ${growthChart(label, series, color)}</div>`;
+}
+async function loadStewieStats() {
+  const wrap = $('#stewie-analytics');
+  wrap.innerHTML = '<p class="muted-sm">Loading channel stats…</p>';
+  try {
+    const [{ analytics }, { videos }, { stats }] = await Promise.all([
+      api('/api/stewie/analytics'), api('/api/stewie/videos'), api('/api/stewie/stats'),
+    ]);
+    const now = analytics.now || {}, H = analytics.history || [];
+    if (!H.length && !now.subs && now.subs !== 0) {
+      wrap.innerHTML = `<p class="muted-sm">Channel stats unavailable — ${esc(analytics.error || 'box or YouTube creds offline')}.</p>`;
+      return;
+    }
+    const subs = now.subs || 0, GOAL = 1000, pct = Math.min(100, subs / GOAL * 100);
+    const top = videos.filter((v) => v.youtube_id)
+      .map((v) => ({ title: v.title || v.stamp, views: Number((stats[v.youtube_id] || {}).viewCount || 0) }))
+      .sort((a, b) => b.views - a.views).slice(0, 5);
+    const maxV = Math.max(...top.map((t) => t.views), 1);
+    wrap.innerHTML = `
+      ${now.title ? `<div class="sv-channel">${esc(now.title)}</div>` : ''}
+      <div class="sv-metrics">
+        ${metricCard('Subscribers', H.map((r) => r.subs), 'var(--accent)')}
+        ${metricCard('Total views', H.map((r) => r.views), 'var(--sage)')}
+        ${metricCard('Videos', H.map((r) => r.videos), 'var(--cyan, var(--accent))')}
+      </div>
+      <div class="sv-card">
+        <div class="sv-card-h">Path to monetization</div>
+        <div class="sv-prog"><div class="sv-prog-fill" style="width:${pct}%"></div></div>
+        <p class="muted-sm">${subs.toLocaleString()} / ${GOAL.toLocaleString()} subscribers. The Partner Program also needs ~4,000 watch-hours; revenue tracking turns on once the channel is monetized.</p>
+      </div>
+      <div class="sv-card">
+        <div class="sv-card-h">Top videos by views</div>
+        ${top.length && maxV > 1 ? top.map((t) => `<div class="sv-bar">
+          <div class="sv-bar-label">${esc(t.title)}</div>
+          <div class="sv-bar-track"><div class="sv-bar-fill" style="width:${(t.views / maxV * 100).toFixed(1)}%"></div></div>
+          <div class="sv-bar-val">${t.views.toLocaleString()}</div></div>`).join('')
+        : `<p class="muted-sm">No views yet on your uploaded videos.</p>`}
+      </div>
+      <p class="muted-sm sv-note">Growth is snapshotted once a day — the graphs fill in over time. ${H.length} day${H.length === 1 ? '' : 's'} recorded so far.</p>`;
+  } catch (e) { wrap.innerHTML = `<p class="muted-sm">Stats unavailable — ${esc(e.message)}</p>`; }
 }
 
 /* ---------- Inbox ---------- */
