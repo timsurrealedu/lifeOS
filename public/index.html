@@ -114,7 +114,7 @@
       <!-- DISCOVER -->
       <section class="view" data-view="discover" hidden>
         <div class="view-head vhead">
-          <div class="crumb-row"><span class="crumb"></span><span class="crumb-r">8 Tools</span></div>
+          <div class="crumb-row"><span class="crumb"></span><span class="crumb-r">9 Tools</span></div>
           <div class="title-row"><h2>Discover</h2></div>
           <p class="vsub">tools that run over your vault</p>
         </div>
@@ -136,6 +136,22 @@
             <button class="btn primary" id="btn-find">Search</button>
           </div>
           <ul id="find-results" class="list find-results"></ul>
+        </div>
+
+        <div class="card tool-hero stewie">
+          <div class="stewie-head">
+            <h3 class="tool-title">Stewie Studio</h3>
+            <span class="stewie-live" id="stewie-live" hidden></span>
+          </div>
+          <p class="tool-desc" id="stewie-sub">Video pipeline on the Oracle box — queue, uploads &amp; views</p>
+          <div class="stewie-stats" id="stewie-stats" hidden></div>
+          <div class="tool-hero-row stewie-actions">
+            <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>
+            <button class="btn" id="btn-stewie-render">🎬 Render</button>
+            <button class="btn" id="btn-stewie-upload">⬆ Upload approved</button>
+          </div>
+          <ul id="stewie-list" class="list stewie-list"></ul>
+          <pre id="stewie-log" class="muted-sm stewie-log" hidden></pre>
         </div>
 
         <div class="tool-grid">

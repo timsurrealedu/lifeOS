@@ -461,6 +461,7 @@ $('#btn-home').addEventListener('click', () =>
   startStream(withProvider('/api/home/stream'), { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
 
 async function loadDiscover() {
+  loadStewie();   // independent + fail-soft (box may be asleep); don't block vault tools on it
   try {
     const [needs, ideas] = await Promise.all([api('/api/needs-filing'), api('/api/ideas')]);
     state.ideas = ideas.items || [];
@@ -487,6 +488,81 @@ $('#tile-playground').addEventListener('click', () => {
 $('#tile-editor').addEventListener('click', () => {
   window.open(`${location.protocol}//${location.hostname}:7681`, '_blank');
 });
+
+/* ---------- Stewie Studio (video pipeline on the Oracle box) ---------- */
+const STATUS_ICON = { pending: '🕓', approved: '✅', uploaded: '🚀' };
+function setStewieLive(on, label) {
+  const el = $('#stewie-live');
+  el.hidden = false; el.textContent = label; el.classList.toggle('off', !on);
+}
+async function loadStewie() {
+  const ul = $('#stewie-list'), stats = $('#stewie-stats');
+  try {
+    const { videos } = await api('/api/stewie/videos');
+    const counts = videos.reduce((m, v) => ((m[v.status] = (m[v.status] || 0) + 1), m), {});
+    setStewieLive(true, 'box online');
+    stats.hidden = false;
+    stats.innerHTML =
+      `<span class="stewie-pill"><b>${videos.length}</b> videos</span>` +
+      [['pending', counts.pending || 0], ['approved', counts.approved || 0], ['uploaded', counts.uploaded || 0]]
+        .map(([k, n]) => `<span class="stewie-pill st-${k}"><b>${n}</b> ${k}</span>`).join('');
+    ul.innerHTML = '';
+    for (const v of videos.slice(0, 12)) {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      const yt = v.youtube_id
+        ? ` · <a href="https://youtu.be/${esc(v.youtube_id)}" target="_blank">youtube</a><span data-yt="${esc(v.youtube_id)}"></span>` : '';
+      li.innerHTML = `<span class="li-emoji">${STATUS_ICON[v.status] || '🎞'}</span>
+        <div class="li-main"><div class="li-title">${esc(v.title || v.topic || v.stamp)}</div>
+        <div class="li-sub">${esc(v.stamp)} · ${esc(v.status)}${yt}</div></div>
+        <span class="crumb-r">
+          <button class="crumb-btn" data-watch="${esc(v.stamp)}">▶</button>
+          ${v.status === 'pending' ? `<button class="crumb-btn" data-approve="${esc(v.stamp)}">Approve</button>` : ''}
+        </span>`;
+      ul.appendChild(li);
+    }
+    // views ride in lazily — the box asks YouTube, which can be slow / unconfigured
+    api('/api/stewie/stats').then(({ stats }) => {
+      for (const el of $$('[data-yt]', ul)) {
+        const s = stats[el.dataset.yt];
+        if (s) el.textContent = ` · ${Number(s.viewCount || 0).toLocaleString()} views · ${s.likeCount || 0} 👍`;
+      }
+    }).catch(() => {});
+  } catch (e) {
+    setStewieLive(false, 'box unreachable');
+    stats.hidden = true;
+    ul.innerHTML = '';
+    toast('Stewie: ' + e.message);
+  }
+}
+$('#stewie-list').addEventListener('click', async (e) => {
+  const w = e.target.closest('[data-watch]'), a = e.target.closest('[data-approve]');
+  if (w) window.open('/api/stewie/video/' + w.dataset.watch, '_blank');
+  if (a) {
+    a.disabled = true;
+    try { await api('/api/stewie/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stamps: [a.dataset.approve] }) }); toast('Approved'); loadStewie(); }
+    catch (err) { toast(err.message); a.disabled = false; }
+  }
+});
+$('#btn-stewie-refresh').addEventListener('click', () => { loadStewie(); showStewieLog(); });
+$('#btn-stewie-render').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await api('/api/stewie/render', { method: 'POST' }); toast('Render started on the box (~3 min) — hit ↻ later'); }
+  catch (err) { toast(err.message); }
+  finally { e.target.disabled = false; }
+});
+$('#btn-stewie-upload').addEventListener('click', async (e) => {
+  e.target.disabled = true; e.target.textContent = '⬆ Uploading…';
+  try { const { out } = await api('/api/stewie/upload', { method: 'POST' }); toast(out.trim().split('\n').pop() || 'Done'); loadStewie(); }
+  catch (err) { toast(err.message); }
+  finally { e.target.disabled = false; e.target.textContent = '⬆ Upload approved'; }
+});
+async function showStewieLog() {
+  try {
+    const { log } = await api('/api/stewie/log');
+    const pre = $('#stewie-log'); pre.textContent = log; pre.hidden = false;
+  } catch {}
+}
 
 /* ---------- Inbox ---------- */
 async function refreshInbox() {

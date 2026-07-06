@@ -1288,6 +1288,41 @@ body.dragging-tree .tree-row { touch-action: none; }
 .tool-hero-row { display: flex; gap: 10px; align-items: stretch; }
 .tool-hero-row .tool-input { flex: 1; margin: 0; }
 .tool-hero-row .btn { flex: none; padding: 11px 22px; }
+
+/* ---- Stewie Studio ---- */
+.stewie-head { display: flex; align-items: center; gap: 10px; }
+.stewie .tool-desc { margin-bottom: 12px; }
+.stewie-live {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--sage); display: inline-flex; align-items: center; gap: 5px;
+}
+.stewie-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--sage); }
+.stewie-live.off { color: var(--faint); }
+.stewie-live.off::before { background: var(--faint); }
+/* status pills for the queue counts */
+.stewie-stats { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 14px; }
+.stewie-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .04em; color: var(--muted); white-space: nowrap;
+}
+.stewie-pill b { color: var(--text); font-weight: 700; }
+.stewie-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.stewie-pill.st-pending::before  { background: var(--accent); }
+.stewie-pill.st-approved::before { background: var(--sage); }
+.stewie-pill.st-uploaded::before { background: var(--cyan, var(--accent)); }
+/* let the action buttons wrap instead of overflowing on a phone */
+.stewie-actions { flex-wrap: wrap; }
+.stewie-actions .btn { flex: 1 1 auto; min-width: 44%; padding: 11px 16px; }
+.stewie-actions .btn.primary { flex-basis: 100%; }
+.stewie-list { margin-top: 14px; }
+.stewie-list:empty { display: none; }
+.stewie-list .crumb-r { gap: 10px; }
+.stewie-log {
+  white-space: pre-wrap; max-height: 200px; overflow: auto; margin-top: 12px;
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+  padding: 12px; line-height: 1.5;
+}
 .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tool-tile {
   display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;

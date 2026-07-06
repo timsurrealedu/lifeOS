@@ -19,6 +19,7 @@ import {
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
+import { listVideos, videoStats, approve as stewieApprove, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -506,6 +507,26 @@ app.post('/api/push/unsubscribe', (req, res) => {
   try { unsubscribe(String((req.body || {}).endpoint || '')); ok(res, {}); }
   catch (e) { fail(res, e); }
 });
+
+// ---- Stewie Studio (video pipeline on the Oracle box, over SSH) ----
+app.get('/api/stewie/videos', async (_req, res) => {
+  try { ok(res, { videos: await listVideos() }); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/stewie/stats', async (_req, res) => ok(res, { stats: await videoStats() }));
+app.post('/api/stewie/approve', async (req, res) => {
+  try { ok(res, { out: await stewieApprove(req.body?.stamps || [], !!req.body?.all) }); }
+  catch (e) { fail(res, e); }
+});
+app.post('/api/stewie/upload', async (_req, res) => {
+  try { ok(res, { out: await uploadApproved() }); } catch (e) { fail(res, e, 502); }
+});
+app.post('/api/stewie/render', async (_req, res) => {
+  try { ok(res, { out: await renderNow() }); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/stewie/log', async (_req, res) => {
+  try { ok(res, { log: await tailLog() }); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/stewie/video/:stamp', (req, res) => streamVideo(req.params.stamp, res));
 
 // ---- Config ----
 app.get('/api/config', (_req, res) => {
