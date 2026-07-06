@@ -994,6 +994,7 @@ function showReader(title, html, path = null) {
   state.readerPath = path;
   $('#reader-edit').hidden = !path;
   $('#reader-chat').hidden = !path;
+  $('#reader-share').hidden = !path;
   // New note open → drop any prior tutor conversation and collapse the dock.
   state.noteChat = []; closeNoteChat();
   renderReaderProps(path ? state.readerContent : '');
@@ -1398,6 +1399,16 @@ function closeReader() {
 $('#reader-back').addEventListener('click', closeReader);
 $('#reader-edit').addEventListener('click', () => {
   if (state.readerPath) openEditorFor(state.readerPath, $('#reader-title').textContent);
+});
+// Share the note as text — on mobile this opens the native sheet (WhatsApp, etc.);
+// on desktop (no Web Share API) fall back to copying the markdown to the clipboard.
+$('#reader-share').addEventListener('click', async () => {
+  const title = $('#reader-title').textContent;
+  const text = splitFM(state.readerContent).body.trim();
+  try {
+    if (navigator.share) await navigator.share({ title, text });
+    else { await navigator.clipboard.writeText(text); toast('Copied to clipboard'); }
+  } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); }
 });
 /* ---------- Per-note tutor chat (read-only) + ➕ add-to-note ---------- */
 // On mobile the chat panel is 90vw, leaving a reader sliver visible — tapping it closes the chat.
