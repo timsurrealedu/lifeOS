@@ -10,10 +10,10 @@
   "ownerName": "Tim",
   "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku", "chat": "haiku", "search": "haiku" },
   "maxTurns": 40,
-  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> qwen -> gemini -> fallback (DeepSeek/GLM). Gemini is REST-only so on write jobs it's skipped (qwen -> fallback there). Leave a block's apiKey empty to skip it.",
-  "qwen": {
-    "_comment": "Qwen (Alibaba DashScope) Anthropic-compatible endpoint — 1st fallback. model MUST be a recognized Claude id (e.g. claude-sonnet-5), NOT 'qwen3-coder-plus' — this proxy ignores the model field but Claude Code only sends a spec-correct request for a model id it recognizes; an unrecognized id 500s against this proxy's stricter validator.",
-    "_example": { "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy", "model": "claude-sonnet-5" },
+  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> kimi -> gemini -> fallback (DeepSeek/GLM). Gemini is REST-only so on write jobs it's skipped (kimi -> fallback there). Leave a block's apiKey empty to skip it.",
+  "kimi": {
+    "_comment": "Kimi (Moonshot) Anthropic-compatible endpoint — 1st fallback. Unlike DashScope, Moonshot honours the model field, so set a real Kimi model id.",
+    "_example": { "baseUrl": "https://api.moonshot.ai/anthropic", "model": "kimi-k2-0711-preview" },
     "baseUrl": "",
     "apiKey": "",
     "model": ""

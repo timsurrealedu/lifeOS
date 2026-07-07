@@ -11,14 +11,94 @@ const api = async (path, opts) => {
 };
 const toast = (msg) => {
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
+  t.classList.remove('toast-out'); t.classList.add('toast-in');
+  clearTimeout(toast._t); toast._t = setTimeout(() => {
+    t.classList.remove('toast-in'); t.classList.add('toast-out');
+    setTimeout(() => { t.hidden = true; t.classList.remove('toast-out'); }, 300);
+  }, 2600);
 };
 
-const state = { inbox: [], notes: [], folders: null, systemFolders: [], stagingFolders: [], showStaging: false, view: 'capture', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+
+/* ---------- Animation utilities ---------- */
+const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function animate(selector, animationClass, duration = 400) {
+  if (prefersReduced()) return;
+  const els = typeof selector === 'string' ? $$(selector) : [selector];
+  els.forEach((el) => { el.classList.add(animationClass); setTimeout(() => el.classList.remove(animationClass), duration); });
+}
+function staggerChildren(parent, childSelector, animationClass = 'stagger-in', staggerMs = 50, delayMs = 0) {
+  if (prefersReduced()) return;
+  const container = typeof parent === 'string' ? $(parent) : parent;
+  if (!container) return;
+  const children = [...container.querySelectorAll(childSelector || ':scope > *')];
+  children.forEach((c, i) => { c.style.animationDelay = `${delayMs + i * staggerMs}ms`; c.classList.add(animationClass); setTimeout(() => { c.classList.remove(animationClass); c.style.animationDelay = ''; }, delayMs + i * staggerMs + 600); });
+}
+function fadeIn(el, duration = 400) {
+  if (prefersReduced()) { el.style.opacity = '1'; return; }
+  el.style.opacity = '0'; el.style.transition = `opacity ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`; requestAnimationFrame(() => { el.style.opacity = '1'; }); setTimeout(() => { el.style.transition = ''; }, duration);
+}
+function slideUp(el, duration = 500) {
+  if (prefersReduced()) { el.style.opacity = '1'; el.style.transform = ''; return; }
+  el.style.opacity = '0'; el.style.transform = 'translateY(20px)'; el.style.transition = `opacity ${duration}ms cubic-bezier(0.16, 1, 0.3, 1), transform ${duration}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+  setTimeout(() => { el.style.transition = ''; el.style.transform = ''; }, duration);
+}
+function hideLoader() {
+  const l = $('#app-loader'); if (!l) return;
+  l.style.transition = 'opacity 600ms cubic-bezier(0.16, 1, 0.3, 1)';
+  l.style.opacity = '0'; setTimeout(() => { l.hidden = true; l.style.transition = ''; l.style.opacity = '1'; }, 600);
+}
+function showSkeleton(container) {
+  const c = typeof container === 'string' ? $(container) : container;
+  if (!c) return;
+  const s = document.createElement('div');
+  s.className = 'skeleton skeleton-card'; s.innerHTML = '<div class="skeleton-text"></div><div class="skeleton-text" style="width:70%"></div>';
+  c.appendChild(s);
+  return s;
+}
+function hideSkeleton(container) {
+  const c = typeof container === 'string' ? $(container) : container;
+  if (!c) return;
+  const s = c.querySelector('.skeleton');
+  if (s) { s.style.transition = 'opacity 300ms ease'; s.style.opacity = '0'; setTimeout(() => s.remove(), 300); }
+}
+function observeAnimations() {
+  if (prefersReduced()) return;
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('enter-slide-up'); io.unobserve(e.target); } });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+  $$('.view').forEach((v) => {
+    const targets = v.querySelectorAll('.list-item, .tree-row, .task, .plan-group, .sv-metric, .sv-card, .sv-bar, .cal-cell, .bubble, .code-tree-file, .code-tree-dir');
+    targets.forEach((t) => { t.classList.add('will-animate'); io.observe(t); });
+  });
+}
+function initSpotlight() {
+  if (prefersReduced() || window.matchMedia('(pointer: coarse)').matches) return;
+  const hero = $('.hero') || $('.view[data-view="home"]');
+  if (!hero) return;
+  let sp = hero.querySelector('.spotlight');
+  if (!sp) { sp = document.createElement('div'); sp.className = 'spotlight'; sp.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity 400ms ease'; hero.style.position = 'relative'; hero.appendChild(sp); }
+  hero.addEventListener('mousemove', (e) => {
+    const r = hero.getBoundingClientRect();
+    sp.style.background = `radial-gradient(600px circle at ${e.clientX - r.left}px ${e.clientY - r.top}px, rgba(139,92,246,0.08), transparent 60%)`;
+    sp.style.opacity = '1';
+  });
+  hero.addEventListener('mouseleave', () => { sp.style.opacity = '0'; });
+}
+function initGlassHeader() {
+  const topbar = $('.topbar');
+  const views = $('#views');
+  if (!topbar || !views) return;
+  const onScroll = () => { topbar.classList.toggle('glass', views.scrollTop > 8); };
+  views.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+}
+const state = { inbox: [], notes: [], folders: null, systemFolders: [], stagingFolders: [], showStaging: false, view: 'home', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
+state._firstRender = { home: true, vault: true, plan: true, calendar: true, tools: true, code: true, stewie: true };
+state._shownViews = new Set();
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
-const THEME_BG = { dark: '#15110d', light: '#f7f4ee', netrunner: '#07090d' };
+const THEME_BG = { dark: '#0a0a0f', light: '#fafafa', netrunner: '#030508' };
 const WIDTHS = ['narrow', 'default', 'wide', 'full'];
 const WIDTH_PX = { narrow: '560px', default: 'var(--max)', wide: '960px', full: 'none' };
 const prefs = {
@@ -56,32 +136,44 @@ function applyWidth(kind, name) {
 /* ---------- Navigation ----------
    Bottom tabs map to internal views. "browse" is the merged Notes+Graph view.
    New notes are created from Browse's "+ New" or the reader sidebar. */
-const TAB_VIEW = { inbox: 'capture', browse: 'notes', plan: 'plan' };
+const TAB_VIEW = { home: 'home', vault: 'vault', plan: 'plan' };
 function show(tab) {
   if (tab !== 'code') state.prevTab = tab;                   // Code is full-screen; Back returns here
-  const view = TAB_VIEW[tab] || tab;                         // 'discover' passes through
+  const view = TAB_VIEW[tab] || tab;                         // fallback for tabs not in TAB_VIEW
+  const isFirstTime = !state._shownViews.has(view);
+  state._shownViews.add(view);
+  if (isFirstTime) state._firstRender[view] = true;
   state.view = view;
+  const prev = document.querySelector('.view:not([hidden])');
   $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
-  if (view === 'capture') renderInbox();
-  if (view === 'discover') loadDiscover();
-  if (view === 'notes') loadNotes();
+  $$('.sidenav-item').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  const next = document.querySelector('.view[data-view="' + view + '"]');
+  if (prev && next && prev !== next) {
+    if (isFirstTime) { fadeIn(next, 300); }
+  }
+  if (view === 'home') { renderInbox(); renderHomeAnalytics(); }
+  if (view === 'tools') loadDiscover();
+  if (view === 'vault') loadNotes();
   if (view === 'plan') loadPlan();
   if (view === 'code') loadCode();
 }
 $$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+$$('.sidenav-item').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
 
 // Inbox ⇄ Chat toggle (one view, like Browse's Files/Graph).
-$('#capture-seg').addEventListener('click', (e) => {
-  const b = e.target.closest('.seg-btn'); if (!b) return;
-  const chat = b.dataset.cap === 'chat';
-  $$('#capture-seg .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
-  $('.view[data-view="capture"]').classList.toggle('chat-mode', chat);  // fills the scroll area → input bar pins above the tab bar
-  $('#capture-main').hidden = chat;
-  $('#capture-chat-panel').hidden = !chat;
+function setCaptureMode(chat) {
+  $$('#capture-seg .seg-btn').forEach((x) => x.classList.toggle('active', x.dataset.cap === (chat ? 'chat' : 'inbox')));
+  // CSS drives show/hide per breakpoint off .chat on the layout (mobile swaps columns,
+  // desktop keeps the inbox and swaps only the side panel). No dead `.hidden` juggling.
+  $('.dashboard-layout').classList.toggle('chat', chat);
   $('#capture-title').textContent = chat ? 'Chat' : 'Inbox';
   if (chat) { $('#cap-crumb').textContent = 'Advisor'; renderChat(); }
   else if (window._capTick) window._capTick(); // repaint day/date now, not after the next 15s tick
+}
+$('#capture-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('.seg-btn'); if (!b) return;
+  setCaptureMode(b.dataset.cap === 'chat');
 });
 
 // Browse: Files ⇄ Graph toggle (same page, like the mockup).
@@ -100,13 +192,18 @@ $('#browse-seg').addEventListener('click', (e) => {
 
 /* ---------- Sheets ---------- */
 function openSheet(id) {
-  $('#backdrop').hidden = false;
-  $('#' + id).hidden = false;
+  const bd = $('#backdrop'); const sh = $('#' + id);
+  bd.hidden = false; sh.hidden = false;
+  bd.classList.add('backdrop-fade');
+  sh.classList.add('sheet-up');
+  setTimeout(() => { bd.classList.remove('backdrop-fade'); sh.classList.remove('sheet-up'); }, 450);
 }
 function closeSheets() {
   stopCam();
-  $('#backdrop').hidden = true;
-  $$('.sheet').forEach((s) => (s.hidden = true));
+  const bd = $('#backdrop');
+  $$('.sheet').forEach((s) => { if (!s.hidden) { s.classList.add('sheet-down'); s.style.transform = 'translateY(100%)'; s.style.transition = 'transform 350ms cubic-bezier(0.7, 0, 0.84, 0)'; setTimeout(() => { s.hidden = true; s.classList.remove('sheet-down'); s.style.transform = ''; s.style.transition = ''; }, 350); } });
+  bd.style.transition = 'opacity 300ms cubic-bezier(0.7, 0, 0.84, 0)'; bd.style.opacity = '0';
+  setTimeout(() => { bd.hidden = true; bd.style.opacity = '1'; bd.style.transition = ''; }, 300);
 }
 $('#backdrop').addEventListener('click', closeSheets);
 
@@ -147,8 +244,8 @@ document.addEventListener('click', (e) => {
   if (act === 'open-log') openLog();
   if (act === 'open-settings') openSettings();
   if (act === 'cycle-theme') cycleTheme();
-  if (act === 'open-discover') show('discover');
-  if (act === 'open-inbox') show('inbox');
+  if (act === 'open-tools') show('tools');
+  if (act === 'open-home') show('home');
 });
 
 // Theme picker inside Settings.
@@ -344,7 +441,7 @@ $('#btn-handwrite').addEventListener('click', () => {
 });
 
 /* ---------- Claude runs (SSE) ---------- */
-// Settings has one shared "run manually via" provider picker (Claude/Qwen/DeepSeek) that every
+// Settings has one shared "run manually via" provider picker (Claude/Kimi/DeepSeek) that every
 // manual trigger below (Process inbox, Weekly review, Refresh home, Auto-sort, Calendar sync) reads
 // before starting — so testing/forcing a fallback doesn't need a separate button per job.
 const manualProvider = () => { const v = $('#cfg-manual-provider')?.value; return v && v !== 'default' ? v : undefined; };
@@ -397,7 +494,7 @@ function startStream(url, { title = 'Working…', onDone } = {}) {
   return es;
 }
 
-// provider (optional, 'Qwen'/'DeepSeek') → force the run through that fallback to test it.
+// provider (optional, 'Kimi'/'DeepSeek') → force the run through that fallback to test it.
 function startProcess(provider) {
   const url = '/api/process/stream' + (provider ? '?provider=' + encodeURIComponent(provider) : '');
   startStream(url, { title: provider ? `Testing ${provider}…` : 'Processing inbox…', onDone: (_out, _code, info) => afterProcess(info) });
@@ -406,7 +503,7 @@ function startProcess(provider) {
 async function afterProcess(info) {
   await refreshInbox();
   state.notes = []; // force reload next visit
-  if (state.view === 'discover') loadDiscover();
+  if (state.view === 'tools') loadDiscover();
   toast(info && info.skipped ? 'Nothing to process' : 'Inbox processed');
 }
 
@@ -461,31 +558,50 @@ $('#btn-home').addEventListener('click', () =>
   startStream(withProvider('/api/home/stream'), { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
 
 async function loadDiscover() {
+  const toolsView = $('.view[data-view="tools"]');
+  if (toolsView && state._firstRender.tools) {
+    staggerChildren(toolsView, '.tool-tile, .tool-hero, .tool-panel', 'enter-scale', 60, 40);
+    state._firstRender.tools = false;
+  }
   try {
-    const [needs, ideas] = await Promise.all([api('/api/needs-filing'), api('/api/ideas')]);
-    state.ideas = ideas.items || [];
-    state.needs = needs.items || [];
-    const ni = state.needs.length;
-    $('#needs-sub').textContent = `${ni} note${ni === 1 ? '' : 's'} tagged #needs-filing await a home`;
-    const latest = state.ideas[0];
-    $('#ideas-sub').textContent = `Ideas/ · ${state.ideas.length} note${state.ideas.length === 1 ? '' : 's'}`
-      + (latest ? ` · latest: “${latest.name}”` : '');
-  } catch (e) { toast(e.message); }
+    if (!state.notes.length) {
+      const [{ notes }, { folders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
+      state.notes = notes; state.folders = folders;
+    }
+  } catch (e) {}
+  renderToolRecent();
+  renderToolStats();
 }
-// Idea bank → open the latest idea. Needs filing → Browse filtered to the #needs-filing tag.
-$('#tile-ideas').addEventListener('click', () => {
-  const latest = (state.ideas || [])[0];
-  if (latest) openNote(latest.path, latest.name); else toast('No ideas yet — research one above');
-});
-$('#tile-needs').addEventListener('click', () => searchByTag('needs-filing'));
+function renderToolRecent() {
+  const ul = $('#tool-recent'); if (!ul) return;
+  const recent = [...state.notes].sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, 6);
+  ul.innerHTML = '';
+  if (!recent.length) { ul.innerHTML = '<li class="empty small">No notes yet.</li>'; return; }
+  recent.forEach((n) => {
+    const li = document.createElement('li');
+    li.className = 'rn';
+    li.innerHTML = `<span class="rn-name">${esc(n.name)}</span><span class="rn-time tabular">${timeAgo(n.mtime)}</span>`;
+    li.addEventListener('click', () => openNote(n.path, n.name));
+    ul.appendChild(li);
+  });
+}
+async function renderToolStats() {
+  const el = $('#tool-stats'); if (!el) return;
+  const notes = state.notes.length;
+  const folders = (state.folders || []).length;
+  const ideas = state.notes.filter((n) => /^Ideas\//.test(n.path)).length;
+  let open = '—';
+  try { const { tasks } = await api('/api/tasks'); open = tasks.filter((t) => !t.done).length; } catch (e) {}
+  el.innerHTML = [
+    ['Notes', notes], ['Folders', folders], ['Open tasks', open], ['Ideas', ideas],
+  ].map(([lbl, val]) => `<div class="tool-stat"><span class="tool-stat-val tabular">${val}</span><span class="tool-stat-lbl">${lbl}</span></div>`).join('');
+}
+// Tidy vault → runs the same auto-sort preview flow as the Vault ✨ button.
+$('#tile-tidy').addEventListener('click', () => $('#btn-autosort').click());
 // Playground → JupyterLab, running on the same box over Tailscale (port 8888). New tab, not iframed
 // (Jupyter sets X-Frame-Options and the SW would fight it). ponytail: link out, don't embed.
 $('#tile-playground').addEventListener('click', () => {
   window.open(`${location.protocol}//${location.hostname}:8888`, '_blank');
-});
-// Editor → LazyVim (Neovim) served by ttyd on the same box over Tailscale (port 7681). New tab.
-$('#tile-editor').addEventListener('click', () => {
-  window.open(`${location.protocol}//${location.hostname}:7681`, '_blank');
 });
 $('#tile-stewie').addEventListener('click', openStewie);
 
@@ -564,6 +680,10 @@ function renderStewieQueue() {
   foot.hidden = list.length <= STEWIE_CAP;
   if (!foot.hidden) foot.textContent = `showing ${STEWIE_CAP} of ${list.length} — filter to narrow`;
   applyVideoStats();
+  if (state._firstRender.stewie) {
+    staggerChildren(ul, '.list-item', 'stagger-in', 40, 40);
+    state._firstRender.stewie = false;
+  }
 }
 function applyVideoStats() {
   if (!stewieVideoStats) return;
@@ -676,11 +796,12 @@ async function loadStewieStats() {
       </div>
       <p class="muted-sm sv-note">Growth is snapshotted once a day — the graphs fill in over time. ${H.length} day${H.length === 1 ? '' : 's'} recorded so far.</p>`;
   } catch (e) { wrap.innerHTML = `<p class="muted-sm">Stats unavailable — ${esc(e.message)}</p>`; }
+  staggerChildren(wrap, '.sv-metric, .sv-card, .sv-bar', 'enter-slide-up', 50, 40);
 }
 
 /* ---------- Inbox ---------- */
 async function refreshInbox() {
-  try { const { items } = await api('/api/inbox'); state.inbox = items; updateInboxCount(); if (state.view === 'capture') renderInbox(); }
+  try { const { items } = await api('/api/inbox'); state.inbox = items; updateInboxCount(); if (state.view === 'home') renderInbox(); }
   catch {}
 }
 function updateInboxCount() {
@@ -714,7 +835,75 @@ function renderInbox() {
     });
     ul.appendChild(li);
   });
+  if (state._firstRender.home) {
+    staggerChildren('#inbox-list', '.list-item', 'stagger-in', 50, 100);
+    state._firstRender.home = false;
+  }
+  renderGlance();
 }
+
+// Desktop Home side panel: greeting, live counts, and the next few scheduled tasks.
+// Counts come from cheap existing endpoints; failures are silent (panel just shows 0).
+async function renderGlance() {
+  const g = $('#home-glance'); if (!g) return;
+  const d = new Date(), hr = d.getHours();
+  $('#glance-greet').textContent = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  $('#glance-date').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  $('#glance-inbox').textContent = state.inbox.length;
+  try { if (!state.notes.length) { const { notes } = await api('/api/notes'); state.notes = notes; } } catch (e) {}
+  $('#glance-notes').textContent = state.notes.length;
+  try {
+    const { tasks } = await api('/api/tasks'); state.tasks = tasks;
+    const open = tasks.filter((t) => !t.done);
+    $('#glance-tasks').textContent = open.length;
+    const soon = open.filter((t) => t.date)
+      .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))).slice(0, 3);
+    const ul = $('#glance-upnext'); ul.innerHTML = '';
+    if (!soon.length) { ul.innerHTML = '<li class="glance-none">Nothing scheduled ✦</li>'; return; }
+    soon.forEach((t) => {
+      const li = document.createElement('li');
+      li.className = 'glance-item' + (t.date < todayStr() ? ' overdue' : '');
+      li.innerHTML = `<span class="glance-item-desc">${esc(t.desc)}</span>
+        <span class="glance-item-date tabular">${esc(fmtDate(t.date))}${t.time ? ' · ' + esc(t.time) : ''}</span>`;
+      li.addEventListener('click', () => show('plan'));
+      ul.appendChild(li);
+    });
+  } catch (e) {}
+}
+$('#glance-stat-inbox').addEventListener('click', () => setCaptureMode(false));
+$('#glance-stat-tasks').addEventListener('click', () => show('plan'));
+$('#glance-stat-notes').addEventListener('click', () => show('vault'));
+$('#glance-new-note').addEventListener('click', openEditor);
+$('#glance-ask').addEventListener('click', () => setCaptureMode(true));
+
+// Home eagle-eye analytics (desktop only): pulls live YouTube numbers from the Stewie box.
+// Instagram/TikTok are placeholders until wired. Crypto card stays a static placeholder.
+let _homeAnalyticsLoaded = false;
+async function renderHomeAnalytics(force) {
+  if (!$('#home-analytics')) return;
+  if (!window.matchMedia('(min-width:960px)').matches) return;   // desktop-only, don't hit the box on phones
+  if (_homeAnalyticsLoaded && !force) return;
+  _homeAnalyticsLoaded = true;
+  const status = $('#home-stewie-status');
+  try {
+    const [{ analytics }, { videos }] = await Promise.all([api('/api/stewie/analytics'), api('/api/stewie/videos')]);
+    const now = (analytics && analytics.now) || {};
+    const hasData = now.subs != null || (analytics && analytics.history && analytics.history.length);
+    if (!hasData) { status.textContent = 'offline'; status.className = 'an-status off'; return; }
+    status.textContent = 'live'; status.className = 'an-status live';
+    const subs = now.subs || 0, GOAL = 1000;
+    $('#home-yt-subs').textContent = subs.toLocaleString();
+    $('#home-yt-videos').textContent = (now.videos || 0).toLocaleString();
+    $('#home-yt-views').textContent = (now.views || 0).toLocaleString();
+    $('#home-yt-queue').textContent = videos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
+    $('#home-yt-goal').textContent = subs.toLocaleString() + ' / ' + GOAL.toLocaleString();
+    $('#home-yt-progress').style.width = Math.min(100, subs / GOAL * 100) + '%';
+  } catch (e) {
+    status.textContent = 'offline'; status.className = 'an-status off';
+    _homeAnalyticsLoaded = false;                                  // let a later visit retry
+  }
+}
+$('#home-open-studio')?.addEventListener('click', openStewie);
 
 /* ---------- Notes ---------- */
 async function loadNotes(force) {
@@ -771,12 +960,20 @@ function renderNotes() {
       li.addEventListener('click', () => openNote(n.path, n.name));
       ul.appendChild(li);
     }
+    if (state._firstRender.vault) {
+      staggerChildren(ul, '.list-item', 'stagger-in', 50, 40);
+      state._firstRender.vault = false;
+    }
     return;
   }
 
   // Default → collapsible folder tree, so courses/areas stay grouped.
   ul.className = 'tree';
   renderTreeInto(buildTree(state.notes, state.folders || []), 0, ul);
+  if (state._firstRender.vault) {
+    staggerChildren(ul, '.tree-row', 'stagger-in', 40, 40);
+    state._firstRender.vault = false;
+  }
 }
 
 // AI-only staging folders (Captures, Drafts) are hidden from the tree unless state.showStaging —
@@ -883,6 +1080,7 @@ async function runNotesTextSearch(q) {
       li.addEventListener('click', () => openNote(n.path, n.name));
       ul.appendChild(li);
     }
+    staggerChildren(ul, '.list-item', 'stagger-in', 50, 40);
   } catch (e) { if (seq === notesSearchSeq) { ul.innerHTML = ''; toast(e.message); } }
 }
 $('#notes-search').addEventListener('input', onNotesSearchInput);
@@ -1103,7 +1301,8 @@ function showReader(title, html, path = null) {
   bindWikilinks(body); bindImages(body);
   const firstOpen = !readerOpen;
   if (firstOpen) { history.pushState({ reader: true }, ''); readerOpen = true; }
-  $('#reader').hidden = false;
+  const reader = $('#reader'); reader.hidden = false;
+  slideUp(reader, 400);
   $('#reader-scroll').scrollTop = 0;
   setupReaderSidebar(firstOpen);
 }
@@ -1591,6 +1790,7 @@ function renderNoteChat() {
     thread.appendChild(wrap);
   });
   thread.scrollTop = thread.scrollHeight;
+  staggerChildren(thread, '.bubble-wrap, .bubble.me', 'stagger-in', 60, 40);
 }
 
 async function sendNoteChat(text) {
@@ -1934,7 +2134,8 @@ function setEditorMode(mode) {
 }
 function showEditor() {
   if (!editorOpen) { history.pushState({ editor: true }, ''); editorOpen = true; }
-  $('#editor').hidden = false;
+  const ed = $('#editor'); ed.hidden = false;
+  slideUp(ed, 400);
   applyEditorPrefs();
   setEditorSurface(prefs.livepreview ? 'live' : 'source');
 }
@@ -1988,6 +2189,17 @@ function closeEditor() {
   else { editorOpen = false; $('#editor').hidden = true; }
 }
 $('#btn-new-note').addEventListener('click', openEditor);
+// Trading bot placeholder — figures shown are static until wired to the Freqtrade bot.
+// "Open latest report" jumps to the newest note under the vault's Trading/ folder (where the
+// bot drops its weekly reports); Refresh is a stub until the live feed lands.
+$('#btn-trading-report')?.addEventListener('click', async () => {
+  try { if (!state.notes.length) { const { notes } = await api('/api/notes'); state.notes = notes; } } catch (e) {}
+  const reports = state.notes.filter((n) => /^Trading\//.test(n.path));
+  if (!reports.length) { toast('No report yet — the bot writes weekly into Trading/'); return; }
+  const latest = reports.sort((a, b) => (b.mtime || 0) - (a.mtime || 0))[0];
+  openNote(latest.path, latest.name);
+});
+$('#btn-trading-refresh')?.addEventListener('click', () => toast('Placeholder — live data comes from the Freqtrade bot'));
 $('#editor-cancel').addEventListener('click', closeEditor);
 
 $('#editor-save').addEventListener('click', async () => {
@@ -2212,6 +2424,11 @@ function renderPlanList(tasks) {
     for (const t of arr) g.appendChild(taskRow(t));
     wrap.appendChild(g);
   }
+  if (state._firstRender.plan) {
+    staggerChildren(wrap, '.plan-group', 'enter-slide-up', 60, 40);
+    staggerChildren(wrap, '.task', 'stagger-in', 40, 80);
+    state._firstRender.plan = false;
+  }
 }
 
 /* ----- Calendar grid ----- */
@@ -2247,6 +2464,10 @@ function renderCalendar() {
     cell.innerHTML = `<span class="cal-num">${d.getDate()}</span><span class="cal-dots">${dots}</span>`;
     cell.addEventListener('click', () => { state.calSelected = ds; renderCalendar(); });
     grid.appendChild(cell);
+  }
+  if (state._firstRender.calendar) {
+    staggerChildren(grid, '.cal-cell', 'enter-scale', 30, 20);
+    state._firstRender.calendar = false;
   }
   renderAgenda(byDate[state.calSelected] || [], state.calSelected);
 }
@@ -2324,6 +2545,7 @@ function renderChat() {
     thread.appendChild(b);
   }
   thread.scrollTop = thread.scrollHeight;
+  staggerChildren(thread, '.bubble', 'stagger-in', 60, 40);
 }
 async function sendChat(text) {
   const q = (text || '').trim();
@@ -2375,7 +2597,8 @@ async function loadGraph() {
     $('#graph-stats').textContent = `${data.nodes.length} notes · ${data.links.length} links`;
     $('#browse-nodes').textContent = data.nodes.length + ' nodes';
     state.graph = data;
-    window.LifeGraph.render($('#graph-canvas'), data, {
+    const canvas = $('#graph-canvas'); fadeIn(canvas, 500);
+    window.LifeGraph.render(canvas, data, {
       onSelect: (name, exists) => {
         const lbl = $('#graph-label');
         lbl.textContent = name + (exists ? '' : '  (no note yet)');
@@ -2411,7 +2634,7 @@ async function openSettings() {
     $('#cfg-timezone').value = config.timezone;
     $('#cfg-languages').value = config.languages;
     $('#cfg-claudePath').value = config.claudePath;
-    const qw = config.qwen || {};
+    const qw = config.kimi || {};
     $('#cfg-qw-baseUrl').value = qw.baseUrl || '';
     $('#cfg-qw-apiKey').value = qw.apiKey || '';
     $('#cfg-qw-model').value = qw.model || '';
@@ -2461,7 +2684,7 @@ $('#btn-save-cfg').addEventListener('click', async () => {
         timezone: $('#cfg-timezone').value.trim(),
         languages: $('#cfg-languages').value.trim(),
         claudePath: $('#cfg-claudePath').value.trim(),
-        qwen: {
+        kimi: {
           baseUrl: $('#cfg-qw-baseUrl').value.trim(),
           apiKey: $('#cfg-qw-apiKey').value.trim(),
           model: $('#cfg-qw-model').value.trim(),
@@ -2817,7 +3040,7 @@ let codeVim = null, codeVimMode = '', codeOpen = false;
 // phone's Back button (and #code-back) return to the previous tab instead of closing the app.
 function codeClose() {
   if (!codeOpen) return;
-  codeOpen = false; codeViewportReset(); codeToggleSidebar(false); closeCodeChat(); show(state.prevTab || 'discover');
+  codeOpen = false; codeViewportReset(); codeToggleSidebar(false); closeCodeChat(); show(state.prevTab || 'tools');
 }
 function codeKeydown(ev) {
   if (codeVim && codeVim.isEnabled() && codeVimMode && codeVimMode !== 'INSERT') return;
@@ -3344,6 +3567,13 @@ async function loadCode() {
   $('#cfg-manual-provider').value = prefs.manualProvider;
   await refreshInbox();
   await loadNotes(true);
-  show('inbox');
+  show('home');
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
+  setTimeout(hideLoader, 800);
+  setTimeout(() => { const ls = $('#loading-screen'); if (ls) ls.classList.add('hidden'); }, 900);
 })();
+
+/* ---------- Animation init ---------- */
+observeAnimations();
+initGlassHeader();
+// initSpotlight() removed: the mouse-follow glow was clipped at the view's top edge (hard cutoff).

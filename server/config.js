@@ -25,28 +25,19 @@ const DEFAULTS = {
   // mid-task at the cap — which also leaves processing half-done.
   maxTurns: 80,
   // Fallback chain, tried in order when the primary run hits a usage/rate limit:
-  //   claude → qwen → gemini → fallback (DeepSeek/GLM)
-  // qwen + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
+  //   claude → kimi → gemini → fallback (DeepSeek/GLM)
+  // kimi + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
   // working; gemini is REST-only (read-only chats + add-to-note), so on write jobs it's skipped and
-  // the chain is qwen → fallback. Empty apiKey → that link skipped.
-  //   Qwen (DashScope) → baseUrl "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
-  //   model "claude-sonnet-5" — NOT "qwen3-coder-plus". This app-scoped DashScope proxy is pinned to
-  //   one backend model and ignores whatever `model` string it's sent (verified: even a nonsense
-  //   model name gets 200'd and answered by the same qwen3-coder-plus backend). Meanwhile Claude Code
-  //   only builds a spec-correct request (system prompt as the top-level `system` field) for a model
-  //   id it recognizes as first-party; for an unrecognized id like "qwen3-coder-plus" it takes a
-  //   generic path that stuffs the system prompt into messages[0] as {role:"system"} instead —
-  //   DashScope's proxy validates strictly and 500s on that role (real Anthropic + DeepSeek's proxy
-  //   both tolerate it fine). Sending a recognized Claude model id sidesteps the bug for free, since
-  //   DashScope ignores the field anyway.
-
-  qwen: { baseUrl: '', apiKey: '', model: '' },
-  // DeepSeek/GLM Anthropic-compatible endpoint (3rd in the chain, after qwen + gemini). Examples:
+  // the chain is kimi → fallback. Empty apiKey → that link skipped.
+  //   Kimi (Moonshot) → baseUrl "https://api.moonshot.ai/anthropic", model "kimi-k2-0711-preview".
+  //   Unlike DashScope, Moonshot's Anthropic endpoint honours the model field, so use a real Kimi id.
+  kimi: { baseUrl: '', apiKey: '', model: '' },
+  // DeepSeek/GLM Anthropic-compatible endpoint (3rd in the chain, after kimi + gemini). Examples:
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
   //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
   fallback: { baseUrl: '', apiKey: '', model: '' },
   // Gemini (Google AI Studio) fallback for the read-only AI features (per-note tutor + vault chat +
-  // add-to-note) only — 2nd in the chain, after Qwen and before DeepSeek. Gemini isn't
+  // add-to-note) only — 2nd in the chain, after Kimi and before DeepSeek. Gemini isn't
   // Anthropic-compatible, so it can't drive the `claude` CLI like `fallback` does; instead the
   // server calls Gemini's REST API directly with the same (self-contained) prompt when the primary
   // run hits a usage/rate limit. Empty apiKey → disabled. Get a free key at
@@ -68,7 +59,8 @@ export function loadConfig() {
     // Deep-merge the known nested objects so a partial override (e.g. just fallback.apiKey)
     // doesn't drop the other defaults.
     cfg.models = { ...DEFAULTS.models, ...(saved.models || {}) };
-    cfg.qwen = { ...DEFAULTS.qwen, ...(saved.qwen || {}) };
+    cfg.kimi = { ...DEFAULTS.kimi, ...(saved.kimi || saved.qwen || {}) }; // migrate old `qwen` block
+    delete cfg.qwen;
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
     cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
     cfg.run = { ...DEFAULTS.run, ...(saved.run || {}) };
@@ -87,7 +79,7 @@ export const KEY_MASK = '••••••••';
 export function maskConfig(cfg) {
   const mask = (o) => ({ ...o, apiKey: o.apiKey ? KEY_MASK : '' });
   return {
-    ...cfg, qwen: mask(cfg.qwen), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini),
+    ...cfg, kimi: mask(cfg.kimi), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini),
     push: { publicKey: cfg.push.publicKey },   // privateKey never leaves the server
   };
 }
@@ -103,7 +95,7 @@ export function saveConfig(patch) {
   const cfg = { ...prev, ...patch };
   // Merge nested objects rather than letting a partial patch clobber them.
   if (patch.models) cfg.models = { ...prev.models, ...patch.models };
-  cfg.qwen = mergeProvider(prev.qwen, patch.qwen);
+  cfg.kimi = mergeProvider(prev.kimi, patch.kimi);
   cfg.fallback = mergeProvider(prev.fallback, patch.fallback);
   cfg.gemini = mergeProvider(prev.gemini, patch.gemini);
   if (patch.run) cfg.run = { ...prev.run, ...patch.run };

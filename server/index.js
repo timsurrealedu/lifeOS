@@ -260,7 +260,7 @@ function sseRun(req, res, start) {
 }
 
 app.get('/api/process/stream', (req, res) => {
-  // ?provider=Qwen|DeepSeek → force the run through that fallback to test it (skips Claude). When
+  // ?provider=Kimi|DeepSeek → force the run through that fallback to test it (skips Claude). When
   // testing we don't skip-when-idle: spawning the provider is the point even if the inbox is empty.
   const provider = String(req.query.provider || '').trim();
   // Don't even spawn claude when there's nothing to do — the inbox is empty AND no #draft notes
@@ -286,7 +286,7 @@ app.get('/api/research/stream', (req, res) => {
   sseRun(req, res, (on) => runResearch(idea, on));
 });
 
-// ?provider=Qwen|DeepSeek on any of these forces that fallback (skipping Claude), same as /api/process/stream.
+// ?provider=Kimi|DeepSeek on any of these forces that fallback (skipping Claude), same as /api/process/stream.
 app.get('/api/review/stream', (req, res) => sseRun(req, res, (on) => runWeeklyReview(on, req.query.provider || undefined)));
 app.get('/api/home/stream', (req, res) => sseRun(req, res, (on) => runRefreshHome(on, req.query.provider || undefined)));
 app.get('/api/autosort/stream', (req, res) => sseRun(req, res, (on) => runAutosort(on, req.query.provider || undefined)));

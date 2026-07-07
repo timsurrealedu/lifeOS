@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content" />
-  <meta name="theme-color" content="#0d0e12" />
+  <meta name="theme-color" content="#0a0a0f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>lifeOS</title>
@@ -14,7 +14,7 @@
   <!-- Netrunner theme display/mono type (progressive: only used under [data-theme="netrunner"]) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="/css/styles.css" />
   <script>
     // Apply the saved theme before first paint so there's no flash of the default.
@@ -26,339 +26,506 @@
   </script>
 </head>
 <body>
-  <div id="app">
-    <!-- Header -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">◇</span>
-        <span class="brand-name">life<b>OS</b></span>
-      </div>
-      <!-- CP2077 status rail (cyberpunk theme only): current date + live clock -->
-      <div class="cp-status" aria-hidden="true">
-        <span class="cp-stat date"><b id="cp-date">—</b></span>
-        <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
-      </div>
-      <div class="topbar-actions">
-        <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">◐</button>
-        <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
-        <button class="icon-btn" data-action="open-settings" title="Settings" aria-label="Settings">⚙</button>
-      </div>
-    </header>
+  <!-- Loading screen overlay (visible on first paint, hidden once app boots) -->
+  <div class="loading-screen" id="loading-screen">
+    <div class="loading-logo">
+      <span class="brand-mark pulse">◇</span>
+      <span class="loading-text">life<b>OS</b></span>
+    </div>
+  </div>
 
-    <!-- Views -->
-    <main id="views">
-      <!-- INBOX + CHAT (toggled in one view, like Browse's Files/Graph) -->
-      <section class="view" data-view="capture">
-        <div class="view-head vhead">
-          <div class="crumb-row"><span class="crumb" id="cap-crumb">—</span></div>
-          <div class="title-row">
-            <h2 id="capture-title">Inbox</h2>
-            <div class="seg" id="capture-seg">
-              <button class="seg-btn active" data-cap="inbox" type="button">Inbox</button>
-              <button class="seg-btn" data-cap="chat" type="button">Chat</button>
-            </div>
-          </div>
+  <nav class="sidenav" id="sidenav">
+    <div class="sidenav-brand">
+      <span class="brand-mark">◇</span>
+      <span class="brand-name">life<b>OS</b></span>
+    </div>
+    <ul class="sidenav-nav">
+      <li><button class="sidenav-item active" data-tab="home"><span class="sidenav-ico">◍</span><span>Home</span></button></li>
+      <li><button class="sidenav-item" data-tab="tools"><span class="sidenav-ico">◎</span><span>Tools</span></button></li>
+      <li><button class="sidenav-item" data-tab="vault"><span class="sidenav-ico">▤</span><span>Vault</span></button></li>
+      <li><button class="sidenav-item" data-tab="plan"><span class="sidenav-ico">◷</span><span>Plan</span></button></li>
+      <li><button class="sidenav-item" data-tab="code"><span class="sidenav-ico">❯</span><span>Code</span></button></li>
+    </ul>
+    <div class="sidenav-footer">
+      <button class="sidenav-foot" data-action="open-log" title="Run log" aria-label="Run log"><span class="sidenav-ico">🗒</span><span class="sidenav-flabel">Run log</span></button>
+      <button class="sidenav-foot" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme"><span class="sidenav-ico">◐</span><span class="sidenav-flabel">Theme</span></button>
+      <button class="sidenav-foot" data-action="open-settings" title="Settings" aria-label="Settings"><span class="sidenav-ico">⚙</span><span class="sidenav-flabel">Settings</span></button>
+    </div>
+  </nav>
+
+  <div id="app" data-animate="true">
+    <div class="app-loader" id="app-loader">
+      <div class="loader-ring"></div>
+      <div class="loader-text">Loading lifeOS…</div>
+    </div>
+
+    <!-- Noise texture overlay (optional premium feel) -->
+    <div class="noise-overlay" id="noise-overlay" hidden></div>
+
+    <!-- Spotlight effect (mouse-following) -->
+    <div class="spotlight" id="spotlight"></div>
+
+    <main class="main-stage" id="main-stage">
+      <!-- Header -->
+      <header class="topbar glass">
+        <div class="brand">
+          <span class="brand-mark">◇</span>
+          <span class="brand-name">life<b>OS</b></span>
         </div>
-
-        <div id="capture-main">
-        <div class="card capture-card">
-          <textarea id="capture-text" placeholder="Capture anything — sort it later." rows="3"></textarea>
-          <div id="photo-preview" class="photo-preview hidden"></div>
-          <div id="doc-preview" class="photo-preview hidden"></div>
-          <div class="capture-row">
-            <button class="chip" id="btn-camera" type="button" title="Camera" aria-label="Camera">📸</button>
-            <button class="chip" id="btn-handwrite" type="button" title="Ink" aria-label="Ink">✍️</button>
-            <label class="chip" for="attach-input" title="Attach" aria-label="Attach">📎</label>
-            <input id="attach-input" type="file" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
-            <button class="btn primary sm" id="btn-add" title="Send" aria-label="Send">➤</button>
-          </div>
+        <!-- CP2077 status rail (cyberpunk theme only): current date + live clock -->
+        <div class="cp-status" aria-hidden="true">
+          <span class="cp-stat date"><b id="cp-date">—</b></span>
+          <span class="cp-stat"><i>◷</i><b id="cp-clock">--:--</b></span>
         </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" data-action="cycle-theme" title="Switch theme" aria-label="Switch theme">◐</button>
+          <button class="icon-btn" data-action="open-log" title="Run log" aria-label="Run log">🗒</button>
+          <button class="icon-btn" data-action="open-settings" title="Settings" aria-label="Settings">⚙</button>
+        </div>
+      </header>
 
-        <button class="process-card" id="btn-process">
-          <div class="process-left">
-            <div class="process-title">Process inbox</div>
-            <div class="process-sub"><code>claude -p "process inbox"</code> · <span id="inbox-count">0</span> waiting</div>
-          </div>
-          <div class="process-icon">→</div>
-        </button>
-
-        <!-- Inbox queue -->
-        <div class="view-head sub"><h3>Queue</h3><span class="badge" id="inbox-badge">0</span></div>
-        <ul id="inbox-list" class="list"></ul>
-        <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
-        </div><!-- /capture-main -->
-
-        <!-- Chat sub-panel (toggled by the seg above) -->
-        <div id="capture-chat-panel" hidden>
-          <div class="chat-sub"><span class="dot-live">●</span> Read-only · reads your vault + calendar, never edits it<button class="chip" id="chat-clear">Clear</button></div>
-          <div id="capture-chat" class="chat-view">
-            <div class="chat-thread" id="chat-thread">
-              <div class="chat-intro" id="chat-intro">
-                <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
-                <div class="chat-chips">
-                  <button class="suggest">What should I focus on today?</button>
-                  <button class="suggest">Review today's diary</button>
-                  <button class="suggest">What's open or overdue?</button>
-                  <button class="suggest">How should I approach my next assignment?</button>
-                </div>
+      <div id="views">
+        <!-- INBOX + CHAT (toggled in one view, like Browse's Files/Graph) -->
+        <section class="view enter-slide-up" data-view="home">
+          <div class="view-head vhead">
+            <div class="crumb-row"><span class="crumb" id="cap-crumb">—</span></div>
+            <div class="title-row">
+              <h2 id="capture-title">Inbox</h2>
+              <div class="seg" id="capture-seg">
+                <button class="seg-btn active" data-cap="inbox" type="button">Inbox</button>
+                <button class="seg-btn" data-cap="chat" type="button">Chat</button>
               </div>
             </div>
-            <form class="chat-bar" id="chat-bar">
-              <input id="chat-input" class="chat-input" placeholder="Ask about your vault…" autocomplete="off" />
-              <button class="btn primary" id="chat-send" type="submit">Send</button>
-            </form>
           </div>
-        </div>
-      </section>
 
-      <!-- DISCOVER -->
-      <section class="view" data-view="discover" hidden>
-        <div class="view-head vhead">
-          <div class="crumb-row"><span class="crumb"></span><span class="crumb-r">9 Tools</span></div>
-          <div class="title-row"><h2>Discover</h2></div>
-          <p class="vsub">tools that run over your vault</p>
-        </div>
+          <div class="dashboard-layout">
+            <div class="dashboard-main">
+              <div id="capture-main">
+                <div class="card capture-card enter-scale">
+                  <div class="capture-placeholder" aria-hidden="true"><span class="capture-icon">✦</span></div>
+                  <textarea id="capture-text" placeholder="Capture anything — sort it later." rows="3"></textarea>
+                  <div id="photo-preview" class="photo-preview hidden"></div>
+                  <div id="doc-preview" class="photo-preview hidden"></div>
+                  <div class="capture-row">
+                    <button class="chip" id="btn-camera" type="button" title="Camera" aria-label="Camera">📸</button>
+                    <button class="chip" id="btn-handwrite" type="button" title="Ink" aria-label="Ink">✍️</button>
+                    <label class="chip" for="attach-input" title="Attach" aria-label="Attach">📎</label>
+                    <input id="attach-input" type="file" accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                    <button class="btn primary sm" id="btn-add" title="Send" aria-label="Send">➤</button>
+                  </div>
+                </div>
 
-        <div class="card tool-hero">
-          <h3 class="tool-title">Research an idea</h3>
-          <p class="tool-desc">Web-searches demand, competition &amp; feasibility, then writes a full note to <code>Ideas/</code></p>
-          <div class="tool-hero-row">
-            <input id="research-input" class="tool-input" placeholder="flashcards from ink notes…" />
-            <button class="btn primary" id="btn-research">Run</button>
-          </div>
-        </div>
+                <button class="process-card glow-pulse" id="btn-process">
+                  <div class="process-left">
+                    <div class="process-title">Process inbox</div>
+                    <div class="process-sub"><code>claude -p "process inbox"</code> · <span id="inbox-count">0</span> waiting</div>
+                  </div>
+                  <div class="process-icon">→</div>
+                </button>
 
-        <div class="card tool-hero">
-          <h3 class="tool-title">Find</h3>
-          <p class="tool-desc">Search your vault by meaning — “that proof trick from week 3”.</p>
-          <div class="tool-hero-row">
-            <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
-            <button class="btn primary" id="btn-find">Search</button>
-          </div>
-          <ul id="find-results" class="list find-results"></ul>
-        </div>
+                <!-- Inbox queue -->
+                <div class="view-head sub"><h3>Queue</h3><span class="badge" id="inbox-badge">0</span></div>
+                <ul id="inbox-list" class="list">
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                </ul>
+                <div class="empty small" id="inbox-empty" hidden>Inbox is clear. ✦</div>
+              </div><!-- /capture-main -->
+            </div><!-- /dashboard-main -->
 
-        <div class="tool-grid">
-          <button class="tool-tile" id="tile-stewie" type="button">
-            <span class="tool-ico">🎬</span>
-            <span class="tool-tname">Stewie Studio</span>
-            <span class="tool-tdesc" id="tile-stewie-sub">Video pipeline — queue, uploads &amp; channel stats</span>
-          </button>
-          <button class="tool-tile" id="btn-home" type="button">
-            <span class="tool-ico">↻</span>
-            <span class="tool-tname">Refresh Home note</span>
-            <span class="tool-tdesc">Rebuild your vault's Home dashboard from current state</span>
-          </button>
-          <button class="tool-tile" id="tile-ideas" type="button">
-            <span class="tool-ico">◆</span>
-            <span class="tool-tname">Idea bank</span>
-            <span class="tool-tdesc" id="ideas-sub">Ideas/ · 0 notes</span>
-          </button>
-          <button class="tool-tile" id="tile-needs" type="button">
-            <span class="tool-ico">▤</span>
-            <span class="tool-tname">Needs filing</span>
-            <span class="tool-tdesc" id="needs-sub">0 notes tagged #needs-filing await a home</span>
-          </button>
-          <button class="tool-tile" id="btn-weekly" type="button">
-            <span class="tool-ico">○</span>
-            <span class="tool-tname">Weekly review</span>
-            <span class="tool-tdesc">Summarize the week, surface loose ends</span>
-          </button>
-          <button class="tool-tile" id="tile-playground" type="button">
-            <span class="tool-ico">⌨</span>
-            <span class="tool-tname">Playground</span>
-            <span class="tool-tdesc">Run Python, C, Java &amp; .ipynb notebooks (JupyterLab, vim keys) — new tab</span>
-          </button>
-          <button class="tool-tile" id="tile-editor" type="button">
-            <span class="tool-ico">❯</span>
-            <span class="tool-tname">Editor</span>
-            <span class="tool-tdesc">LazyVim in the browser — edit &amp; compile C/Java/Python, real vim keybindings — new tab</span>
-          </button>
-        </div>
-      </section>
+            <div class="dashboard-side">
+              <!-- Desktop "at a glance" panel (fills the side column when not chatting) -->
+              <div id="home-glance" class="home-glance">
+                <div class="card glance-card">
+                  <div class="glance-greet" id="glance-greet">Welcome back</div>
+                  <div class="glance-date" id="glance-date">—</div>
+                </div>
+                <div class="glance-stats">
+                  <button class="glance-stat" id="glance-stat-inbox" type="button">
+                    <span class="glance-num tabular" id="glance-inbox">0</span>
+                    <span class="glance-lbl">in inbox</span>
+                  </button>
+                  <button class="glance-stat" id="glance-stat-tasks" type="button">
+                    <span class="glance-num tabular" id="glance-tasks">0</span>
+                    <span class="glance-lbl">open tasks</span>
+                  </button>
+                  <button class="glance-stat" id="glance-stat-notes" type="button">
+                    <span class="glance-num tabular" id="glance-notes">0</span>
+                    <span class="glance-lbl">notes</span>
+                  </button>
+                </div>
+                <div class="card glance-card glance-up">
+                  <div class="glance-h">Up next</div>
+                  <ul class="glance-list" id="glance-upnext"><li class="glance-none">Nothing scheduled ✦</li></ul>
+                </div>
+                <div class="glance-actions">
+                  <button class="btn sm" id="glance-new-note" type="button">✎ New note</button>
+                  <button class="btn sm" id="glance-ask" type="button">💬 Ask advisor</button>
+                </div>
+              </div>
 
-      <!-- BROWSE (notes + graph, toggled) -->
-      <section class="view" data-view="notes" hidden>
-        <div class="view-head vhead">
-          <div class="crumb-row">
-            <span class="crumb" id="browse-crumb">Vault</span>
-            <span class="crumb-r">
-              <button class="crumb-btn" id="btn-new-note">+ New</button>
-              <span id="browse-nodes" hidden></span>
-            </span>
-          </div>
-          <div class="title-row">
-            <h2 id="browse-title">Browse</h2>
-            <div class="seg" id="browse-seg">
-              <button class="seg-btn active" data-browse="files">Files</button>
-              <button class="seg-btn" data-browse="graph">Graph</button>
+              <!-- Chat sub-panel (toggled by the seg above; shown via .dashboard-layout.chat) -->
+              <div id="capture-chat-panel">
+                <div class="chat-sub"><span class="dot-live">●</span> Read-only · reads your vault + calendar, never edits it<button class="chip" id="chat-clear">Clear</button></div>
+                <div id="capture-chat" class="chat-view chat-animated">
+                  <div class="chat-thread" id="chat-thread">
+                    <div class="chat-intro" id="chat-intro">
+                      <p class="chat-hi">Ask me anything about your vault — I read your notes, tasks and calendar (I can't change them).</p>
+                      <div class="chat-chips">
+                        <button class="suggest">What should I focus on today?</button>
+                        <button class="suggest">Review today's diary</button>
+                        <button class="suggest">What's open or overdue?</button>
+                        <button class="suggest">How should I approach my next assignment?</button>
+                      </div>
+                    </div>
+                  </div>
+                  <form class="chat-bar" id="chat-bar">
+                    <input id="chat-input" class="chat-input" placeholder="Ask about your vault…" autocomplete="off" />
+                    <button class="btn primary" id="chat-send" type="submit">Send</button>
+                  </form>
+                </div>
+              </div>
+            </div><!-- /dashboard-side -->
+          </div><!-- /dashboard-layout -->
+
+          <!-- Eagle-eye analytics: channel reach + trading, side by side (desktop dashboard). -->
+          <div class="home-analytics" id="home-analytics">
+            <div class="analytics-card" id="home-stewie">
+              <div class="an-head">
+                <h3>📺 Channels <span class="an-tag">Stewie</span></h3>
+                <span class="an-status" id="home-stewie-status">checking…</span>
+              </div>
+              <p class="an-sub">Video pipeline reach across platforms</p>
+              <div class="platform-tiles">
+                <div class="platform-tile yt">
+                  <span class="platform-name">▶ YouTube</span>
+                  <span class="platform-metric tabular" id="home-yt-subs">—</span>
+                  <span class="platform-sub">subscribers</span>
+                </div>
+                <div class="platform-tile soon">
+                  <span class="platform-name">◎ Instagram</span>
+                  <span class="platform-metric">—</span>
+                  <span class="platform-sub">not set up</span>
+                </div>
+                <div class="platform-tile soon">
+                  <span class="platform-name">♪ TikTok</span>
+                  <span class="platform-metric">—</span>
+                  <span class="platform-sub">not set up</span>
+                </div>
+              </div>
+              <div class="an-metrics">
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-yt-videos">—</span><span class="an-metric-lbl">videos live</span></div>
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-yt-views">—</span><span class="an-metric-lbl">total views</span></div>
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-yt-queue">—</span><span class="an-metric-lbl">in queue</span></div>
+              </div>
+              <div class="an-progress-wrap">
+                <div class="an-progress-top"><span>Path to monetization</span><span class="tabular" id="home-yt-goal">— / 1,000</span></div>
+                <div class="an-progress"><div class="an-progress-fill" id="home-yt-progress" style="width:0%"></div></div>
+              </div>
+              <div class="an-actions">
+                <button class="btn primary sm" id="home-open-studio" type="button">Open Studio</button>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div id="browse-files">
-          <div class="notes-actions"><button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button><button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button><button class="icon-btn" id="btn-toggle-staging" title="Show AI staging folders (Captures, Drafts)" aria-label="Show AI staging folders">🙈</button></div>
-          <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
-          <ul id="notes-list" class="list"></ul>
-          <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
-        </div>
-
-        <div id="browse-graph" hidden>
-          <div class="graph-wrap">
-            <canvas id="graph-canvas"></canvas>
-            <div class="graph-label" id="graph-label" hidden></div>
-          </div>
-          <span class="muted-sm" id="graph-stats"></span>
-        </div>
-      </section>
-
-      <!-- PLAN (tasks list + calendar) -->
-      <section class="view" data-view="plan" hidden>
-        <div class="view-head vhead">
-          <div class="crumb-row">
-            <span class="crumb" id="plan-crumb">0 open tasks</span>
-            <span class="crumb-r">
-              <button class="icon-btn" id="btn-plan-notify" title="Enable reminders" aria-label="Enable reminders">🔔</button>
-              <button class="crumb-btn" id="btn-new-task">+ Add</button>
-            </span>
-          </div>
-          <div class="title-row"><h2>Plan</h2></div>
-          <div class="seg seg-wide" id="plan-seg">
-            <button class="seg-btn active" data-plan-view="list">List</button>
-            <button class="seg-btn" data-plan-view="calendar">Calendar</button>
-          </div>
-        </div>
-
-        <!-- List mode -->
-        <div id="plan-list">
-          <div id="plan-groups"></div>
-          <div class="empty" id="plan-empty" hidden>No tasks yet. Capture a deadline and process it.</div>
-        </div>
-
-        <!-- Calendar mode -->
-        <div id="plan-calendar" hidden>
-          <div class="cal-head">
-            <button class="icon-btn" id="cal-prev" aria-label="Previous month">‹</button>
-            <h3 id="cal-title">—</h3>
-            <button class="icon-btn" id="cal-next" aria-label="Next month">›</button>
-            <div class="spacer"></div>
-            <button class="chip" id="cal-today">Today</button>
-          </div>
-          <div class="cal-grid-head">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
-          <div class="cal-grid" id="cal-grid"></div>
-          <div class="cal-agenda" id="cal-agenda"></div>
-        </div>
-      </section>
-
-      <!-- CODE (phone-first: write + run code with an on-screen symbol bar) -->
-      <section class="view mode-scratch" data-view="code" hidden>
-        <!-- Project files sidebar (Obsidian-style): docked on the left + collapsible on desktop
-             (like the notes file sidebar), swipe-in overlay on mobile. Saved mode only. -->
-        <aside class="code-sidebar" id="code-sidebar">
-          <div class="code-sidebar-head">
-            <span class="code-sidebar-title" id="code-sidebar-title">mycode</span>
-            <div class="spacer"></div>
-            <button class="icon-btn" id="code-sidebar-new" title="New file" aria-label="New file">＋</button>
-            <button class="icon-btn" id="code-sidebar-close" title="Hide files" aria-label="Hide files">✕</button>
-          </div>
-          <div class="code-tree" id="code-tree"></div>
-          <div class="code-sidebar-resize" id="code-sidebar-resize" title="Drag to resize"></div>
-        </aside>
-
-        <div class="code-main" id="code-main">
-          <div class="code-top">
-            <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
-            <div class="seg code-mode" id="code-mode">
-              <button class="seg-btn active" data-mode="scratch" type="button">Scratch</button>
-              <button class="seg-btn" data-mode="saved" type="button">Saved</button>
+            <!-- AI crypto bot — placeholder; wires to the Freqtrade bot's weekly reports in Trading/. -->
+            <div class="analytics-card" id="trading-bot">
+              <div class="an-head">
+                <h3>🤖 AI Crypto Bot <span class="an-tag">placeholder</span></h3>
+                <span class="trading-status">Running</span>
+              </div>
+              <p class="an-sub">Freqtrade dry-run · reads weekly reports from <code>Trading/</code></p>
+              <div class="trading-stats">
+                <div class="trading-stat"><span class="trading-stat-label">Balance</span><span class="trading-stat-value tabular">$1,000</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Total P&amp;L</span><span class="trading-stat-value up tabular">+2.4%</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Open trades</span><span class="trading-stat-value tabular">3</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Win rate</span><span class="trading-stat-value tabular">61%</span></div>
+              </div>
+              <div class="trading-chart">
+                <svg viewBox="0 0 200 100" preserveAspectRatio="none">
+                  <polyline class="sparkline-fill" points="0,100 0,72 20,66 40,70 60,54 80,58 100,44 120,48 140,32 160,36 180,20 200,14 200,100" />
+                  <polyline class="sparkline" points="0,72 20,66 40,70 60,54 80,58 100,44 120,48 140,32 160,36 180,20 200,14" />
+                  <circle class="sparkline-dot" cx="200" cy="14" r="3.5" />
+                </svg>
+              </div>
+              <div class="trading-positions">
+                <h4>Open positions</h4>
+                <div class="trading-position"><span class="sym">BTC/USDT</span><span class="side long">Long</span><span class="pnl up tabular">+3.1%</span></div>
+                <div class="trading-position"><span class="sym">ETH/USDT</span><span class="side long">Long</span><span class="pnl up tabular">+1.8%</span></div>
+                <div class="trading-position"><span class="sym">SOL/USDT</span><span class="side short">Short</span><span class="pnl down tabular">-0.6%</span></div>
+              </div>
+              <div class="an-actions">
+                <button class="btn primary sm" id="btn-trading-report" type="button">Open latest report</button>
+                <button class="btn sm" id="btn-trading-refresh" type="button">↻ Refresh</button>
+              </div>
             </div>
-            <div class="spacer"></div>
-            <button class="icon-btn" id="code-chat-toggle" title="Code tutor" aria-label="Code tutor">💬</button>
-            <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
-            <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
-          </div>
-          <div class="code-subbar" id="code-subbar">
-            <button class="icon-btn code-saved-only" id="code-files" title="Project files" aria-label="Files"><span class="icon-hamburger"></span></button>
-            <input id="code-filename" class="code-filename code-saved-only" placeholder="untitled.py" spellcheck="false"
-              autocapitalize="off" autocorrect="off" autocomplete="off" />
-            <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
-            <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
-            <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
-            <div class="spacer"></div>
-            <button class="icon-btn" id="code-undo" title="Undo" aria-label="Undo">↶</button>
-            <button class="icon-btn" id="code-redo" title="Redo" aria-label="Redo">↷</button>
+          </div><!-- /home-analytics -->
+        </section>
+
+        <!-- TOOLS -->
+        <section class="view enter-slide-up" data-view="tools" hidden>
+          <div class="view-head vhead">
+            <div class="crumb-row"><span class="crumb">Toolbox</span></div>
+            <div class="title-row"><h2>Tools</h2></div>
+            <p class="vsub">tools that run over your vault</p>
           </div>
 
-          <div class="code-panel" id="code-output" hidden>
-            <div class="code-panel-head">
-              <button class="icon-btn code-collapse" id="code-output-collapse" aria-label="Collapse output" title="Collapse">▾</button>
-              <span class="code-status" id="code-status">output</span>
-              <div class="spacer"></div>
-              <button class="chip code-copy" id="code-copy">Copy</button>
-              <button class="icon-btn" id="code-output-close" title="Close" aria-label="Close output">✕</button>
-            </div>
-            <pre class="code-out-body" id="code-out-body"></pre>
-          </div>
+          <div class="tools-layout">
+            <div class="tools-hero-row">
+              <div class="card tool-hero enter-scale">
+                <h3 class="tool-title">Research an idea</h3>
+                <p class="tool-desc">Web-searches demand, competition &amp; feasibility, then writes a full note to <code>Ideas/</code></p>
+                <div class="tool-hero-row">
+                  <input id="research-input" class="tool-input" placeholder="flashcards from ink notes…" />
+                  <button class="btn primary" id="btn-research">Run</button>
+                </div>
+              </div>
 
-          <div class="code-stdin-wrap" id="code-stdin-wrap" hidden>
-            <textarea id="code-stdin" class="code-stdin" rows="2" spellcheck="false" autocapitalize="off"
-              autocorrect="off" autocomplete="off" placeholder="stdin — input fed to your program…"></textarea>
-          </div>
+              <div class="card tool-hero enter-scale">
+                <h3 class="tool-title">Find</h3>
+                <p class="tool-desc">Search your vault by meaning — "that proof trick from week 3".</p>
+                <div class="tool-hero-row">
+                  <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
+                  <button class="btn primary" id="btn-find">Search</button>
+                </div>
+                <ul id="find-results" class="list find-results"></ul>
+              </div>
+            </div><!-- /tools-hero-row -->
 
-          <div class="code-editor" id="code-editor">
-            <div class="code-gutter" id="code-gutter"><div class="code-gutter-inner" id="code-gutter-inner">1</div></div>
-            <div class="code-stack">
-              <pre class="code-hl" aria-hidden="true"><code id="code-hl-code"></code></pre>
-              <textarea id="code-body" class="code-body" spellcheck="false" autocapitalize="off" autocorrect="off"
-                autocomplete="off" wrap="off" placeholder="write code, then tap Run…"></textarea>
-            </div>
-          </div>
-
-          <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
-          <div class="code-symbols-wrap" id="code-symbols-wrap">
-            <div class="code-symbols" id="code-symbols"></div>
-            <div class="code-arrows" id="code-arrows">
-              <button class="sym code-joy" id="code-joy" type="button" aria-label="Move caret (press a direction, hold to repeat)">
-                <span class="joy-u">▲</span><span class="joy-l">◀</span><span class="joy-r">▶</span><span class="joy-d">▼</span>
+            <div class="tool-grid">
+              <button class="tool-tile" id="btn-weekly" type="button">
+                <span class="tool-ico">◷</span>
+                <span class="tool-tname">Weekly review</span>
+                <span class="tool-tdesc">Summarize the week &amp; surface loose ends into a review note</span>
+              </button>
+              <button class="tool-tile" id="tile-tidy" type="button">
+                <span class="tool-ico">✦</span>
+                <span class="tool-tname">Tidy vault</span>
+                <span class="tool-tdesc">Auto-sort loose notes into their right folders — preview before applying</span>
+              </button>
+              <button class="tool-tile" id="tile-stewie" type="button">
+                <span class="tool-ico">🎬</span>
+                <span class="tool-tname">Stewie Studio</span>
+                <span class="tool-tdesc" id="tile-stewie-sub">Video pipeline — queue, uploads &amp; channel stats</span>
               </button>
             </div>
-          </div>
-        </div>
 
-        <!-- Code tutor: read-only chat scoped to the current buffer (mirrors the per-note tutor) -->
-        <aside class="note-chat code-chat" id="code-chat" hidden>
-          <div class="note-chat-resize" id="code-chat-resize" title="Drag to resize"></div>
-          <div class="note-chat-head">
-            <span class="note-chat-title">💬 Code tutor</span>
-            <div class="spacer"></div>
-            <button class="chip" id="code-chat-clear">Clear</button>
-            <button class="icon-btn" id="code-chat-close" aria-label="Close chat">✕</button>
-          </div>
-          <div class="chat-thread" id="code-chat-thread">
-            <div class="chat-intro" id="code-chat-intro">
-              <p class="chat-hi">Ask about the code you're writing — what it does, bugs, how to improve it. I read the current buffer (read-only).</p>
+            <div class="tools-extra">
+              <div class="card tool-panel">
+                <div class="tool-panel-h">Recent notes</div>
+                <ul class="tool-recent" id="tool-recent"></ul>
+              </div>
+              <div class="card tool-panel">
+                <div class="tool-panel-h">Vault at a glance</div>
+                <div class="tool-stats" id="tool-stats"></div>
+              </div>
+            </div>
+          </div><!-- /tools-layout -->
+        </section>
+        <!-- VAULT (notes + graph, toggled) -->
+        <section class="view enter-slide-up" data-view="vault" hidden>
+          <div class="view-head vhead">
+            <div class="crumb-row">
+              <span class="crumb" id="browse-crumb">Vault</span>
+              <span class="crumb-r"><span id="browse-nodes" hidden></span></span>
+            </div>
+            <div class="title-row">
+              <h2 id="browse-title">Browse</h2>
+              <div class="seg" id="browse-seg">
+                <button class="seg-btn active" data-browse="files">Files</button>
+                <button class="seg-btn" data-browse="graph">Graph</button>
+              </div>
             </div>
           </div>
-          <form class="chat-bar" id="code-chat-bar">
-            <input id="code-chat-input" class="chat-input" placeholder="Ask about this code…" autocomplete="off" />
-            <button class="btn primary sm" id="code-chat-send" type="submit" title="Send" aria-label="Send">➤</button>
-          </form>
-        </aside>
-      </section>
 
-    </main>
+          <div class="vault-layout">
+            <div class="vault-main">
+              <div id="browse-files">
+                <div class="notes-actions">
+                  <button class="btn sm primary" id="btn-new-note">＋ New note</button>
+                  <div class="spacer"></div>
+                  <button class="icon-btn" id="btn-home" title="Refresh Home note — rebuild your vault's Home dashboard" aria-label="Refresh Home note">↻</button>
+                  <button class="icon-btn" id="btn-autosort" title="Auto-sort notes" aria-label="Auto-sort">✨</button>
+                  <button class="icon-btn" id="btn-new-folder" title="New folder" aria-label="New folder">📁</button>
+                  <button class="icon-btn" id="btn-toggle-staging" title="Show AI staging folders (Captures, Drafts)" aria-label="Show AI staging folders">🙈</button>
+                </div>
+                <input id="notes-search" class="search" type="search" placeholder="Search note text or #tags…" />
+                <ul id="notes-list" class="list">
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                  <li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li>
+                </ul>
+                <div class="empty" id="notes-empty" hidden>No notes yet — process the inbox.</div>
+              </div>
+
+              <div id="browse-graph" hidden>
+                <div class="graph-wrap">
+                  <canvas id="graph-canvas"></canvas>
+                  <div class="graph-label" id="graph-label" hidden></div>
+                </div>
+                <span class="muted-sm" id="graph-stats"></span>
+              </div>
+            </div><!-- /vault-main -->
+          </div><!-- /vault-layout -->
+        </section>
+
+        <!-- PLAN (tasks list + calendar) -->
+        <section class="view enter-slide-up" data-view="plan" hidden>
+          <div class="view-head vhead">
+            <div class="crumb-row"><span class="crumb" id="plan-crumb">0 open tasks</span></div>
+            <div class="title-row"><h2>Plan</h2></div>
+            <div class="plan-controls">
+              <button class="icon-btn" id="btn-plan-notify" title="Enable reminders" aria-label="Enable reminders">🔔</button>
+              <button class="btn sm primary" id="btn-new-task">＋ Add</button>
+              <div class="seg seg-wide" id="plan-seg">
+                <button class="seg-btn active" data-plan-view="list">List</button>
+                <button class="seg-btn" data-plan-view="calendar">Calendar</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="plan-layout list-active">
+            <div class="plan-sidebar">
+              <div id="plan-list">
+                <div id="plan-groups">
+                  <div class="plan-group skeleton-group">
+                    <div class="skeleton skeleton-title"></div>
+                    <ul class="list"><li class="skeleton-item stagger-in"><div class="skeleton skeleton-text"></div></li></ul>
+                  </div>
+                </div>
+                <div class="empty" id="plan-empty" hidden>No tasks yet. Capture a deadline and process it.</div>
+              </div>
+            </div><!-- /plan-sidebar -->
+
+            <div class="plan-main">
+              <div id="plan-calendar" hidden>
+                <div class="cal-head">
+                  <button class="icon-btn" id="cal-prev" aria-label="Previous month">‹</button>
+                  <h3 id="cal-title">—</h3>
+                  <button class="icon-btn" id="cal-next" aria-label="Next month">›</button>
+                  <div class="spacer"></div>
+                  <button class="chip" id="cal-today">Today</button>
+                </div>
+                <div class="cal-grid-head">
+                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
+                <div class="cal-grid" id="cal-grid"></div>
+                <div class="cal-agenda" id="cal-agenda"></div>
+              </div>
+            </div><!-- /plan-main -->
+          </div><!-- /plan-layout -->
+        </section>
+
+        <!-- CODE (phone-first: write + run code with an on-screen symbol bar) -->
+        <section class="view mode-scratch enter-slide-up" data-view="code" hidden>
+          <!-- Project files sidebar (Obsidian-style): docked on the left + collapsible on desktop
+               (like the notes file sidebar), swipe-in overlay on mobile. Saved mode only. -->
+          <aside class="code-sidebar" id="code-sidebar">
+            <div class="code-sidebar-head">
+              <span class="code-sidebar-title" id="code-sidebar-title">mycode</span>
+              <div class="spacer"></div>
+              <button class="icon-btn" id="code-sidebar-new" title="New file" aria-label="New file">＋</button>
+              <button class="icon-btn" id="code-sidebar-close" title="Hide files" aria-label="Hide files">✕</button>
+            </div>
+            <div class="code-tree" id="code-tree"></div>
+            <div class="code-sidebar-resize" id="code-sidebar-resize" title="Drag to resize"></div>
+          </aside>
+
+          <div class="code-main" id="code-main">
+            <div class="code-top">
+              <button class="icon-btn code-back" id="code-back" aria-label="Back">‹</button>
+              <div class="seg code-mode" id="code-mode">
+                <button class="seg-btn active" data-mode="scratch" type="button">Scratch</button>
+                <button class="seg-btn" data-mode="saved" type="button">Saved</button>
+              </div>
+              <div class="spacer"></div>
+              <button class="icon-btn" id="tile-playground" title="JupyterLab — Python / C / Java / .ipynb (new tab)" aria-label="Open JupyterLab">🔬</button>
+              <button class="icon-btn" id="code-chat-toggle" title="Code tutor" aria-label="Code tutor">💬</button>
+              <button class="icon-btn" id="code-stdin-toggle" title="Program input (stdin)" aria-label="Toggle input">⇥</button>
+              <button class="btn primary code-run" id="code-run"><span class="code-run-ico">▶</span><span>Run</span></button>
+            </div>
+            <div class="code-subbar" id="code-subbar">
+              <button class="icon-btn code-saved-only" id="code-files" title="Project files" aria-label="Files"><span class="icon-hamburger"></span></button>
+              <input id="code-filename" class="code-filename code-saved-only" placeholder="untitled.py" spellcheck="false"
+                autocapitalize="off" autocorrect="off" autocomplete="off" />
+              <button class="icon-btn code-save code-saved-only" id="code-save" title="Save to your synced folder" aria-label="Save">💾</button>
+              <select id="code-lang" class="code-lang code-scratch-only" aria-label="Language"></select>
+              <span class="code-scratch-note code-scratch-only">scratchpad · not saved</span>
+              <div class="spacer"></div>
+              <button class="icon-btn" id="code-undo" title="Undo" aria-label="Undo">↶</button>
+              <button class="icon-btn" id="code-redo" title="Redo" aria-label="Redo">↷</button>
+            </div>
+
+            <div class="code-panel" id="code-output" hidden>
+              <div class="code-panel-head">
+                <button class="icon-btn code-collapse" id="code-output-collapse" aria-label="Collapse output" title="Collapse">▾</button>
+                <span class="code-status" id="code-status">output</span>
+                <div class="spacer"></div>
+                <button class="chip code-copy" id="code-copy">Copy</button>
+                <button class="icon-btn" id="code-output-close" title="Close" aria-label="Close output">✕</button>
+              </div>
+              <pre class="code-out-body" id="code-out-body"></pre>
+            </div>
+
+            <div class="code-stdin-wrap" id="code-stdin-wrap" hidden>
+              <textarea id="code-stdin" class="code-stdin" rows="2" spellcheck="false" autocapitalize="off"
+                autocorrect="off" autocomplete="off" placeholder="stdin — input fed to your program…"></textarea>
+            </div>
+
+            <div class="code-editor" id="code-editor">
+              <div class="code-gutter" id="code-gutter"><div class="code-gutter-inner" id="code-gutter-inner">1</div></div>
+              <div class="code-stack">
+                <pre class="code-hl" aria-hidden="true"><code id="code-hl-code"></code></pre>
+                <textarea id="code-body" class="code-body" spellcheck="false" autocapitalize="off" autocorrect="off"
+                  autocomplete="off" wrap="off" placeholder="write code, then tap Run…"></textarea>
+              </div>
+            </div>
+
+            <div class="vim-status" id="code-vim-status" hidden><span class="mode">NORMAL</span><span class="vim-pending" id="code-vim-pending"></span></div>
+            <div class="code-symbols-wrap" id="code-symbols-wrap">
+              <div class="code-symbols" id="code-symbols"></div>
+              <div class="code-arrows" id="code-arrows">
+                <button class="sym code-joy" id="code-joy" type="button" aria-label="Move caret (press a direction, hold to repeat)">
+                  <span class="joy-u">▲</span><span class="joy-l">◀</span><span class="joy-r">▶</span><span class="joy-d">▼</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Code tutor: read-only chat scoped to the current buffer (mirrors the per-note tutor) -->
+          <aside class="note-chat code-chat chat-animated" id="code-chat" hidden>
+            <div class="note-chat-resize" id="code-chat-resize" title="Drag to resize"></div>
+            <div class="note-chat-head">
+              <span class="note-chat-title">💬 Code tutor</span>
+              <div class="spacer"></div>
+              <button class="chip" id="code-chat-clear">Clear</button>
+              <button class="icon-btn" id="code-chat-close" aria-label="Close chat">✕</button>
+            </div>
+            <div class="chat-thread" id="code-chat-thread">
+              <div class="chat-intro" id="code-chat-intro">
+                <p class="chat-hi">Ask about the code you're writing — what it does, bugs, how to improve it. I read the current buffer (read-only).</p>
+              </div>
+            </div>
+            <form class="chat-bar" id="code-chat-bar">
+              <input id="code-chat-input" class="chat-input" placeholder="Ask about this code…" autocomplete="off" />
+              <button class="btn primary sm" id="code-chat-send" type="submit" title="Send" aria-label="Send">➤</button>
+            </form>
+          </aside>
+        </section>
+
+      </div><!-- /views -->
+
+    </main><!-- /main-stage -->
 
     <!-- Bottom nav -->
-    <nav class="tabbar">
-      <button class="tab active" data-tab="inbox"><span class="ti">◍</span><span>Inbox</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
-      <button class="tab" data-tab="discover"><span class="ti">◎</span><span>Discover</span></button>
-      <button class="tab" data-tab="browse"><span class="ti">▤</span><span>Browse</span></button>
+    <nav class="tabbar" id="tabbar">
+      <button class="tab active" data-tab="home"><span class="ti">◍</span><span>Home</span><i class="dot" id="tab-inbox-dot" hidden></i></button>
+      <button class="tab" data-tab="tools"><span class="ti">◎</span><span>Tools</span></button>
+      <button class="tab" data-tab="vault"><span class="ti">▤</span><span>Vault</span></button>
       <button class="tab" data-tab="plan"><span class="ti">◷</span><span>Plan</span></button>
       <button class="tab" data-tab="code"><span class="ti">❯</span><span>Code</span></button>
     </nav>
-  </div>
+  </div><!-- /app -->
 
   <!-- STEWIE STUDIO (full-screen, opened from the Discover tile) -->
   <div class="reader stewie-view" id="stewie-view" hidden>
@@ -467,16 +634,16 @@
       <p class="hint">CLIs used to turn attached PDFs/Office files into text when you process the inbox.</p>
       <div id="cfg-doctools" class="doctools"></div>
 
-      <p class="hint">When a run hits its usage/rate limit it cascades down this chain: <b>Claude → Qwen → Gemini → DeepSeek</b>. Leave a key empty to skip that link. (Gemini is REST-only, so on write jobs like Process inbox it's skipped and the order there is Qwen → DeepSeek.)</p>
+      <p class="hint">When a run hits its usage/rate limit it cascades down this chain: <b>Claude → Kimi → Gemini → DeepSeek</b>. Leave a key empty to skip that link. (Gemini is REST-only, so on write jobs like Process inbox it's skipped and the order there is Kimi → DeepSeek.)</p>
 
-      <h4 class="settings-sub">Qwen fallback <small>(1st)</small></h4>
-      <p class="hint">Qwen (Alibaba DashScope) exposes an Anthropic-compatible endpoint, so the same workflow keeps running. Get a key at <code>dashscope.console.aliyun.com</code>.</p>
-      <label>Base URL<input id="cfg-qw-baseUrl" placeholder="https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy" autocomplete="off" /></label>
+      <h4 class="settings-sub">Kimi fallback <small>(1st)</small></h4>
+      <p class="hint">Kimi (Moonshot) exposes an Anthropic-compatible endpoint, so the same workflow keeps running. Get a key at <code>platform.moonshot.ai</code>.</p>
+      <label>Base URL<input id="cfg-qw-baseUrl" placeholder="https://api.moonshot.ai/anthropic" autocomplete="off" /></label>
       <label>API key<input id="cfg-qw-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
-      <label>Model<input id="cfg-qw-model" placeholder="qwen3-coder-plus" autocomplete="off" /></label>
+      <label>Model<input id="cfg-qw-model" placeholder="kimi-k2-0711-preview" autocomplete="off" /></label>
 
       <h4 class="settings-sub">Gemini fallback <small>(2nd)</small></h4>
-      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when Qwen is exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
+      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when Kimi is exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
       <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
 
@@ -491,7 +658,7 @@
       <div class="settings-actions">
         <select id="cfg-manual-provider" class="settings-select">
           <option value="default">Claude (default)</option>
-          <option value="Qwen">Qwen</option>
+          <option value="Kimi">Kimi</option>
           <option value="DeepSeek">DeepSeek</option>
         </select>
       </div>
@@ -708,7 +875,7 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
     </div>
 
     <!-- Per-note tutor chat dock (slides up over the bottom of the reader) -->
-    <div class="note-chat" id="note-chat" hidden>
+    <div class="note-chat chat-animated" id="note-chat" hidden>
       <div class="note-chat-resize" id="note-chat-resize" title="Drag to resize"></div>
       <div class="note-chat-head">
         <span class="note-chat-title">💬 Tutor</span>
@@ -751,6 +918,9 @@ On the next inbox process, lifeOS polishes it — adds links, formatting & LaTeX
       </div>
     </form>
   </dialog>
+
+  <!-- Aria-live region for announcements -->
+  <div aria-live="polite" aria-atomic="true" class="sr-only" id="aria-live"></div>
 
   <div id="toast" class="toast" hidden></div>
 
