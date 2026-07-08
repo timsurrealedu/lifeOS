@@ -2641,6 +2641,7 @@ async function openSettings() {
     $('#cfg-qw-baseUrl').value = qw.baseUrl || '';
     $('#cfg-qw-apiKey').value = qw.apiKey || '';
     $('#cfg-qw-model').value = qw.model || '';
+    renderKeySavedStatus('#cfg-qw-status', 'Kimi', qw);
     const oai = config.openai || {};
     $('#cfg-openai-apiKey').value = oai.apiKey || '';
     $('#cfg-openai-model').value = oai.model || 'gpt-5.5';
@@ -2668,6 +2669,15 @@ async function openSettings() {
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
 }
+function renderKeySavedStatus(sel, label, provider) {
+  const el = $(sel); if (!el) return;
+  const saved = !!(provider && provider.apiKey);
+  const model = provider && provider.model ? ` · model: ${provider.model}` : '';
+  el.className = `settings-key-status ${saved ? 'ok' : 'warn'}`;
+  el.textContent = saved
+    ? `${label} key saved on this device${model}`
+    : `${label} key is not saved on this device yet`;
+}
 // Editor preference toggles (live — apply to the editor immediately if it's open).
 $('#cfg-livepreview').addEventListener('change', (e) => { prefs.set('livepreview', e.target.checked ? '1' : '0'); if (editorOpen) setEditorSurface(e.target.checked ? 'live' : 'source'); });
 $('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); if (codeVim) codeVim.setEnabled(prefs.vim); });
@@ -2686,7 +2696,7 @@ function renderDocTools(tools) {
 }
 $('#btn-save-cfg').addEventListener('click', async () => {
   try {
-    const { vaultDir } = await api('/api/config', {
+    const { vaultDir, config } = await api('/api/config', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         vaultPath: $('#cfg-vaultPath').value.trim(),
@@ -2719,6 +2729,9 @@ $('#btn-save-cfg').addEventListener('click', async () => {
         },
       }),
     });
+    const qw = config.kimi || {};
+    $('#cfg-qw-apiKey').value = qw.apiKey || '';
+    renderKeySavedStatus('#cfg-qw-status', 'Kimi', qw);
     $('#cfg-vaultdir').textContent = '→ ' + vaultDir;
     state.notes = []; state.graph = null;
     await refreshInbox();

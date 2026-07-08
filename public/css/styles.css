@@ -1471,6 +1471,9 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
 .seg-btn:hover { color: var(--text); }
 .seg-btn:active { transform: scale(0.95); }
 .seg-btn.active { background: var(--ink); color: var(--ink-fg); box-shadow: var(--shadow-sm); }
+.settings-key-status { margin: -2px 2px 10px; font-size: 12px; color: var(--muted); }
+.settings-key-status.ok { color: var(--sage); }
+.settings-key-status.warn { color: var(--danger); }
 
 /* ============================================================================
    26. Calendar
