@@ -10,7 +10,8 @@
   "ownerName": "Tim",
   "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku", "chat": "haiku", "search": "haiku" },
   "maxTurns": 40,
-  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> kimi -> gemini -> fallback (DeepSeek/GLM). Gemini is REST-only so on write jobs it's skipped (kimi -> fallback there). Leave a block's apiKey empty to skip it.",
+  "defaultProvider": "claude",
+  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> kimi -> openai/chatgpt -> qwen -> fallback (DeepSeek/GLM). ChatGPT is REST-only so write jobs skip it. Tutor jobs use Gemini first, then kimi -> openai -> qwen -> fallback. Leave a block's apiKey empty to skip it.",
   "kimi": {
     "_comment": "Kimi (Moonshot) Anthropic-compatible endpoint — 1st fallback. Unlike DashScope, Moonshot honours the model field, so set a real Kimi model id.",
     "_example": { "baseUrl": "https://api.moonshot.ai/anthropic", "model": "kimi-k2-0711-preview" },
@@ -18,10 +19,21 @@
     "apiKey": "",
     "model": ""
   },
+  "openai": {
+    "_comment": "OpenAI / ChatGPT REST fallback for read-only AI features.",
+    "apiKey": "",
+    "model": "gpt-5.5"
+  },
   "gemini": {
     "_comment": "Google AI Studio key — 2nd fallback (REST-only: read-only chats + add-to-note, not write jobs). Free key at https://aistudio.google.com/apikey.",
     "apiKey": "",
     "model": "gemini-2.5-flash"
+  },
+  "qwen": {
+    "_comment": "Qwen DashScope Claude Code proxy. Anthropic-compatible, but currently flaky for some accounts.",
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
+    "apiKey": "",
+    "model": "claude-sonnet-5"
   },
   "fallback": {
     "_comment": "DeepSeek/GLM Anthropic-compatible endpoint — 3rd fallback. Leave apiKey empty to disable.",

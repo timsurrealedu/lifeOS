@@ -375,12 +375,12 @@
             <div class="crumb-row"><span class="crumb" id="plan-crumb">0 open tasks</span></div>
             <div class="title-row"><h2>Plan</h2></div>
             <div class="plan-controls">
-              <button class="icon-btn" id="btn-plan-notify" title="Enable reminders" aria-label="Enable reminders">🔔</button>
-              <button class="btn sm primary" id="btn-new-task">＋ Add</button>
               <div class="seg seg-wide" id="plan-seg">
                 <button class="seg-btn active" data-plan-view="list">List</button>
                 <button class="seg-btn" data-plan-view="calendar">Calendar</button>
               </div>
+              <button class="btn sm primary" id="btn-new-task">＋ Add</button>
+              <button class="icon-btn" id="btn-plan-notify" title="Enable reminders" aria-label="Enable reminders">🔔</button>
             </div>
           </div>
 
@@ -642,24 +642,36 @@
       <label>API key<input id="cfg-qw-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-qw-model" placeholder="kimi-k2-0711-preview" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">Gemini fallback <small>(2nd)</small></h4>
-      <p class="hint">A Google AI Studio key keeps the <b>per-note tutor</b>, <b>vault chat</b> &amp; <b>➕ Add to note</b> working via Gemini when Kimi is exhausted. Free key at <code>aistudio.google.com/apikey</code>. (REST-only, so it's not used for write jobs like Process inbox.) Leave empty to disable.</p>
+      <h4 class="settings-sub">ChatGPT fallback <small>(read-only, after Kimi)</small></h4>
+      <p class="hint">OpenAI / ChatGPT fallback for tutor, chat, add-to-note, and semantic search. REST-only, so write jobs skip it.</p>
+      <label>API key<input id="cfg-openai-apiKey" type="password" placeholder="sk-..." autocomplete="off" /></label>
+      <label>Model<input id="cfg-openai-model" placeholder="gpt-5.5" autocomplete="off" /></label>
+
+      <h4 class="settings-sub">Gemini tutor primary</h4>
+      <p class="hint">A free Google AI Studio key is used first for the <b>per-note tutor</b>, <b>code tutor</b>, and <b>➕ Add to note</b>. If it runs out, the tutor falls back through Kimi → ChatGPT → Qwen → DeepSeek.</p>
       <label>API key<input id="cfg-gem-apiKey" type="password" placeholder="AIza… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-gem-model" placeholder="gemini-2.5-flash  ·  or  gemini-2.0-flash" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">DeepSeek / GLM fallback <small>(3rd)</small></h4>
+      <h4 class="settings-sub">Qwen fallback <small>(after ChatGPT)</small></h4>
+      <p class="hint">DashScope Claude Code proxy. Anthropic-compatible, but the proxy has recently returned 500s for this project.</p>
+      <label>Base URL<input id="cfg-qwen-baseUrl" placeholder="https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy" autocomplete="off" /></label>
+      <label>API key<input id="cfg-qwen-apiKey" type="password" placeholder="sk-..." autocomplete="off" /></label>
+      <label>Model<input id="cfg-qwen-model" placeholder="claude-sonnet-5" autocomplete="off" /></label>
+
+      <h4 class="settings-sub">DeepSeek / GLM fallback <small>last</small></h4>
       <p class="hint">DeepSeek and GLM also expose Anthropic-compatible endpoints, so they cover write jobs too. Leave the key empty to disable.</p>
       <label>Base URL<input id="cfg-fb-baseUrl" placeholder="https://api.deepseek.com/anthropic" autocomplete="off" /></label>
       <label>API key<input id="cfg-fb-apiKey" type="password" placeholder="sk-… (stored locally in config.json)" autocomplete="off" /></label>
       <label>Model<input id="cfg-fb-model" placeholder="deepseek-v4-pro  ·  or  glm-4.6" autocomplete="off" /></label>
 
-      <h4 class="settings-sub">Run manually via</h4>
-      <p class="hint">Forces every manual run — <b>Process inbox</b>, <b>Weekly review</b>, <b>Refresh Home</b>, <b>Auto-sort</b>, <b>Calendar sync</b> — straight through the chosen provider (skipping Claude) until switched back. Useful to test a fallback actually drives a write job, or to dodge a Claude usage limit. Save your keys first. Gemini is read-only, so it's not offered here.</p>
+      <h4 class="settings-sub">Default AI provider</h4>
+      <p class="hint">Forces manual lifeOS runs — <b>Process inbox</b>, <b>Research</b>, <b>Weekly review</b>, <b>Refresh Home</b>, <b>Auto-sort</b>, vault chat, and semantic search — through the chosen CLI-capable provider until switched back. Tutors still try Gemini first. Stewie sync supports Claude, Kimi, and DeepSeek with its current provider code.</p>
       <div class="settings-actions">
-        <select id="cfg-manual-provider" class="settings-select">
-          <option value="default">Claude (default)</option>
-          <option value="Kimi">Kimi</option>
-          <option value="DeepSeek">DeepSeek</option>
+        <select id="cfg-default-provider" class="settings-select">
+          <option value="claude">Claude (default)</option>
+          <option value="kimi">Kimi</option>
+          <option value="qwen">Qwen</option>
+          <option value="deepseek">DeepSeek</option>
         </select>
       </div>
 

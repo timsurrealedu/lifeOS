@@ -108,7 +108,6 @@ const prefs = {
   get livepreview() { return localStorage.getItem('lifeos.livepreview') !== '0'; }, // default on
   get noteWidth() { return localStorage.getItem('lifeos.noteWidth') || 'default'; },
   get codeWidth() { return localStorage.getItem('lifeos.codeWidth') || 'full'; },
-  get manualProvider() { return localStorage.getItem('lifeos.manualProvider') || 'default'; },
   set(key, val) { localStorage.setItem('lifeos.' + key, val); },
 };
 function applyTheme(name) {
@@ -441,11 +440,15 @@ $('#btn-handwrite').addEventListener('click', () => {
 });
 
 /* ---------- Claude runs (SSE) ---------- */
-// Settings has one shared "run manually via" provider picker (Claude/Kimi/DeepSeek) that every
+// Settings has one shared "default AI provider" picker (Claude/Kimi/DeepSeek) that every
 // manual trigger below (Process inbox, Weekly review, Refresh home, Auto-sort, Calendar sync) reads
 // before starting — so testing/forcing a fallback doesn't need a separate button per job.
-const manualProvider = () => { const v = $('#cfg-manual-provider')?.value; return v && v !== 'default' ? v : undefined; };
-const withProvider = (url) => { const p = manualProvider(); return p ? url + '?provider=' + encodeURIComponent(p) : url; };
+const manualProvider = () => { const v = $('#cfg-default-provider')?.value; return v && v !== 'claude' ? v : undefined; };
+const withProvider = (url) => {
+  const p = manualProvider();
+  if (!p) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'provider=' + encodeURIComponent(p);
+};
 $('#btn-process').addEventListener('click', () => startProcess(manualProvider()));
 
 // Generic streaming-run sheet. Collects stdout and hands it to onDone(text, exitCode).
@@ -511,7 +514,7 @@ async function afterProcess(info) {
 $('#btn-research').addEventListener('click', () => {
   const idea = $('#research-input').value.trim();
   if (!idea) { toast('Type an idea first'); return; }
-  startStream('/api/research/stream?idea=' + encodeURIComponent(idea), {
+  startStream(withProvider('/api/research/stream?idea=' + encodeURIComponent(idea)), {
     title: 'Researching idea…',
     onDone: (_out, code) => {
       if (code === 0) { $('#research-input').value = ''; state.notes = []; loadDiscover(); }
@@ -2638,6 +2641,13 @@ async function openSettings() {
     $('#cfg-qw-baseUrl').value = qw.baseUrl || '';
     $('#cfg-qw-apiKey').value = qw.apiKey || '';
     $('#cfg-qw-model').value = qw.model || '';
+    const oai = config.openai || {};
+    $('#cfg-openai-apiKey').value = oai.apiKey || '';
+    $('#cfg-openai-model').value = oai.model || 'gpt-5.5';
+    const qwen = config.qwen || {};
+    $('#cfg-qwen-baseUrl').value = qwen.baseUrl || '';
+    $('#cfg-qwen-apiKey').value = qwen.apiKey || '';
+    $('#cfg-qwen-model').value = qwen.model || 'claude-sonnet-5';
     const fb = config.fallback || {};
     $('#cfg-fb-baseUrl').value = fb.baseUrl || '';
     $('#cfg-fb-apiKey').value = fb.apiKey || '';
@@ -2654,7 +2664,7 @@ async function openSettings() {
     $('#cfg-livepreview').checked = prefs.livepreview;
     $('#cfg-vim').checked = prefs.vim;
     $('#cfg-lineno').checked = prefs.lineno;
-    $('#cfg-manual-provider').value = prefs.manualProvider;
+    $('#cfg-default-provider').value = config.defaultProvider || 'claude';
     openSheet('sheet-settings');
   } catch (e) { toast(e.message); }
 }
@@ -2662,7 +2672,6 @@ async function openSettings() {
 $('#cfg-livepreview').addEventListener('change', (e) => { prefs.set('livepreview', e.target.checked ? '1' : '0'); if (editorOpen) setEditorSurface(e.target.checked ? 'live' : 'source'); });
 $('#cfg-vim').addEventListener('change', (e) => { prefs.set('vim', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); if (codeVim) codeVim.setEnabled(prefs.vim); });
 $('#cfg-lineno').addEventListener('change', (e) => { prefs.set('lineno', e.target.checked ? '1' : '0'); if (editorOpen) applyEditorPrefs(); });
-$('#cfg-manual-provider').addEventListener('change', (e) => { prefs.set('manualProvider', e.target.value); });
 // Document-extraction tooling health (powers processing of attached docx/pptx/xlsx).
 function renderDocTools(tools) {
   const box = $('#cfg-doctools'); if (!box) return;
@@ -2684,10 +2693,20 @@ $('#btn-save-cfg').addEventListener('click', async () => {
         timezone: $('#cfg-timezone').value.trim(),
         languages: $('#cfg-languages').value.trim(),
         claudePath: $('#cfg-claudePath').value.trim(),
+        defaultProvider: $('#cfg-default-provider').value,
         kimi: {
           baseUrl: $('#cfg-qw-baseUrl').value.trim(),
           apiKey: $('#cfg-qw-apiKey').value.trim(),
           model: $('#cfg-qw-model').value.trim(),
+        },
+        openai: {
+          apiKey: $('#cfg-openai-apiKey').value.trim(),
+          model: $('#cfg-openai-model').value.trim() || 'gpt-5.5',
+        },
+        qwen: {
+          baseUrl: $('#cfg-qwen-baseUrl').value.trim(),
+          apiKey: $('#cfg-qwen-apiKey').value.trim(),
+          model: $('#cfg-qwen-model').value.trim() || 'claude-sonnet-5',
         },
         fallback: {
           baseUrl: $('#cfg-fb-baseUrl').value.trim(),
@@ -3564,7 +3583,6 @@ async function loadCode() {
   applyTheme(prefs.theme);
   applyWidth('note', prefs.noteWidth);
   applyWidth('code', prefs.codeWidth);
-  $('#cfg-manual-provider').value = prefs.manualProvider;
   await refreshInbox();
   await loadNotes(true);
   show('home');

@@ -13,6 +13,7 @@ export const isRunning = () => writeRunning;
 // too — it now only *generates* the overview text (the server does the actual file insertion), so
 // it needs no edit tools and can fall back to Gemini/DeepSeek exactly like the chats.
 const READ_ONLY = new Set(['chat', 'notechat', 'codechat', 'noteaugment', 'search']);
+const TUTOR_FIRST_GEMINI = new Set(['notechat', 'codechat', 'noteaugment']);
 
 // Separator the augment run prints between its placement anchor and the markdown body. Kept rare so
 // it won't collide with note content; the server splits on it (see parseAugment + the augment route).
@@ -282,52 +283,57 @@ function describeStreamEvent(ev) {
  * the reply back as `out` lines (the exact shape the chat routes already consume). Text in, text out,
  * no tools — which is all a chat needs, since the note's content + conversation are inside the prompt.
  */
-async function streamGemini(prompt, onEvent, release) {
+function emitText(text, onEvent) {
+  const lines = String(text || '').split('\n');
+  lines.forEach((line, i) => {
+    if (line || i < lines.length - 1) onEvent('log', { channel: 'out', line });
+  });
+}
+
+async function directGemini(prompt, onEvent) {
   const gem = loadConfig().gemini || {};
   const model = (gem.model || 'gemini-2.5-flash').trim();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
-  // Re-frame Gemini's token chunks into whole lines (like claude's stdout pump) so the route's
-  // per-line newline handling reconstructs the markdown correctly.
-  let line = '';
-  const emit = (t) => { line += t; const parts = line.split('\n'); line = parts.pop(); for (const p of parts) onEvent('log', { channel: 'out', line: p }); };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   try {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gem.apiKey },
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
     });
-    if (!resp.ok || !resp.body) {
+    if (!resp.ok) {
       const t = await resp.text().catch(() => '');
-      release(); onEvent('error', { message: `Gemini fallback failed (HTTP ${resp.status}). ${t.slice(0, 180)}` });
-      return;
+      return { ok: false, limited: resp.status === 429 || LIMIT_RE.test(t), message: `Gemini failed (HTTP ${resp.status}). ${t.slice(0, 180)}` };
     }
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    let sse = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      sse += dec.decode(value, { stream: true });
-      let nl;
-      while ((nl = sse.indexOf('\n')) >= 0) {
-        const raw = sse.slice(0, nl).trim(); sse = sse.slice(nl + 1);
-        if (!raw.startsWith('data:')) continue;
-        const payload = raw.slice(5).trim();
-        if (!payload || payload === '[DONE]') continue;
-        try {
-          const j = JSON.parse(payload);
-          if (j.error) { release(); onEvent('error', { message: `Gemini: ${j.error.message || 'error'}` }); return; }
-          const txt = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-          if (txt) emit(txt);
-        } catch { /* a data line is one complete JSON object; ignore any stray non-JSON */ }
-      }
-    }
-    if (line) onEvent('log', { channel: 'out', line }); // flush trailing partial line
-    release();
-    onEvent('done', { code: 0, usedFallback: 'gemini' });
+    const j = await resp.json();
+    emitText((j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join(''), onEvent);
+    return { ok: true };
   } catch (e) {
-    release();
-    onEvent('error', { message: 'Gemini fallback error: ' + e.message });
+    return { ok: false, limited: LIMIT_RE.test(e.message), message: 'Gemini error: ' + e.message };
+  }
+}
+
+async function directOpenAI(prompt, onEvent) {
+  const oai = loadConfig().openai || {};
+  const model = (oai.model || 'gpt-5.5').trim();
+  try {
+    const resp = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${oai.apiKey}` },
+      body: JSON.stringify({ model, input: prompt }),
+    });
+    const raw = await resp.text();
+    if (!resp.ok) {
+      return { ok: false, limited: resp.status === 429 || LIMIT_RE.test(raw), message: `ChatGPT failed (HTTP ${resp.status}). ${raw.slice(0, 180)}` };
+    }
+    let j; try { j = JSON.parse(raw); } catch { j = {}; }
+    const text = j.output_text || (j.output || [])
+      .flatMap((item) => item.content || [])
+      .map((c) => c.text || c.output_text || '')
+      .join('');
+    emitText(text, onEvent);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, limited: LIMIT_RE.test(e.message), message: 'ChatGPT error: ' + e.message };
   }
 }
 
@@ -351,6 +357,11 @@ function buildArgs({ kind, prompt, model, maxTurns }) {
  * `claude` CLI (any kind); Gemini is REST-only (read-only kinds only: chats + add-to-note, so on
  * write kinds it's skipped and the chain is Kimi → DeepSeek). Returns a kill function.
  */
+function savedProvider(cfg) {
+  const p = String(cfg.defaultProvider || '').trim().toLowerCase();
+  return p && p !== 'claude' ? p : undefined;
+}
+
 function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
   const readOnly = READ_ONLY.has(kind);
   if (!readOnly && writeRunning) {
@@ -372,9 +383,12 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
   const cli = (c, name) => (c && c.apiKey && c.baseUrl)
     ? { type: 'cli', name, model: c.model, baseUrl: c.baseUrl, apiKey: c.apiKey } : null;
   const gem = cfg.gemini || {};
+  const oai = cfg.openai || {};
   const chain = [
+    (readOnly && TUTOR_FIRST_GEMINI.has(kind) && gem.apiKey) ? { type: 'gemini', name: 'Gemini', model: gem.model } : null,
     cli(cfg.kimi, 'Kimi'),
-    (readOnly && gem.apiKey) ? { type: 'gemini', name: 'Gemini', model: gem.model } : null,
+    (readOnly && oai.apiKey) ? { type: 'openai', name: 'ChatGPT', model: oai.model } : null,
+    cli(cfg.qwen, 'Qwen'),
     cli(cfg.fallback, 'DeepSeek'),
   ].filter(Boolean);
 
@@ -382,12 +396,13 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
   // so you can confirm e.g. Kimi actually drives a write job, without waiting to hit a real usage
   // limit. Narrow the chain to just that provider; an unconfigured/ineligible name errors clearly.
   let startStep = -1;
-  if (forceProvider) {
-    const want = String(forceProvider).toLowerCase();
+  const providerOverride = forceProvider || (TUTOR_FIRST_GEMINI.has(kind) ? undefined : savedProvider(cfg));
+  if (providerOverride) {
+    const want = String(providerOverride).toLowerCase();
     const only = chain.find((p) => p.name.toLowerCase() === want);
     if (!only) {
       release();
-      onEvent('error', { message: `Can't test "${forceProvider}": it isn't configured${readOnly ? '' : ", or it can't run write jobs (Gemini is read-only)"}.` });
+      onEvent('error', { message: `Can't use "${providerOverride}": it isn't configured${readOnly ? '' : ", or it can't run write jobs (ChatGPT/Gemini are read-only)"}.` });
       return () => {};
     }
     chain.length = 0; chain.push(only);                 // same array object → closures still see it
@@ -410,10 +425,17 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
       return true;
     };
 
-    // Gemini: a direct REST call (no child process); it streams + settles (done/error) on its own.
-    if (provider && provider.type === 'gemini') {
-      onEvent('status', { state: 'fallback', kind, provider: provider.name, model: provider.model || 'gemini' });
-      streamGemini(prompt, onEvent, release);
+    // Gemini/OpenAI: direct REST calls (no child process) for read-only prompts.
+    if (provider && (provider.type === 'gemini' || provider.type === 'openai')) {
+      onEvent('status', { state: 'fallback', kind, provider: provider.name, model: provider.model || provider.type });
+      const direct = provider.type === 'gemini' ? directGemini : directOpenAI;
+      direct(prompt, onEvent).then((r) => {
+        if (killed) return;
+        if (r.ok) { release(); onEvent('done', { code: 0, usedFallback: provider.name }); return; }
+        if (r.limited && advance(`${provider.name} hit a limit`)) return;
+        release();
+        onEvent('error', { message: r.message || `${provider.name} failed` });
+      });
       return;
     }
 
@@ -501,8 +523,8 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
 export const runProcessInbox = (onEvent, forceProvider) =>
   spawnClaude({ kind: 'process', prompt: PROMPTS.process(), forceProvider }, onEvent);
 
-export const runResearch = (idea, onEvent) =>
-  spawnClaude({ kind: 'research', prompt: PROMPTS.research(loadConfig(), idea) }, onEvent);
+export const runResearch = (idea, onEvent, forceProvider) =>
+  spawnClaude({ kind: 'research', prompt: PROMPTS.research(loadConfig(), idea), forceProvider }, onEvent);
 
 export const runWeeklyReview = (onEvent, forceProvider) =>
   spawnClaude({ kind: 'review', prompt: PROMPTS.review(loadConfig()), forceProvider }, onEvent);
@@ -521,9 +543,9 @@ export const runCodeChat = (name, lang, code, messages, onEvent) =>
 
 // Semantic search: streams nothing to the client — the route collects the model's plain-text path
 // list and hands it back on `done` as `raw` (so the route can validate the paths against the vault).
-export function runAiSearch(query, onEvent) {
+export function runAiSearch(query, onEvent, forceProvider) {
   let out = '';
-  return spawnClaude({ kind: 'search', prompt: PROMPTS.search(loadConfig(), query) }, (type, data) => {
+  return spawnClaude({ kind: 'search', prompt: PROMPTS.search(loadConfig(), query), forceProvider }, (type, data) => {
     if (type === 'log' && data.channel === 'out') out += data.line + '\n';
     else if (type === 'done') onEvent('done', { ...data, raw: out });
     else onEvent(type, data);                              // status (incl. fallback) + error

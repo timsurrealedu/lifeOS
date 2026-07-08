@@ -486,10 +486,11 @@ body {
 .plan-sidebar { display: flex; flex-direction: column; gap: 12px; }
 .view[data-view="plan"] .vhead { max-width: var(--page-max); margin-left: auto; margin-right: auto; }
 .plan-controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.plan-controls .seg { flex: 1; margin-top: 0; }
-.plan-controls .seg-btn { padding: 10px 0; }
+/* Compact, equal-size capsules (not a stretched full-width toggle). */
+.plan-controls .seg { flex: none; width: auto; margin-top: 0; }
+.plan-controls .seg-wide .seg-btn { flex: none; min-width: 96px; padding: 9px 0; }
 .plan-controls .icon-btn { width: 44px; height: 44px; flex: none; }
-.plan-controls .btn.sm { height: 44px; padding: 0 18px; flex: none; }
+.plan-controls .btn.sm { height: 44px; padding: 0 20px; flex: none; }
 
 .tools-layout {
   display: flex;
@@ -1552,7 +1553,8 @@ body.dragging-tree .tree-row { touch-action: none; }
 .seg-wide { display: flex; width: 100%; margin-top: 12px; }
 .seg-wide .seg-btn { flex: 1; text-align: center; padding: 8px 0; }
 
-#browse-files .notes-actions { display: flex; gap: 7px; margin: 0 0 10px; }
+#browse-files .notes-actions { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; flex-wrap: nowrap; }
+#browse-files .search { margin-bottom: 10px; }   /* even rhythm: toolbar → search → tree */
 #browse-graph .graph-wrap { height: calc(100dvh - var(--tab-h) - 210px); }
 
 /* ============================================================================

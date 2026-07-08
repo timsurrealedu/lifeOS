@@ -19,7 +19,7 @@ import {
 import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
-import { listVideos, videoStats, channelAnalytics, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo } from './stewie.js';
+import { listVideos, videoStats, channelAnalytics, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo, syncAiProvider } from './stewie.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -259,10 +259,17 @@ function sseRun(req, res, start) {
   res.on('close', () => { clearInterval(ping); if (!res.writableEnded) kill(); });
 }
 
+// Effective provider for a manual run: explicit ?provider= wins, otherwise the saved defaultProvider.
+// 'claude' means no override (use the primary Claude run).
+function activeProvider(req) {
+  const p = String(req.query.provider || loadConfig().defaultProvider || '').trim().toLowerCase();
+  return p && p !== 'claude' ? p : undefined;
+}
+
 app.get('/api/process/stream', (req, res) => {
   // ?provider=Kimi|DeepSeek → force the run through that fallback to test it (skips Claude). When
   // testing we don't skip-when-idle: spawning the provider is the point even if the inbox is empty.
-  const provider = String(req.query.provider || '').trim();
+  const provider = activeProvider(req);
   // Don't even spawn claude when there's nothing to do — the inbox is empty AND no #draft notes
   // need optimizing. Saves a whole run's context-load tokens (matters on nightly schedules).
   if (!provider && readInboxItems().length === 0 && !hasDrafts()) {
@@ -283,13 +290,13 @@ app.get('/api/process/stream', (req, res) => {
 app.get('/api/research/stream', (req, res) => {
   const idea = String(req.query.idea || '').trim();
   if (!idea) return sseRun(req, res, (on) => { on('error', { message: 'No idea given.' }); return () => {}; });
-  sseRun(req, res, (on) => runResearch(idea, on));
+  sseRun(req, res, (on) => runResearch(idea, on, activeProvider(req)));
 });
 
 // ?provider=Kimi|DeepSeek on any of these forces that fallback (skipping Claude), same as /api/process/stream.
-app.get('/api/review/stream', (req, res) => sseRun(req, res, (on) => runWeeklyReview(on, req.query.provider || undefined)));
-app.get('/api/home/stream', (req, res) => sseRun(req, res, (on) => runRefreshHome(on, req.query.provider || undefined)));
-app.get('/api/autosort/stream', (req, res) => sseRun(req, res, (on) => runAutosort(on, req.query.provider || undefined)));
+app.get('/api/review/stream', (req, res) => sseRun(req, res, (on) => runWeeklyReview(on, activeProvider(req))));
+app.get('/api/home/stream', (req, res) => sseRun(req, res, (on) => runRefreshHome(on, activeProvider(req))));
+app.get('/api/autosort/stream', (req, res) => sseRun(req, res, (on) => runAutosort(on, activeProvider(req))));
 
 // ---- AI Chat (read-only advisor over the vault) ----
 // Plain-text streaming (not SSE) so the client can POST the conversation transcript.
@@ -422,7 +429,7 @@ app.post('/api/ai-search', (req, res) => {
       results.push({ path: n.path, name: n.name, reason: why.join('::').trim() });
     }
     ok(res, { results });
-  });
+  }, activeProvider(req));
   res.on('close', () => { if (!res.writableEnded) kill(); });
 });
 // Write your own note (in-app editor). Tagged #draft so process-inbox optimizes it later.
@@ -544,6 +551,9 @@ app.post('/api/config', (req, res) => {
   try {
     const c = saveConfig(req.body || {});
     ensureVault(c);
+    // Keep Stewie Studio's active env key in sync with lifeOS. For Claude this can only re-enable
+    // an ANTHROPIC_API_KEY already present in Stewie's env; lifeOS does not store Claude keys.
+    syncAiProvider(c.defaultProvider || 'claude').catch((e) => console.error('stewie ai sync failed:', e.message));
     ok(res, { config: maskConfig(c), vaultDir: vaultDir(c) });
   } catch (e) { fail(res, e); }
 });

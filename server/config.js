@@ -24,6 +24,9 @@ const DEFAULTS = {
   // (e.g. "make practice problems for each topic from this image") finish instead of being killed
   // mid-task at the cap — which also leaves processing half-done.
   maxTurns: 80,
+  // Default AI provider for manual runs and Stewie Studio. 'claude' uses the primary Claude CLI;
+  // 'kimi'/'gemini'/'deepseek' force that fallback. Synced to Stewie's secrets/env when changed.
+  defaultProvider: 'claude',
   // Fallback chain, tried in order when the primary run hits a usage/rate limit:
   //   claude → kimi → gemini → fallback (DeepSeek/GLM)
   // kimi + fallback expose Anthropic-compatible endpoints, so the same `claude` CLI + skills keep
@@ -32,6 +35,8 @@ const DEFAULTS = {
   //   Kimi (Moonshot) → baseUrl "https://api.moonshot.ai/anthropic", model "kimi-k2-0711-preview".
   //   Unlike DashScope, Moonshot's Anthropic endpoint honours the model field, so use a real Kimi id.
   kimi: { baseUrl: '', apiKey: '', model: '' },
+  openai: { apiKey: '', model: 'gpt-5.5' },
+  qwen: { baseUrl: 'https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy', apiKey: '', model: 'claude-sonnet-5' },
   // DeepSeek/GLM Anthropic-compatible endpoint (3rd in the chain, after kimi + gemini). Examples:
   //   DeepSeek → baseUrl "https://api.deepseek.com/anthropic", model "deepseek-v4-pro" (or -flash)
   //   GLM (Z.ai) → baseUrl "https://api.z.ai/api/anthropic",   model "glm-4.6"
@@ -59,8 +64,9 @@ export function loadConfig() {
     // Deep-merge the known nested objects so a partial override (e.g. just fallback.apiKey)
     // doesn't drop the other defaults.
     cfg.models = { ...DEFAULTS.models, ...(saved.models || {}) };
-    cfg.kimi = { ...DEFAULTS.kimi, ...(saved.kimi || saved.qwen || {}) }; // migrate old `qwen` block
-    delete cfg.qwen;
+    cfg.kimi = { ...DEFAULTS.kimi, ...(saved.kimi || {}) };
+    cfg.openai = { ...DEFAULTS.openai, ...(saved.openai || saved.chatgpt || {}) };
+    cfg.qwen = { ...DEFAULTS.qwen, ...(saved.qwen || {}) };
     cfg.fallback = { ...DEFAULTS.fallback, ...(saved.fallback || {}) };
     cfg.gemini = { ...DEFAULTS.gemini, ...(saved.gemini || {}) };
     cfg.run = { ...DEFAULTS.run, ...(saved.run || {}) };
@@ -79,7 +85,7 @@ export const KEY_MASK = '••••••••';
 export function maskConfig(cfg) {
   const mask = (o) => ({ ...o, apiKey: o.apiKey ? KEY_MASK : '' });
   return {
-    ...cfg, kimi: mask(cfg.kimi), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini),
+    ...cfg, kimi: mask(cfg.kimi), openai: mask(cfg.openai), qwen: mask(cfg.qwen), fallback: mask(cfg.fallback), gemini: mask(cfg.gemini),
     push: { publicKey: cfg.push.publicKey },   // privateKey never leaves the server
   };
 }
@@ -96,6 +102,8 @@ export function saveConfig(patch) {
   // Merge nested objects rather than letting a partial patch clobber them.
   if (patch.models) cfg.models = { ...prev.models, ...patch.models };
   cfg.kimi = mergeProvider(prev.kimi, patch.kimi);
+  cfg.openai = mergeProvider(prev.openai, patch.openai);
+  cfg.qwen = mergeProvider(prev.qwen, patch.qwen);
   cfg.fallback = mergeProvider(prev.fallback, patch.fallback);
   cfg.gemini = mergeProvider(prev.gemini, patch.gemini);
   if (patch.run) cfg.run = { ...prev.run, ...patch.run };

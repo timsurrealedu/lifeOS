@@ -301,6 +301,27 @@ login. So the `chat` kind (the vault advisor — the only one left using the cal
 has no calendar tool while on a fallback (the app surfaces a status warning when this happens); this
 is a Claude Code platform constraint, not something lifeOS can work around.
 
+## Project memory
+
+- lifeOS is a local-first personal life-management PWA with a handwriting-style note interface,
+  dashboards, and AI-assisted pipelines.
+- AI behavior is driven by `SKILL.md` re-syncs and `CLAUDE.md` seeds. The fallback chain handles
+  Claude outages, though Qwen's DashScope proxy currently 500s.
+- Production runs 24/7 on the Oracle A1 instance `newLifeOS` at `100.112.185.21:7777` over
+  Tailscale. The older `lifeos-a1` box is idle/spare.
+- SSH access to the Oracle box uses the key at
+  `C:\Users\timsurreal\Downloads\ssh-key-2026-07-02.key`.
+- The GitHub repo is `timsurrealedu/lifeOS`; pull and push over SSH.
+- Phone capture uses the PWA Web Share Target so screenshots and voice can go straight to inbox
+  without Tasker. This needs Tailscale HTTPS.
+- Code Playground is JupyterLab on `:8888`.
+- Stewie Studio is a Discover panel that drives the video pipeline on the box at `~/stewie`; box
+  `config.json` needs `stewie.host: "local"`.
+- `aiTrading` is a separate Freqtrade dry-run bot on the same Oracle box. Weekly reports write into
+  the vault's `Trading/` folder.
+- Recent work includes the desktop redesign, unified margins, dashboards, PWA cache bump, Stewie
+  Studio view, share-from-reader, and reject/delete-local-file actions.
+
 ## Layout
 
 ```

@@ -11,15 +11,25 @@
   "ownerName": "Tim",
   "models": { "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku", "chat": "haiku", "calsync": "haiku", "autosort": "haiku" },
   "maxTurns": 40,
-  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> kimi -> gemini -> fallback (DeepSeek/GLM). Gemini is REST-only so on write jobs it's skipped (kimi -> fallback there). Leave a block's apiKey empty to skip it.",
+  "defaultProvider": "claude",
+  "_fallback_chain": "On a usage/rate limit, runs cascade: claude -> kimi -> openai/chatgpt -> qwen -> fallback (DeepSeek/GLM). ChatGPT is REST-only so write jobs skip it. Tutor jobs use Gemini first, then kimi -> openai -> qwen -> fallback. Leave a block's apiKey empty to skip it.",
   "kimi": {
     "baseUrl": "https://api.moonshot.ai/anthropic",
     "apiKey": "",
     "model": "kimi-k2-0711-preview"
   },
+  "openai": {
+    "apiKey": "",
+    "model": "gpt-5.5"
+  },
   "gemini": {
     "apiKey": "",
     "model": "gemini-2.5-flash"
+  },
+  "qwen": {
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/api/v2/apps/claude-code-proxy",
+    "apiKey": "",
+    "model": "claude-sonnet-5"
   },
   "fallback": {
     "baseUrl": "https://api.deepseek.com/anthropic",
