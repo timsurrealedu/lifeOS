@@ -120,8 +120,15 @@ function providerOrder(provider) {
 }
 
 function syncedEnvFor(provider, cfg) {
+  const common = {
+    DEEPSEEK_API_KEY: cfg.fallback?.apiKey || '',
+    DEEPSEEK_MODEL: cfg.fallback?.model || '',
+    GEMINI_API_KEY: cfg.gemini?.apiKey || '',
+    GEMINI_MODEL: cfg.gemini?.model || '',
+  };
   if (provider === 'kimi') {
     return {
+      ...common,
       MOONSHOT_API_KEY: cfg.kimi?.apiKey || '',
       KIMI_BASE_URL: normalizeKimiBaseUrl(cfg.kimi?.baseUrl) || 'https://api.moonshot.ai/v1',
       KIMI_MODEL: cfg.kimi?.model || '',
@@ -130,6 +137,7 @@ function syncedEnvFor(provider, cfg) {
   }
   if (provider === 'gemini') {
     return {
+      ...common,
       GEMINI_API_KEY: cfg.gemini?.apiKey || '',
       GEMINI_MODEL: cfg.gemini?.model || '',
       LLM_PROVIDER_ORDER: providerOrder(provider),
@@ -137,12 +145,13 @@ function syncedEnvFor(provider, cfg) {
   }
   if (provider === 'deepseek') {
     return {
+      ...common,
       DEEPSEEK_API_KEY: cfg.fallback?.apiKey || '',
       DEEPSEEK_MODEL: cfg.fallback?.model || '',
       LLM_PROVIDER_ORDER: providerOrder(provider),
     };
   }
-  if (provider === 'claude') return { LLM_PROVIDER_ORDER: providerOrder(provider) };
+  if (provider === 'claude') return { ...common, LLM_PROVIDER_ORDER: providerOrder(provider) };
   return {};
 }
 
