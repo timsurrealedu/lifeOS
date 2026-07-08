@@ -105,11 +105,12 @@ const STEWIE_KEY_MAP = {
 };
 
 function normalizeKimiBaseUrl(raw) {
-  const v = String(raw || '').trim();
+  const v = String(raw || '').trim().replace(/\/+$/, '');
   if (!v) return '';
-  if (/\/v1\/?$/i.test(v)) return v.replace(/\/+$/, '');
-  if (/moonshot\.(ai|cn)\/anthropic\/?$/i.test(v)) return v.replace(/\/anthropic\/?$/i, '/v1');
-  return v.replace(/\/+$/, '');
+  // Preserve custom Kimi-compatible gateways exactly as configured; only translate the older
+  // Moonshot Anthropic-style base URL into the OpenAI-style /v1 endpoint Stewie's Python client uses.
+  if (/moonshot\.(ai|cn)\/anthropic$/i.test(v)) return v.replace(/\/anthropic$/i, '/v1');
+  return v;
 }
 
 function providerOrder(provider) {
