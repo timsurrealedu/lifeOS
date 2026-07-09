@@ -3242,7 +3242,7 @@ async function sendChat(text) {
   }
 }
 $('#chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('#chat-input').value); });
-$('#chat-clear').addEventListener('click', () => { state.chat = []; renderChat(); });
+$('#chat-clear')?.addEventListener('click', () => { state.chat = []; renderChat(); });
 // Suggestion chips (delegated; they live inside the intro).
 $('#chat-thread').addEventListener('click', (e) => {
   const s = e.target.closest('.suggest');
@@ -3852,7 +3852,7 @@ function codeSyncScroll() {
 }
 function codeHighlight() {
   const codeEl = $('#code-hl-code');
-  if (!window.hljs) return; // plain mode (textarea shows its own text)
+  if (!window.hljs) { if (codeEl) codeEl.textContent = codeTA().value; return; } // plain mode shows textarea text
   const lang = codeCurLang() || 'plaintext';
   const text = codeTA().value;
   try { codeEl.innerHTML = window.hljs.highlight(text, { language: lang, ignoreIllegal: true }).value; }
@@ -3865,6 +3865,7 @@ function codeApplyHljsMode() {
 }
 function codeLoadHljs() {
   if (window.hljs) { codeApplyHljsMode(); codeHighlight(); return; }
+  codeApplyHljsMode();
   const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/vendor/hljs/theme.css'; document.head.appendChild(l);
   const s = document.createElement('script'); s.src = '/vendor/hljs/highlight.min.js';
   s.onload = () => { codeApplyHljsMode(); codeHighlight(); };
@@ -3877,9 +3878,10 @@ function codeLoadHljs() {
 function codeViewportFit() {
   const vv = window.visualViewport, view = $('.view[data-view="code"]');
   if (!vv || !view || view.hidden) return;
-  view.style.height = vv.height + 'px'; view.style.top = vv.offsetTop + 'px';
+  view.style.height = vv.height + 'px';
+  view.style.transform = `translateY(${vv.offsetTop}px)`;
 }
-function codeViewportReset() { const v = $('.view[data-view="code"]'); if (v) { v.style.height = ''; v.style.top = ''; } }
+function codeViewportReset() { const v = $('.view[data-view="code"]'); if (v) { v.style.height = ''; v.style.transform = ''; } }
 
 // ---- mode (Scratch / Saved) ----
 function codeApplyMode() {
@@ -4250,11 +4252,18 @@ async function loadCode() {
   if (d.scratchBuffers && typeof d.scratchBuffers === 'object') codeState.scratchBuffers = d.scratchBuffers;
   if (d.file && typeof d.file === 'object') codeState.file = { name: d.file.name || '', content: d.file.content || '', dirty: !!d.file.dirty };
   if (Array.isArray(d.expanded)) codeState.expanded = new Set(d.expanded);
-  await codeLoadLangs();
-  await codeRefreshFiles();
   codeApplyMode(); codeLoadBuffer();
   if (codeVim) codeVim.setEnabled(prefs.vim);
   codeViewportFit();
+  const langBefore = codeState.scratchLang;
+  const bufferBefore = codeTA().value;
+  codeLoadLangs().then(() => {
+    if (codeState.mode === 'scratch' && codeState.scratchLang !== langBefore && codeTA().value === bufferBefore) {
+      codeSetContent(codeState.scratchBuffers[codeState.scratchLang] ?? CODE_STARTER);
+      codeHistReset();
+    }
+  });
+  codeRefreshFiles();
 }
 
 /* ---------- Boot ---------- */
@@ -4263,19 +4272,19 @@ async function loadCode() {
     applyTheme(prefs.theme);
     applyWidth('note', prefs.noteWidth);
     applyWidth('code', prefs.codeWidth);
-    await refreshInbox();
-    await loadNotes(true);
     show('home');
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
     window.__lifeosBooted = true;
+    hideLoader();
+    const ls = $('#loading-screen'); if (ls) ls.classList.add('hidden');
+    refreshInbox();
+    loadNotes(true);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
   } catch (e) {
     console.error('lifeOS boot failed:', e);
     window.__lifeosDismissLoaders?.();
     toast(e?.message || 'lifeOS failed to boot');
     return;
   }
-  setTimeout(hideLoader, 800);
-  setTimeout(() => { const ls = $('#loading-screen'); if (ls) ls.classList.add('hidden'); }, 900);
 })();
 
 /* ---------- Animation init ---------- */
