@@ -3903,13 +3903,18 @@ function codeSetScratchLang(lang) {
   codeSetContent(codeState.scratchBuffers[lang] ?? CODE_STARTER); codeHighlight(); codeSaveLS(); codeHistReset();
 }
 async function codeLoadLangs() {
+  const sel = $('#code-lang'); sel.innerHTML = '';
+  const fill = (langs) => {
+    const list = langs.length ? langs : [{ id: 'python', name: 'Python' }];
+    sel.innerHTML = '';
+    for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
+    if (!list.find((l) => l.id === codeState.scratchLang)) codeState.scratchLang = list[0].id;
+    sel.value = codeState.scratchLang;
+  };
+  fill([]);
   try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
   catch { codeState.langs = []; }
-  const list = codeState.langs.length ? codeState.langs : [{ id: 'python', name: 'Python' }];
-  const sel = $('#code-lang'); sel.innerHTML = '';
-  for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
-  if (!list.find((l) => l.id === codeState.scratchLang)) codeState.scratchLang = list[0].id;
-  sel.value = codeState.scratchLang;
+  fill(codeState.langs);
 }
 
 // ---- Saved files: project tree in the swipe-in sidebar ----
@@ -4184,6 +4189,10 @@ async function sendCodeChat(text) {
 }
 
 function codeInitOnce() {
+  $('#code-back').onclick = () => {
+    if (codeOpen && history.state && history.state.code) history.back();
+    else codeClose();
+  };
   codeBuildSymbols(); codeSetupSwipe();
   $('#code-chat-toggle').addEventListener('click', () => { $('#code-chat').hidden ? openCodeChat() : closeCodeChat(); });
   $('#code-chat-close').addEventListener('click', closeCodeChat);
@@ -4195,16 +4204,18 @@ function codeInitOnce() {
   ta.addEventListener('focus', codeViewportFit);
   ta.addEventListener('blur', codeViewportReset);
   ta.addEventListener('keydown', codeKeydown);
-  codeVim = window.LifeVim.attach(ta, {
-    onMode: (mode, pending) => {
-      codeVimMode = mode;
-      const bar = $('#code-vim-status');
-      if (!mode) { bar.hidden = true; return; }
-      bar.hidden = false; bar.dataset.mode = mode;
-      bar.querySelector('.mode').textContent = mode;
-      $('#code-vim-pending').textContent = pending || '';
-    },
-  });
+  if (window.LifeVim) {
+    codeVim = window.LifeVim.attach(ta, {
+      onMode: (mode, pending) => {
+        codeVimMode = mode;
+        const bar = $('#code-vim-status');
+        if (!mode) { bar.hidden = true; return; }
+        bar.hidden = false; bar.dataset.mode = mode;
+        bar.querySelector('.mode').textContent = mode;
+        $('#code-vim-pending').textContent = pending || '';
+      },
+    });
+  }
   $$('#code-mode .seg-btn').forEach((b) => b.addEventListener('click', () => codeSetMode(b.dataset.mode)));
   $('#code-lang').addEventListener('change', (e) => codeSetScratchLang(e.target.value));
   $('#code-filename').addEventListener('input', () => { codeState.file.name = $('#code-filename').value; codeMarkDirty(true); codeSaveLS(); codeHighlight(); });
@@ -4223,10 +4234,6 @@ function codeInitOnce() {
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
   $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
-  $('#code-back').addEventListener('click', () => {
-    if (codeOpen && history.state && history.state.code) history.back();
-    else codeClose();
-  });
   $('#code-output-collapse').addEventListener('click', () => {
     const p = $('#code-output'), c = p.classList.toggle('collapsed');
     $('#code-output-collapse').textContent = c ? '▸' : '▾';
