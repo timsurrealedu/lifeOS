@@ -3,7 +3,7 @@ import multer from 'multer';
 import { join, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
-import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, unlinkSync, readFileSync } from 'node:fs';
 import { loadConfig, saveConfig, vaultDir, checkDocTools, maskConfig, PROJECT_ROOT } from './config.js';
 import {
   ensureVault, readInboxItems, addInboxItem, removeInboxItem, addPhotoItem, addAudioItem,
@@ -85,6 +85,38 @@ const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 
 
 const ok = (res, data) => res.json({ ok: true, ...data });
 const fail = (res, err, code = 400) => res.status(code).json({ ok: false, error: String(err.message || err) });
+const WORK_FILE = join(PROJECT_ROOT, 'data', 'work.json');
+
+function emptyWorkState() {
+  return { channels: [], bot: { snapshots: [], positions: [] }, outreach: { leads: [] } };
+}
+function normalizeWorkState(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    channels: Array.isArray(src.channels) ? src.channels : [],
+    bot: {
+      snapshots: Array.isArray(src.bot?.snapshots) ? src.bot.snapshots : [],
+      positions: Array.isArray(src.bot?.positions) ? src.bot.positions : [],
+    },
+    outreach: {
+      leads: Array.isArray(src.outreach?.leads) ? src.outreach.leads : [],
+    },
+  };
+}
+function readWorkState() {
+  try {
+    if (!existsSync(WORK_FILE)) return emptyWorkState();
+    return normalizeWorkState(JSON.parse(readFileSync(WORK_FILE, 'utf8')));
+  } catch {
+    return emptyWorkState();
+  }
+}
+function saveWorkState(state) {
+  mkdirSync(dirname(WORK_FILE), { recursive: true });
+  const next = normalizeWorkState(state);
+  writeFileSync(WORK_FILE, JSON.stringify(next, null, 2) + '\n');
+  return next;
+}
 
 // Persist the ink canvas's vector strokes next to a saved handwriting PNG, so the page can be
 // reopened and re-edited later. `pngPath` is the absolute PNG path; sidecar is `<base>.ink.json`.
@@ -481,6 +513,10 @@ app.get('/api/needs-filing', (_req, res) => ok(res, { items: listNeedsFiling() }
 // ---- Graph / Calendar / Log ----
 app.get('/api/graph', (_req, res) => ok(res, buildGraph()));
 app.get('/api/tasks', (_req, res) => ok(res, { tasks: listTasks() }));
+app.get('/api/work', (_req, res) => ok(res, { state: readWorkState() }));
+app.post('/api/work', (req, res) => {
+  try { ok(res, { state: saveWorkState(req.body?.state) }); } catch (e) { fail(res, e); }
+});
 // Manually add a task/event (Plan tab "+"), optionally repeating — see addTask()'s doc comment.
 app.post('/api/tasks', (req, res) => {
   try {

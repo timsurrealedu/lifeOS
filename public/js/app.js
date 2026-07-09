@@ -4,7 +4,17 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const api = async (path, opts) => {
-  const r = await fetch(path, opts);
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 12000);
+  let r;
+  try {
+    r = await fetch(path, { ...opts, signal: ctl.signal });
+  } catch (e) {
+    clearTimeout(t);
+    if (e.name === 'AbortError') throw new Error('Request timed out');
+    throw e;
+  }
+  clearTimeout(t);
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
   return j;
@@ -166,6 +176,7 @@ function setCaptureMode(chat) {
   // CSS drives show/hide per breakpoint off .chat on the layout (mobile swaps columns,
   // desktop keeps the inbox and swaps only the side panel). No dead `.hidden` juggling.
   $('.dashboard-layout').classList.toggle('chat', chat);
+  $('.view[data-view="home"]').classList.toggle('chat-mode', chat);
   $('#capture-title').textContent = chat ? 'Chat' : 'Inbox';
   if (chat) { $('#cap-crumb').textContent = 'Advisor'; renderChat(); }
   else if (window._capTick) window._capTick(); // repaint day/date now, not after the next 15s tick
@@ -560,20 +571,585 @@ $('#btn-weekly').addEventListener('click', () =>
 $('#btn-home').addEventListener('click', () =>
   startStream(withProvider('/api/home/stream'), { title: 'Refreshing Home note…', onDone: () => { state.notes = []; } }));
 
+const WORK_CHANNEL_STATUSES = ['Live', 'Building', 'Planned'];
+const WORK_CHANNEL_FOLDER = 'Work/Channels';
+const WORK_OUTREACH_FOLDER = 'Work/Outreach';
+state.workFilter = 'all';
+state.work = normalizeWorkState(null);
+let workLoaded = false;
+let workLiveAnalytics = null;
+
+function normalizeWorkState(raw) {
+  const out = raw && typeof raw === 'object' ? raw : {};
+  return {
+    channels: Array.isArray(out.channels) ? out.channels.map((channel) => ({
+      id: channel?.id || ('ch-' + Math.random().toString(36).slice(2, 9)),
+      name: channel?.name || 'Untitled channel',
+      platform: channel?.platform || 'YouTube',
+      niche: channel?.niche || channel?.format || '',
+      status: channel?.status || 'Planned',
+      cadence: channel?.cadence || '',
+      revenue: channel?.revenue || '',
+      notePath: channel?.notePath || '',
+      snapshots: Array.isArray(channel?.snapshots) ? channel.snapshots.map((snap) => ({
+        id: snap?.id || ('chsnap-' + Math.random().toString(36).slice(2, 9)),
+        date: snap?.date || todayStr(),
+        followers: Number(snap?.followers) || 0,
+        views: Number(snap?.views) || 0,
+        posts: Number(snap?.posts) || 0,
+        revenue: Number(snap?.revenue) || 0,
+      })) : [],
+    })) : [],
+    bot: {
+      snapshots: Array.isArray(out.bot?.snapshots) ? out.bot.snapshots : [],
+      positions: Array.isArray(out.bot?.positions) ? out.bot.positions : [],
+    },
+    outreach: {
+      leads: Array.isArray(out.outreach?.leads) ? out.outreach.leads.map((lead) => ({
+        id: lead?.id || ('lead-' + Math.random().toString(36).slice(2, 9)),
+        business: lead?.business || 'Untitled lead',
+        contact: lead?.contact || '',
+        email: lead?.email || '',
+        website: lead?.website || '',
+        offer: lead?.offer || '',
+        status: lead?.status === 'New' ? 'Review' : (lead?.status || 'Review'),
+        lastContact: lead?.lastContact || '',
+        followUp: lead?.followUp || '',
+        notePath: lead?.notePath || '',
+        responseSummary: lead?.responseSummary || '',
+      })) : [],
+    },
+  };
+}
+async function loadWorkState(force) {
+  if (workLoaded && !force) return state.work;
+  const { state: saved } = await api('/api/work');
+  state.work = normalizeWorkState(saved);
+  workLoaded = true;
+  return state.work;
+}
+async function saveWorkState() {
+  const { state: saved } = await api('/api/work', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: state.work }),
+  });
+  state.work = normalizeWorkState(saved);
+}
+function uid(prefix) {
+  return prefix + '-' + Math.random().toString(36).slice(2, 9);
+}
+function shiftDate(delta) {
+  const d = new Date();
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+function fmtMoney(n) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: n >= 1000 ? 0 : 2 }).format(Number(n) || 0);
+}
+function channelSnapshots(channel) {
+  return [...(Array.isArray(channel?.snapshots) ? channel.snapshots : [])].sort((a, b) => a.date.localeCompare(b.date));
+}
+function latestChannelSnapshot(channel) {
+  return channelSnapshots(channel).at(-1) || null;
+}
+function platformAudienceLabel(platform) {
+  return platform === 'YouTube' ? 'Subscribers' : 'Followers';
+}
+function buildLeadAutomation(lead) {
+  const contact = lead.contact || 'there';
+  const site = lead.website || 'their current site';
+  const fitSummary = `${lead.business} fits the outreach list because the offer maps directly to ${site} and can improve ${lead.offer.toLowerCase()}.`;
+  const openerSubject = `Quick website idea for ${lead.business}`;
+  const openerBody = `Hi ${contact},
+
+I had a quick look at ${lead.business} and saw a clear opportunity around ${lead.offer.toLowerCase()}.
+
+I can put together a focused website update plan with practical fixes that should make the site convert better without a full rebuild.
+
+If you're open to it, I can send a short teardown with concrete ideas.
+
+Best,`;
+  const replySubject = `Re: website ideas for ${lead.business}`;
+  const replyBody = `Hi ${contact},
+
+Thanks for the reply.
+
+Based on what you shared${lead.responseSummary ? ` about "${lead.responseSummary}"` : ''}, I’d suggest we focus first on ${lead.offer.toLowerCase()} so the site has one clear conversion path before anything broader.
+
+If helpful, I can send a quick action plan with the first changes I’d make and the rough scope to build it.
+
+Best,`;
+  return {
+    fitSummary,
+    openerSubject,
+    openerBody,
+    replySubject,
+    replyBody,
+    recommendedAction: lead.responseSummary ? 'Reply draft ready for review.' : 'Initial outreach draft ready for review.',
+  };
+}
+function composeLeadDraft(lead, kind = 'opener') {
+  const ai = buildLeadAutomation(lead);
+  const subject = kind === 'reply' ? ai.replySubject : ai.openerSubject;
+  const body = kind === 'reply' ? ai.replyBody : ai.openerBody;
+  window.location.href = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+function remapWorkPath(path) {
+  const p = String(path || '');
+  if (p.startsWith('Ideas/Channels/')) return WORK_CHANNEL_FOLDER + '/' + p.slice('Ideas/Channels/'.length);
+  if (p.startsWith('Personal/Outreach/')) return WORK_OUTREACH_FOLDER + '/' + p.slice('Personal/Outreach/'.length);
+  return p;
+}
+function latestTradingReports(limit = 4) {
+  return [...state.notes].filter((n) => /^Trading\//.test(n.path)).sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, limit);
+}
+async function migrateWorkFolders() {
+  let changed = false;
+  const noteSet = new Set(state.notes.map((n) => n.path));
+  const migrateEntry = async (entry, targetFolder) => {
+    if (!entry?.notePath) return;
+    const nextPath = remapWorkPath(entry.notePath);
+    if (nextPath === entry.notePath) return;
+    if (noteSet.has(entry.notePath)) {
+      const { path } = await api('/api/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src: entry.notePath, dest: targetFolder }),
+      });
+      entry.notePath = path;
+    } else {
+      entry.notePath = nextPath;
+    }
+    changed = true;
+  };
+  for (const channel of state.work.channels) await migrateEntry(channel, WORK_CHANNEL_FOLDER);
+  for (const lead of state.work.outreach.leads) await migrateEntry(lead, WORK_OUTREACH_FOLDER);
+  if (!changed) return;
+  await saveWorkState();
+  state.notes = [];
+  await loadNotes(true);
+}
+async function refreshWorkDependencies() {
+  await Promise.all([
+    loadWorkState(),
+    state.notes.length ? Promise.resolve() : loadNotes(true),
+  ]);
+  await migrateWorkFolders();
+}
+async function createWorkNote({ title, folder, lines }) {
+  const { path } = await api('/api/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, folder, content: lines.filter(Boolean).join('\n'), draft: false }),
+  });
+  state.notes = [];
+  await loadNotes(true);
+  return path;
+}
+async function scheduleWorkTask(desc, date) {
+  await api('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ desc, date }),
+  });
+}
+function workSpark(values, stroke = 'var(--accent)') {
+  if (values.length < 2) return '<div class="work-chart-empty">Add more snapshots to draw the curve.</div>';
+  const w = 320, h = 120, pad = 8;
+  const max = Math.max(...values), min = Math.min(...values), range = (max - min) || 1;
+  const pts = values.map((v, i) => [pad + (i / (values.length - 1)) * (w - pad * 2), h - pad - ((v - min) / range) * (h - pad * 2)]);
+  const line = pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const area = `${pad},${h - pad} ${line} ${w - pad},${h - pad}`;
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Balance trend">
+    <defs><linearGradient id="work-balance-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${stroke}" stop-opacity=".28"/><stop offset="100%" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="${area}" fill="url(#work-balance-fill)"></polygon>
+    <polyline points="${line}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" fill="${stroke}"></circle>
+  </svg>`;
+}
+function renderWorkDashboard() {
+  if (!$('#ops-lanes')) return;
+  renderOpsLanes();
+  renderWorkStudio();
+  renderWorkChannels();
+  renderWorkBot();
+  renderWorkOutreach();
+  renderHomeAutomation();
+}
+function renderOpsLanes() {
+  const channels = state.work.channels;
+  const live = channels.filter((c) => c.status === 'Live').length;
+  const queue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
+  const latest = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+  const active = state.work.outreach.leads.filter((l) => l.status !== 'Archived');
+  const review = active.filter((l) => l.status === 'Review').length;
+  const due = active.filter((l) => l.followUp && l.followUp <= todayStr() && l.status !== 'Responded').length;
+  if ($('#ops-channel-value')) $('#ops-channel-value').textContent = `${live} live`;
+  if ($('#ops-channel-sub')) $('#ops-channel-sub').textContent = `${channels.length} lanes tracked · ${queue} in studio queue`;
+  if ($('#ops-trading-value')) $('#ops-trading-value').textContent = latest ? fmtMoney(latest.balance) : 'No snapshot';
+  if ($('#ops-trading-sub')) $('#ops-trading-sub').textContent = latest ? `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}% · ${state.work.bot.positions.length} positions` : 'Log balance, P&L, and positions';
+  if ($('#ops-outreach-value')) $('#ops-outreach-value').textContent = `${review} to review`;
+  if ($('#ops-outreach-sub')) $('#ops-outreach-sub').textContent = `${active.length} active leads · ${due} due today`;
+}
+function renderWorkStudio() {
+  const liveChannels = state.work.channels.filter((c) => c.status === 'Live');
+  const queue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
+  const approved = stewieVideos.filter((v) => v.status === 'approved').length;
+  const laneList = state.work.channels.length
+    ? [...state.work.channels].sort((a, b) => WORK_CHANNEL_STATUSES.indexOf(a.status) - WORK_CHANNEL_STATUSES.indexOf(b.status))
+    : (workLiveAnalytics?.title ? [{
+      id: 'stewie-live',
+      name: workLiveAnalytics.title,
+      platform: 'YouTube',
+      status: 'Live',
+      niche: 'Connected via Stewie',
+      cadence: `${Number(workLiveAnalytics.videos || 0).toLocaleString()} videos`,
+      revenue: `${Number(workLiveAnalytics.views || 0).toLocaleString()} views`,
+      snapshots: [{
+        id: 'stewie-live-snap',
+        date: todayStr(),
+        followers: Number(workLiveAnalytics.subs || 0),
+        views: Number(workLiveAnalytics.views || 0),
+        posts: Number(workLiveAnalytics.videos || 0),
+        revenue: 0,
+      }],
+    }] : []);
+  $('#work-studio-metrics').innerHTML = [
+    ['Live lanes', Math.max(liveChannels.length, workLiveAnalytics?.title ? 1 : 0), 'channels publishing now'],
+    ['Render queue', queue, stewieVideos.length ? 'connected renderer' : 'refresh to sync'],
+    ['Approved', approved, 'ready to upload'],
+    ['Platforms', new Set(state.work.channels.map((c) => c.platform)).size, 'distribution surfaces'],
+  ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(sub)}</span></div>`).join('');
+  $('#work-channel-brief').innerHTML = laneList.length
+    ? laneList.map((c) => {
+      const snap = latestChannelSnapshot(c);
+      return `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(c.name)}</span><span class="work-pill ${slug(c.status)}">${esc(c.status)}</span><span class="work-pill">${esc(c.platform)}</span></div><div class="work-item-meta"><span>${esc(c.niche || 'Format pending')}</span><span>•</span><span>${esc(c.cadence || 'Cadence TBD')}</span><span>•</span><span>${snap ? `${(Number(snap.followers) || 0).toLocaleString()} ${platformAudienceLabel(c.platform).toLowerCase()}` : 'No analytics logged yet'}</span></div></div>`;
+    }).join('')
+    : '<div class="work-item"><div class="work-note">No publishing lanes yet. Add one in Channel portfolio.</div></div>';
+}
+function renderWorkChannels() {
+  const metricWrap = $('#work-channel-metrics');
+  const list = $('#work-channel-list');
+  const select = $('#work-channel-snapshot-id');
+  list.innerHTML = '';
+  if (select) {
+    select.innerHTML = state.work.channels.length
+      ? state.work.channels.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} · ${esc(c.platform)}</option>`).join('')
+      : '<option value="">Add a channel first</option>';
+    select.disabled = !state.work.channels.length;
+  }
+  const channels = [...state.work.channels].sort((a, b) => WORK_CHANNEL_STATUSES.indexOf(a.status) - WORK_CHANNEL_STATUSES.indexOf(b.status));
+  const latestSnaps = channels.map((channel) => latestChannelSnapshot(channel)).filter(Boolean);
+  metricWrap.innerHTML = [
+    ['Tracked lanes', channels.length, 'across platforms'],
+    ['Audience', latestSnaps.reduce((sum, snap) => sum + (Number(snap.followers) || 0), 0).toLocaleString(), 'latest combined'],
+    ['Views', latestSnaps.reduce((sum, snap) => sum + (Number(snap.views) || 0), 0).toLocaleString(), 'latest combined'],
+    ['Revenue', fmtMoney(latestSnaps.reduce((sum, snap) => sum + (Number(snap.revenue) || 0), 0)), 'latest combined'],
+  ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(sub)}</span></div>`).join('');
+  channels.forEach((c) => {
+    const snap = latestChannelSnapshot(c);
+    const item = document.createElement('div');
+    item.className = 'work-item';
+    item.innerHTML = `<div class="work-item-head"><span class="work-item-title">${esc(c.name)}</span><span class="work-pill ${slug(c.status)}">${esc(c.status)}</span></div>
+      <div class="work-item-meta"><span>${esc(c.platform)}</span><span>•</span><span>${esc(c.niche)}</span><span>•</span><span>${esc(c.cadence || 'Cadence TBD')}</span></div>
+      <div class="work-item-stats">
+        <div class="work-stat"><span class="work-stat-label">${esc(platformAudienceLabel(c.platform))}</span><span class="work-stat-value tabular">${snap ? Number(snap.followers).toLocaleString() : '—'}</span></div>
+        <div class="work-stat"><span class="work-stat-label">Views</span><span class="work-stat-value tabular">${snap ? Number(snap.views).toLocaleString() : '—'}</span></div>
+        <div class="work-stat"><span class="work-stat-label">Posts</span><span class="work-stat-value tabular">${snap ? Number(snap.posts).toLocaleString() : '—'}</span></div>
+        <div class="work-stat"><span class="work-stat-label">Revenue</span><span class="work-stat-value tabular">${snap ? fmtMoney(snap.revenue) : '—'}</span></div>
+      </div>
+      <div class="work-note">${esc(c.revenue || 'Revenue model not set yet.')}</div>
+      <div class="work-item-actions">
+        ${c.notePath ? `<button class="chip" data-work-channel-open="${esc(c.id)}">Open note</button>` : ''}
+        <button class="chip" data-work-channel-status="${esc(c.id)}">Advance stage</button>
+        <button class="chip" data-work-channel-delete="${esc(c.id)}">Remove</button>
+      </div>`;
+    list.appendChild(item);
+  });
+}
+function renderWorkBot() {
+  const snaps = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = snaps.at(-1);
+  if ($('#work-bot-date') && !$('#work-bot-date').value) $('#work-bot-date').value = todayStr();
+  $('#work-bot-metrics').innerHTML = latest ? [
+    ['Balance', fmtMoney(latest.balance), latest.date],
+    ['Total P&L', `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}%`, 'overall'],
+    ['Win rate', `${Number(latest.winRate).toFixed(1)}%`, 'latest snapshot'],
+    ['Open trades', latest.openTrades, `${state.work.bot.positions.length} tracked positions`],
+  ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(String(sub))}</span></div>`).join('')
+  : [
+    ['Balance', '—', 'log the first checkpoint'],
+    ['Total P&L', '—', 'waiting for data'],
+    ['Win rate', '—', 'waiting for data'],
+    ['Open trades', 0, 'no positions tracked'],
+  ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(String(sub))}</span></div>`).join('');
+  $('#work-bot-chart').innerHTML = workSpark(snaps.map((s) => Number(s.balance) || 0), '#3B82F6');
+  const reports = latestTradingReports();
+  $('#work-report-list').innerHTML = reports.length
+    ? reports.map((r) => `<button class="work-item" type="button" data-work-report="${esc(r.path)}"><div class="work-item-head"><span class="work-item-title">${esc(r.name)}</span><span class="work-pill">Report</span></div><div class="work-item-meta"><span>${timeAgo(r.mtime)}</span><span>•</span><span>${esc(r.path.split('/').slice(0, -1).join(' / '))}</span></div></button>`).join('')
+    : '<div class="work-item"><div class="work-note">No Trading reports found yet. The latest report button will open them once they land in the vault.</div></div>';
+  const posWrap = $('#work-position-list');
+  posWrap.innerHTML = state.work.bot.positions.length
+    ? state.work.bot.positions.map((p) => `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(p.pair)}</span><span class="work-pill ${slug(p.side)}">${esc(p.side)}</span><span class="tabular ${Number(p.pnl) >= 0 ? 'up' : 'down'}">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div><div class="work-item-actions"><button class="chip" data-work-position-delete="${esc(p.id)}">Remove</button></div></div>`).join('')
+    : '<div class="work-item"><div class="work-note">No active positions tracked.</div></div>';
+}
+function renderWorkOutreach() {
+  const leads = state.work.outreach.leads;
+  const active = leads.filter((l) => l.status !== 'Archived');
+  const due = active.filter((l) => l.followUp && l.followUp <= todayStr() && l.status !== 'Responded');
+  const responded = active.filter((l) => l.status === 'Responded').length;
+  const waiting = active.filter((l) => l.status === 'Waiting').length;
+  $('#work-outreach-metrics').innerHTML = [
+    ['Queued', active.filter((l) => l.status === 'Review').length, 'ready for review'],
+    ['Waiting', waiting, 'awaiting reply'],
+    ['Replied', responded, 'reply draft available'],
+    ['Due today', due.length, 'needs follow-up'],
+  ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(sub)}</span></div>`).join('');
+  $$('#work-lead-filters .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.workFilter === state.workFilter));
+  const list = $('#work-lead-list');
+  const filtered = active.filter((lead) => {
+    if (state.workFilter === 'all') return true;
+    if (state.workFilter === 'active') return lead.status === 'Review' || lead.status === 'Waiting';
+    if (state.workFilter === 'followup') return !!lead.followUp && lead.followUp <= todayStr() && lead.status !== 'Responded';
+    if (state.workFilter === 'responded') return lead.status === 'Responded';
+    return true;
+  });
+  list.innerHTML = filtered.length ? filtered.map((l) => {
+    const ai = buildLeadAutomation(l);
+    const follow = l.followUp ? fmtDate(l.followUp) : 'No follow-up set';
+    const isReply = !!l.responseSummary;
+    return `<div class="work-item">
+      <div class="work-item-head"><span class="work-item-title">${esc(l.business)}</span><span class="work-pill ${slug(l.status)}">${esc(l.status)}</span></div>
+      <div class="work-item-meta"><span>${esc(l.contact || 'No contact name')}</span><span>•</span><span>${esc(l.email)}</span><span>•</span><span>${esc(l.website || 'No site captured')}</span></div>
+      <div class="work-note">${esc(l.offer)}</div>
+      <div class="work-ai-block"><span class="work-ai-label">AI target report</span><p class="work-ai-copy">${esc(ai.fitSummary)}</p><p class="work-card-note">${esc(ai.recommendedAction)}</p></div>
+      <div class="work-ai-block"><span class="work-ai-label">${isReply ? 'Suggested reply' : 'Suggested opener'}</span><p class="work-ai-copy">${esc((isReply ? ai.replyBody : ai.openerBody).split('\n\n').slice(0, 2).join(' '))}</p></div>
+      <div class="work-item-meta"><span>Last contact: ${esc(l.lastContact ? fmtDate(l.lastContact) : 'Not sent')}</span><span>•</span><span>Follow-up: ${esc(follow)}</span></div>
+      <div class="work-item-actions">
+        ${l.notePath ? `<button class="chip" data-work-lead-open="${esc(l.id)}">Open note</button>` : ''}
+        <button class="chip" data-work-lead-review="${esc(l.id)}">${isReply ? 'Review reply' : 'Review draft'}</button>
+        <button class="chip" data-work-lead-send="${esc(l.id)}">Approve send</button>
+        <button class="chip" data-work-lead-responded="${esc(l.id)}">Log reply</button>
+        <button class="chip" data-work-lead-followup="${esc(l.id)}">+3d follow-up</button>
+        <button class="chip" data-work-lead-delete="${esc(l.id)}">Remove</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="work-item"><div class="work-note">No leads in this filter.</div></div>';
+}
+function slug(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+$('#work-channel-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const channel = {
+    id: uid('ch'),
+    name: $('#work-channel-name').value.trim(),
+    platform: $('#work-channel-platform').value,
+    niche: $('#work-channel-niche').value.trim(),
+    status: $('#work-channel-status').value,
+    cadence: $('#work-channel-cadence').value.trim(),
+    revenue: $('#work-channel-revenue').value.trim(),
+    notePath: '',
+    snapshots: [],
+  };
+  try {
+    channel.notePath = await createWorkNote({
+      title: `${channel.name} channel`,
+      folder: WORK_CHANNEL_FOLDER,
+      lines: [
+        `# ${channel.name}`,
+        '',
+        `- Platform: ${channel.platform}`,
+        `- Status: ${channel.status}`,
+        `- Niche: ${channel.niche}`,
+        `- Cadence: ${channel.cadence || 'TBD'}`,
+        `- Revenue model: ${channel.revenue || 'TBD'}`,
+      ],
+    });
+    state.work.channels.unshift(channel);
+    await saveWorkState();
+    e.target.reset();
+    renderWorkDashboard();
+    toast('Channel saved');
+  } catch (err) { toast(err.message); }
+});
+$('#work-channel-snapshot-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const channel = state.work.channels.find((entry) => entry.id === $('#work-channel-snapshot-id').value);
+  if (!channel) return toast('Add a channel first');
+  channel.snapshots.push({
+    id: uid('chsnap'),
+    date: todayStr(),
+    followers: Number($('#work-channel-followers').value),
+    views: Number($('#work-channel-views').value),
+    posts: Number($('#work-channel-posts').value),
+    revenue: Number($('#work-channel-revenue-value').value),
+  });
+  channel.snapshots.sort((a, b) => a.date.localeCompare(b.date));
+  try { await saveWorkState(); e.target.reset(); renderWorkDashboard(); toast('Snapshot saved'); } catch (err) { toast(err.message); }
+});
+$('#work-channel-list')?.addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-work-channel-delete]');
+  const advance = e.target.closest('[data-work-channel-status]');
+  const open = e.target.closest('[data-work-channel-open]');
+  if (open) {
+    const ch = state.work.channels.find((c) => c.id === open.dataset.workChannelOpen);
+    if (ch?.notePath) openNote(ch.notePath, ch.name);
+    return;
+  }
+  if (del) {
+    state.work.channels = state.work.channels.filter((c) => c.id !== del.dataset.workChannelDelete);
+  } else if (advance) {
+    const ch = state.work.channels.find((c) => c.id === advance.dataset.workChannelStatus);
+    if (!ch) return;
+    ch.status = WORK_CHANNEL_STATUSES[(WORK_CHANNEL_STATUSES.indexOf(ch.status) + 1) % WORK_CHANNEL_STATUSES.length];
+  } else return;
+  try { await saveWorkState(); renderWorkDashboard(); } catch (err) { toast(err.message); }
+});
+$('#work-bot-snapshot-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  state.work.bot.snapshots.push({
+    id: uid('snap'),
+    date: $('#work-bot-date').value,
+    balance: Number($('#work-bot-balance').value),
+    pnl: Number($('#work-bot-pnl').value),
+    winRate: Number($('#work-bot-winrate').value),
+    openTrades: Number($('#work-bot-open-trades').value),
+  });
+  state.work.bot.snapshots.sort((a, b) => a.date.localeCompare(b.date));
+  try { await saveWorkState(); e.target.reset(); $('#work-bot-date').value = todayStr(); renderWorkDashboard(); toast('Snapshot saved'); } catch (err) { toast(err.message); }
+});
+$('#work-position-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  state.work.bot.positions.unshift({
+    id: uid('pos'),
+    pair: $('#work-position-pair').value.trim(),
+    side: $('#work-position-side').value,
+    pnl: Number($('#work-position-pnl').value),
+  });
+  try { await saveWorkState(); e.target.reset(); renderWorkDashboard(); } catch (err) { toast(err.message); }
+});
+$('#work-position-list')?.addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-work-position-delete]');
+  if (!del) return;
+  state.work.bot.positions = state.work.bot.positions.filter((p) => p.id !== del.dataset.workPositionDelete);
+  try { await saveWorkState(); renderWorkDashboard(); } catch (err) { toast(err.message); }
+});
+$('#work-lead-filters')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-work-filter]');
+  if (!btn) return;
+  state.workFilter = btn.dataset.workFilter;
+  renderWorkOutreach();
+});
+$('#work-lead-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const lead = {
+    id: uid('lead'),
+    business: $('#work-lead-business').value.trim(),
+    contact: $('#work-lead-contact').value.trim(),
+    email: $('#work-lead-email').value.trim(),
+    website: $('#work-lead-website').value.trim(),
+    offer: $('#work-lead-offer').value.trim(),
+    status: $('#work-lead-response').value.trim() ? 'Responded' : 'Review',
+    lastContact: '',
+    followUp: '',
+    notePath: '',
+    responseSummary: $('#work-lead-response').value.trim(),
+  };
+  const ai = buildLeadAutomation(lead);
+  try {
+    lead.notePath = await createWorkNote({
+      title: lead.business,
+      folder: WORK_OUTREACH_FOLDER,
+      lines: [
+        `# ${lead.business}`,
+        '',
+        `- Contact: ${lead.contact || 'TBD'}`,
+        `- Email: ${lead.email}`,
+        `- Website: ${lead.website || 'TBD'}`,
+        `- Offer: ${lead.offer}`,
+        `- AI target brief: ${ai.fitSummary}`,
+        `- Suggested action: ${ai.recommendedAction}`,
+        lead.responseSummary ? `- Reply summary: ${lead.responseSummary}` : '',
+        '',
+        '## Suggested opener',
+        '',
+        ai.openerBody,
+      ],
+    });
+    state.work.outreach.leads.unshift(lead);
+    await saveWorkState();
+    e.target.reset();
+    renderWorkDashboard();
+    toast('Lead saved');
+  } catch (err) { toast(err.message); }
+});
+$('#work-lead-list')?.addEventListener('click', async (e) => {
+  const target = e.target.closest('[data-work-lead-open],[data-work-lead-review],[data-work-lead-send],[data-work-lead-responded],[data-work-lead-followup],[data-work-lead-delete]');
+  if (!target) return;
+  const id = target.dataset.workLeadOpen || target.dataset.workLeadReview || target.dataset.workLeadSend || target.dataset.workLeadResponded || target.dataset.workLeadFollowup || target.dataset.workLeadDelete;
+  const lead = state.work.outreach.leads.find((l) => l.id === id);
+  if (!lead) return;
+  try {
+    if (target.dataset.workLeadOpen) {
+      if (lead.notePath) openNote(lead.notePath, lead.business);
+      return;
+    }
+    if (target.dataset.workLeadReview) composeLeadDraft(lead, lead.responseSummary ? 'reply' : 'opener');
+    else if (target.dataset.workLeadSend) {
+      composeLeadDraft(lead, lead.responseSummary ? 'reply' : 'opener');
+      lead.status = 'Waiting'; lead.lastContact = todayStr(); lead.followUp = shiftDate(3);
+      await scheduleWorkTask(`Follow up ${lead.business} about website proposal`, lead.followUp);
+    } else if (target.dataset.workLeadResponded) {
+      const summary = await appPrompt(`Reply summary from ${lead.business}`, lead.responseSummary || 'Interested, but needs a sharper conversion path and scope estimate.');
+      if (summary == null) return;
+      lead.responseSummary = summary.trim();
+      lead.status = 'Responded';
+      lead.lastContact = todayStr();
+    } else if (target.dataset.workLeadFollowup) {
+      lead.status = 'Follow up'; lead.followUp = shiftDate(3);
+      await scheduleWorkTask(`Follow up ${lead.business} about website proposal`, lead.followUp);
+    } else if (target.dataset.workLeadDelete) {
+      state.work.outreach.leads = state.work.outreach.leads.filter((l) => l.id !== id);
+    }
+    await saveWorkState();
+    renderWorkDashboard();
+  } catch (err) { toast(err.message); return; }
+});
+$('#work-open-studio')?.addEventListener('click', openStewie);
+$('#work-open-studio-tile')?.addEventListener('click', openStewie);
+$('#ops-channel-lane')?.addEventListener('click', openStewie);
+$('#ops-trading-lane')?.addEventListener('click', () => $('#work-bot-snapshot-form')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth', block: 'center' }));
+$('#ops-outreach-lane')?.addEventListener('click', () => $('#work-lead-form')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth', block: 'center' }));
+$('#work-render')?.addEventListener('click', () => $('#btn-stewie-render')?.click());
+$('#work-upload')?.addEventListener('click', () => $('#btn-stewie-upload')?.click());
+$('#work-refresh-studio')?.addEventListener('click', () => { loadStewie(); renderHomeAnalytics(true); renderWorkDashboard(); });
+$('#work-open-trading')?.addEventListener('click', () => $('#btn-trading-report')?.click());
+$('#work-report-list')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-work-report]');
+  if (!btn) return;
+  const note = state.notes.find((n) => n.path === btn.dataset.workReport);
+  if (note) openNote(note.path, note.name);
+});
+
 async function loadDiscover() {
   const toolsView = $('.view[data-view="tools"]');
   if (toolsView && state._firstRender.tools) {
-    staggerChildren(toolsView, '.tool-tile, .tool-hero, .tool-panel', 'enter-scale', 60, 40);
+    staggerChildren(toolsView, '.ops-lane, .work-panel, .tool-tile, .tool-panel', 'enter-scale', 60, 40);
     state._firstRender.tools = false;
   }
   try {
-    if (!state.notes.length) {
-      const [{ notes }, { folders }] = await Promise.all([api('/api/notes'), api('/api/folders')]);
-      state.notes = notes; state.folders = folders;
+    await refreshWorkDependencies();
+    if (!state.folders) {
+      const { folders } = await api('/api/folders');
+      state.folders = folders;
     }
   } catch (e) {}
   renderToolRecent();
   renderToolStats();
+  renderWorkDashboard();
 }
 function renderToolRecent() {
   const ul = $('#tool-recent'); if (!ul) return;
@@ -603,29 +1179,36 @@ async function renderToolStats() {
 $('#tile-tidy').addEventListener('click', () => $('#btn-autosort').click());
 // Playground → JupyterLab, running on the same box over Tailscale (port 8888). New tab, not iframed
 // (Jupyter sets X-Frame-Options and the SW would fight it). ponytail: link out, don't embed.
-$('#tile-playground').addEventListener('click', () => {
+$('#tile-playground')?.addEventListener('click', () => {
   window.open(`${location.protocol}//${location.hostname}:8888`, '_blank');
 });
-$('#tile-stewie').addEventListener('click', openStewie);
+$('#tile-stewie')?.addEventListener('click', openStewie);
 
 /* ---------- Stewie Studio (video pipeline on the Oracle box) ----------
    Its own full-screen view (opened from the Discover tile) so the queue never
    clutters Discover. Queue tab = filterable/capped list; Stats tab = channel graph. */
 const STATUS_ICON = { pending: '🕓', approved: '✅', uploaded: '🚀', rejected: '🚫' };
 const STEWIE_CAP = 40;   // list never renders more than this — filter to find the rest
-let stewieVideos = [], stewieVideoStats = null;
+let stewieVideos = [], stewieVideoStats = null, stewieOpen = false;
 
 function setStewieLive(on, label) {
   const el = $('#stewie-live');
   el.hidden = false; el.textContent = label; el.classList.toggle('off', !on);
 }
 function openStewie() {
+  if (state.view !== 'tools') show('tools');
+  if (!stewieOpen) { history.pushState({ stewie: true }, ''); stewieOpen = true; }
   state.stewieFilter = 'all';
   $('#stewie-view').hidden = false;
   stewieTab('queue');
   loadStewie();
 }
-function closeStewie() { $('#stewie-view').hidden = true; }
+function closeStewie() {
+  if (!stewieOpen) return;
+  $('#stewie-view').hidden = true;
+  stewieOpen = false;
+  if (history.state && history.state.stewie) history.back();
+}
 function stewieTab(which) {
   $$('#stewie-tabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.sv === which));
   $('#sv-queue').hidden = which !== 'queue';
@@ -648,13 +1231,44 @@ async function loadStewie() {
     stats.innerHTML = pillDefs.map(([k, n]) =>
       `<button class="stewie-pill st-${k}" data-filter="${k}"><b>${n}</b> ${k === 'all' ? 'all' : k}</button>`).join('');
     renderStewieQueue();
+    renderStewieLanes();
+    renderWorkDashboard();
     // per-video views ride in lazily — the box asks YouTube, which can be slow / unconfigured
     api('/api/stewie/stats').then(({ stats }) => { stewieVideoStats = stats; applyVideoStats(); }).catch(() => {});
   } catch (e) {
     setStewieLive(false, 'box unreachable');
     stats.hidden = true; $('#stewie-list').innerHTML = ''; $('#stewie-listfoot').hidden = true;
+    renderStewieLanes();
+    renderWorkDashboard();
     toast('Stewie: ' + e.message);
   }
+}
+function renderStewieLanes() {
+  const wrap = $('#stewie-lanes');
+  if (!wrap) return;
+  const channels = state.work.channels.length ? [...state.work.channels] : (workLiveAnalytics?.title ? [{
+    id: 'stewie-live',
+    name: workLiveAnalytics.title,
+    platform: 'YouTube',
+    status: 'Live',
+    niche: 'Connected via Stewie',
+    cadence: `${Number(workLiveAnalytics.videos || 0).toLocaleString()} videos published`,
+    snapshots: [{
+      id: 'stewie-live-snap',
+      date: todayStr(),
+      followers: Number(workLiveAnalytics.subs || 0),
+      views: Number(workLiveAnalytics.views || 0),
+      posts: Number(workLiveAnalytics.videos || 0),
+      revenue: 0,
+    }],
+  }] : []);
+  wrap.innerHTML = channels.length
+    ? channels.map((channel) => {
+      const snap = latestChannelSnapshot(channel);
+      const connected = channel.platform === 'YouTube' && (channel.status === 'Live' || channel.name === workLiveAnalytics?.title);
+      return `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(channel.name)}</span><span class="work-pill">${esc(channel.platform)}</span></div><div class="work-item-meta"><span>${esc(channel.status)}</span><span>•</span><span>${connected ? 'Connected renderer' : 'Lane ready'}</span></div><div class="work-card-note">${snap ? `${Number(snap.followers).toLocaleString()} ${platformAudienceLabel(channel.platform).toLowerCase()} · ${Number(snap.views).toLocaleString()} views` : 'No analytics logged yet.'}</div></div>`;
+    }).join('')
+    : '<div class="work-item"><div class="work-note">No lanes yet. Add channels from Tools to make studio routing multi-channel.</div></div>';
 }
 function stewieVideoLi(v) {
   const li = document.createElement('li');
@@ -779,6 +1393,7 @@ async function loadStewieStats() {
     const maxV = Math.max(...top.map((t) => t.views), 1);
     wrap.innerHTML = `
       ${now.title ? `<div class="sv-channel">${esc(now.title)}</div>` : ''}
+      <div class="sv-card"><p class="muted-sm">Connected analytics feed: ${esc(now.title || 'Stewie YouTube')}. Additional channels can still be tracked from Tools even before their platform integrations are live.</p></div>
       <div class="sv-metrics">
         ${metricCard('Subscribers', H.map((r) => r.subs), 'var(--accent)')}
         ${metricCard('Total views', H.map((r) => r.views), 'var(--sage)')}
@@ -881,16 +1496,54 @@ $('#glance-ask').addEventListener('click', () => setCaptureMode(true));
 
 // Home eagle-eye analytics (desktop only): pulls live YouTube numbers from the Stewie box.
 // Instagram/TikTok are placeholders until wired. Crypto card stays a static placeholder.
+function renderHomeAutomation() {
+  const snaps = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = snaps.at(-1);
+  if ($('#home-bot-balance')) $('#home-bot-balance').textContent = latest ? fmtMoney(latest.balance) : '—';
+  if ($('#home-bot-pnl')) {
+    $('#home-bot-pnl').textContent = latest ? `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}%` : '—';
+    $('#home-bot-pnl').classList.toggle('up', !!latest && Number(latest.pnl) >= 0);
+    $('#home-bot-pnl').classList.toggle('down', !!latest && Number(latest.pnl) < 0);
+  }
+  if ($('#home-bot-trades')) $('#home-bot-trades').textContent = latest ? latest.openTrades : state.work.bot.positions.length;
+  if ($('#home-bot-winrate')) $('#home-bot-winrate').textContent = latest ? `${Number(latest.winRate).toFixed(1)}%` : '—';
+  if ($('#home-bot-chart')) $('#home-bot-chart').innerHTML = workSpark(snaps.map((s) => Number(s.balance) || 0), 'var(--accent)');
+  if ($('#home-bot-positions')) {
+    $('#home-bot-positions').innerHTML = state.work.bot.positions.length
+      ? state.work.bot.positions.slice(0, 3).map((p) => `<div class="trading-position"><span class="sym">${esc(p.pair)}</span><span class="side ${slug(p.side)}">${esc(p.side)}</span><span class="pnl ${Number(p.pnl) >= 0 ? 'up' : 'down'} tabular">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div>`).join('')
+      : '<div class="trading-position"><span class="sym">No active positions tracked.</span></div>';
+  }
+
+  const active = state.work.outreach.leads.filter((l) => l.status !== 'Archived');
+  const review = active.filter((l) => l.status === 'Review');
+  const waiting = active.filter((l) => l.status === 'Waiting');
+  const due = active.filter((l) => l.followUp && l.followUp <= todayStr() && l.status !== 'Responded');
+  if ($('#home-leads-review')) $('#home-leads-review').textContent = review.length;
+  if ($('#home-leads-waiting')) $('#home-leads-waiting').textContent = waiting.length;
+  if ($('#home-leads-due')) $('#home-leads-due').textContent = due.length;
+  if ($('#home-outreach-status')) {
+    $('#home-outreach-status').textContent = due.length ? 'action due' : active.length ? 'active' : 'prototype';
+    $('#home-outreach-status').className = 'an-status' + (due.length ? ' off' : active.length ? ' live' : '');
+  }
+  if ($('#home-lead-brief')) {
+    const leadList = (due.length ? due : review.length ? review : active).slice(0, 2);
+    $('#home-lead-brief').innerHTML = leadList.length
+      ? leadList.map((l) => `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(l.business)}</span><span class="work-pill ${slug(l.status)}">${esc(l.status)}</span></div><div class="work-item-meta"><span>${esc(l.email)}</span><span>·</span><span>${esc(l.followUp ? 'Follow-up ' + fmtDate(l.followUp) : 'No follow-up set')}</span></div></div>`).join('')
+      : '<div class="work-item"><div class="work-note">No leads queued yet. Add targets from Tools.</div></div>';
+  }
+}
 let _homeAnalyticsLoaded = false;
 async function renderHomeAnalytics(force) {
   if (!$('#home-analytics')) return;
   if (!window.matchMedia('(min-width:960px)').matches) return;   // desktop-only, don't hit the box on phones
+  try { await loadWorkState(); renderHomeAutomation(); } catch (e) {}
   if (_homeAnalyticsLoaded && !force) return;
   _homeAnalyticsLoaded = true;
   const status = $('#home-stewie-status');
   try {
     const [{ analytics }, { videos }] = await Promise.all([api('/api/stewie/analytics'), api('/api/stewie/videos')]);
     const now = (analytics && analytics.now) || {};
+    workLiveAnalytics = now;
     const hasData = now.subs != null || (analytics && analytics.history && analytics.history.length);
     if (!hasData) { status.textContent = 'offline'; status.className = 'an-status off'; return; }
     status.textContent = 'live'; status.className = 'an-status live';
@@ -902,9 +1555,11 @@ async function renderHomeAnalytics(force) {
     $('#home-yt-goal').textContent = subs.toLocaleString() + ' / ' + GOAL.toLocaleString();
     $('#home-yt-progress').style.width = Math.min(100, subs / GOAL * 100) + '%';
   } catch (e) {
+    workLiveAnalytics = null;
     status.textContent = 'offline'; status.className = 'an-status off';
     _homeAnalyticsLoaded = false;                                  // let a later visit retry
   }
+  renderWorkDashboard();
 }
 $('#home-open-studio')?.addEventListener('click', openStewie);
 
@@ -1893,6 +2548,7 @@ window.addEventListener('popstate', () => {
   if (iv && !iv.hidden) { iv.hidden = true; $('#imgview-img').src = ''; return; }
   if (editorOpen) { editorOpen = false; $('#editor').hidden = true; }
   else if (readerOpen) { readerOpen = false; closeNoteChat(); $('#reader').hidden = true; }
+  else if (stewieOpen) { stewieOpen = false; $('#stewie-view').hidden = true; show('tools'); }
   else if (codeOpen) codeClose();
 });
 
@@ -3567,7 +4223,10 @@ function codeInitOnce() {
   $('#code-stdin-toggle').addEventListener('click', () => { const w = $('#code-stdin-wrap'); w.hidden = !w.hidden; $('#code-stdin-toggle').classList.toggle('on', !w.hidden); });
   $('#code-output-close').addEventListener('click', () => { $('#code-output').hidden = true; });
   $('#code-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#code-out-body').textContent); toast('Output copied'); } catch { toast('Copy failed'); } });
-  $('#code-back').addEventListener('click', () => { codeOpen ? history.back() : codeClose(); });
+  $('#code-back').addEventListener('click', () => {
+    if (codeOpen && history.state && history.state.code) history.back();
+    else codeClose();
+  });
   $('#code-output-collapse').addEventListener('click', () => {
     const p = $('#code-output'), c = p.classList.toggle('collapsed');
     $('#code-output-collapse').textContent = c ? '▸' : '▾';
@@ -3593,13 +4252,21 @@ async function loadCode() {
 
 /* ---------- Boot ---------- */
 (async function boot() {
-  applyTheme(prefs.theme);
-  applyWidth('note', prefs.noteWidth);
-  applyWidth('code', prefs.codeWidth);
-  await refreshInbox();
-  await loadNotes(true);
-  show('home');
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
+  try {
+    applyTheme(prefs.theme);
+    applyWidth('note', prefs.noteWidth);
+    applyWidth('code', prefs.codeWidth);
+    await refreshInbox();
+    await loadNotes(true);
+    show('home');
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncNotifyButton()).catch(() => {});
+    window.__lifeosBooted = true;
+  } catch (e) {
+    console.error('lifeOS boot failed:', e);
+    window.__lifeosDismissLoaders?.();
+    toast(e?.message || 'lifeOS failed to boot');
+    return;
+  }
   setTimeout(hideLoader, 800);
   setTimeout(() => { const ls = $('#loading-screen'); if (ls) ls.classList.add('hidden'); }, 900);
 })();

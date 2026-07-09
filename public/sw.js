@@ -1,6 +1,6 @@
 /* lifeOS service worker — cache the app shell so capture works offline-ish.
-   Network-first for API; cache-first for static shell. */
-const CACHE = 'lifeos-v48';
+   API stays live-only; the app shell is network-first so UI updates aren't masked by old caches. */
+const CACHE = 'lifeos-v49';
 const SHELL = ['/', '/index.html', '/css/styles.css', '/js/app.js', '/js/graph.js', '/js/inkpad.js',
   '/icons/icon.svg', '/manifest.webmanifest',
   '/vendor/katex/katex.min.css', '/vendor/katex/katex.min.js',
@@ -33,6 +33,23 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/vault-files/')
       || url.pathname.startsWith('/share')) return; // always live (share = POST navigation)
+  const isShell = e.request.mode === 'navigate'
+    || url.pathname === '/'
+    || url.pathname === '/index.html'
+    || url.pathname.endsWith('/css/styles.css')
+    || url.pathname.endsWith('/js/app.js')
+    || url.pathname.endsWith('/js/graph.js')
+    || url.pathname.endsWith('/js/inkpad.js');
+  if (isShell) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match(e.request).then((hit) => hit || caches.match('/index.html')))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();

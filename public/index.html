@@ -23,6 +23,28 @@
       if (t === 'cyberpunk' || t === 'silverhand' || t === 'arasaka') t = 'netrunner'; // migrate old values
       if (t !== 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
+    window.__lifeosBooted = false;
+    window.__lifeosDismissLoaders = function () {
+      try {
+        var appLoader = document.getElementById('app-loader');
+        if (appLoader) appLoader.hidden = true;
+        var loading = document.getElementById('loading-screen');
+        if (loading) loading.classList.add('hidden');
+      } catch (e) {}
+    };
+    window.addEventListener('error', function () {
+      setTimeout(function () {
+        if (!window.__lifeosBooted) window.__lifeosDismissLoaders();
+      }, 0);
+    });
+    window.addEventListener('unhandledrejection', function () {
+      setTimeout(function () {
+        if (!window.__lifeosBooted) window.__lifeosDismissLoaders();
+      }, 0);
+    });
+    setTimeout(function () {
+      if (!window.__lifeosBooted) window.__lifeosDismissLoaders();
+    }, 4000);
   </script>
 </head>
 <body>
@@ -115,10 +137,10 @@
                   </div>
                 </div>
 
-                <button class="process-card glow-pulse" id="btn-process">
+                <button class="process-card" id="btn-process">
                   <div class="process-left">
                     <div class="process-title">Process inbox</div>
-                    <div class="process-sub"><code>claude -p "process inbox"</code> · <span id="inbox-count">0</span> waiting</div>
+                    <div class="process-sub"><span id="inbox-count">0</span> waiting to be sorted into notes, tasks, and calendar.</div>
                   </div>
                   <div class="process-icon">→</div>
                 </button>
@@ -166,8 +188,7 @@
               </div>
 
               <!-- Chat sub-panel (toggled by the seg above; shown via .dashboard-layout.chat) -->
-              <div id="capture-chat-panel">
-                <div class="chat-sub"><span class="dot-live">●</span> Read-only · reads your vault + calendar, never edits it<button class="chip" id="chat-clear">Clear</button></div>
+              <div id="capture-chat-panel" class="card home-chat-card">
                 <div id="capture-chat" class="chat-view chat-animated">
                   <div class="chat-thread" id="chat-thread">
                     <div class="chat-intro" id="chat-intro">
@@ -189,27 +210,27 @@
             </div><!-- /dashboard-side -->
           </div><!-- /dashboard-layout -->
 
-          <!-- Eagle-eye analytics: channel reach + trading, side by side (desktop dashboard). -->
+          <!-- Eagle-eye automation summaries. Deep management lives in Tools. -->
           <div class="home-analytics" id="home-analytics">
             <div class="analytics-card" id="home-stewie">
               <div class="an-head">
-                <h3>📺 Channels <span class="an-tag">Stewie</span></h3>
+                <h3>AI channels <span class="an-tag">Stewie</span></h3>
                 <span class="an-status" id="home-stewie-status">checking…</span>
               </div>
-              <p class="an-sub">Video pipeline reach across platforms</p>
+              <p class="an-sub">Publishing health, reach, and queue status.</p>
               <div class="platform-tiles">
                 <div class="platform-tile yt">
-                  <span class="platform-name">▶ YouTube</span>
+                  <span class="platform-name">YouTube</span>
                   <span class="platform-metric tabular" id="home-yt-subs">—</span>
                   <span class="platform-sub">subscribers</span>
                 </div>
                 <div class="platform-tile soon">
-                  <span class="platform-name">◎ Instagram</span>
+                  <span class="platform-name">Instagram</span>
                   <span class="platform-metric">—</span>
                   <span class="platform-sub">not set up</span>
                 </div>
                 <div class="platform-tile soon">
-                  <span class="platform-name">♪ TikTok</span>
+                  <span class="platform-name">TikTok</span>
                   <span class="platform-metric">—</span>
                   <span class="platform-sub">not set up</span>
                 </div>
@@ -228,20 +249,20 @@
               </div>
             </div>
 
-            <!-- AI crypto bot — placeholder; wires to the Freqtrade bot's weekly reports in Trading/. -->
+            <!-- Trading bot prototype. The live backend can replace these local snapshots later. -->
             <div class="analytics-card" id="trading-bot">
               <div class="an-head">
-                <h3>🤖 AI Crypto Bot <span class="an-tag">placeholder</span></h3>
-                <span class="trading-status">Running</span>
+                <h3>Trading bot <span class="an-tag">prototype</span></h3>
+                <span class="trading-status" id="home-bot-status">Tracking</span>
               </div>
-              <p class="an-sub">Freqtrade dry-run · reads weekly reports from <code>Trading/</code></p>
+              <p class="an-sub">Snapshot log, open positions, and latest reports.</p>
               <div class="trading-stats">
-                <div class="trading-stat"><span class="trading-stat-label">Balance</span><span class="trading-stat-value tabular">$1,000</span></div>
-                <div class="trading-stat"><span class="trading-stat-label">Total P&amp;L</span><span class="trading-stat-value up tabular">+2.4%</span></div>
-                <div class="trading-stat"><span class="trading-stat-label">Open trades</span><span class="trading-stat-value tabular">3</span></div>
-                <div class="trading-stat"><span class="trading-stat-label">Win rate</span><span class="trading-stat-value tabular">61%</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Balance</span><span class="trading-stat-value tabular" id="home-bot-balance">—</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Total P&amp;L</span><span class="trading-stat-value tabular" id="home-bot-pnl">—</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Open trades</span><span class="trading-stat-value tabular" id="home-bot-trades">0</span></div>
+                <div class="trading-stat"><span class="trading-stat-label">Win rate</span><span class="trading-stat-value tabular" id="home-bot-winrate">—</span></div>
               </div>
-              <div class="trading-chart">
+              <div class="trading-chart" id="home-bot-chart">
                 <svg viewBox="0 0 200 100" preserveAspectRatio="none">
                   <polyline class="sparkline-fill" points="0,100 0,72 20,66 40,70 60,54 80,58 100,44 120,48 140,32 160,36 180,20 200,14 200,100" />
                   <polyline class="sparkline" points="0,72 20,66 40,70 60,54 80,58 100,44 120,48 140,32 160,36 180,20 200,14" />
@@ -250,13 +271,32 @@
               </div>
               <div class="trading-positions">
                 <h4>Open positions</h4>
-                <div class="trading-position"><span class="sym">BTC/USDT</span><span class="side long">Long</span><span class="pnl up tabular">+3.1%</span></div>
-                <div class="trading-position"><span class="sym">ETH/USDT</span><span class="side long">Long</span><span class="pnl up tabular">+1.8%</span></div>
-                <div class="trading-position"><span class="sym">SOL/USDT</span><span class="side short">Short</span><span class="pnl down tabular">-0.6%</span></div>
+                <div id="home-bot-positions">
+                  <div class="trading-position"><span class="sym">No active positions tracked.</span></div>
+                </div>
               </div>
               <div class="an-actions">
                 <button class="btn primary sm" id="btn-trading-report" type="button">Open latest report</button>
                 <button class="btn sm" id="btn-trading-refresh" type="button">↻ Refresh</button>
+              </div>
+            </div>
+
+            <div class="analytics-card" id="home-outreach">
+              <div class="an-head">
+                <h3>Email pipeline <span class="an-tag">websites</span></h3>
+                <span class="an-status" id="home-outreach-status">prototype</span>
+              </div>
+              <p class="an-sub">Small-business outreach for website builds. Drafts stay review-first.</p>
+              <div class="an-metrics">
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-leads-review">0</span><span class="an-metric-lbl">to review</span></div>
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-leads-waiting">0</span><span class="an-metric-lbl">waiting</span></div>
+                <div class="an-metric"><span class="an-metric-val tabular" id="home-leads-due">0</span><span class="an-metric-lbl">due today</span></div>
+              </div>
+              <div class="work-stack compact" id="home-lead-brief">
+                <div class="work-item"><div class="work-note">No leads queued yet. Add targets from Tools.</div></div>
+              </div>
+              <div class="an-actions">
+                <button class="btn primary sm" data-action="open-tools" type="button">Manage pipeline</button>
               </div>
             </div>
           </div><!-- /home-analytics -->
@@ -267,57 +307,187 @@
           <div class="view-head vhead">
             <div class="crumb-row"><span class="crumb">Toolbox</span></div>
             <div class="title-row"><h2>Tools</h2></div>
-            <p class="vsub">tools that run over your vault</p>
           </div>
 
           <div class="tools-layout">
-            <div class="tools-hero-row">
-              <div class="card tool-hero enter-scale">
-                <h3 class="tool-title">Research an idea</h3>
-                <p class="tool-desc">Web-searches demand, competition &amp; feasibility, then writes a full note to <code>Ideas/</code></p>
+            <div class="ops-lanes" id="ops-lanes">
+              <button class="ops-lane" id="ops-channel-lane" type="button">
+                <span class="ops-lane-label">AI channels</span>
+                <span class="ops-lane-value" id="ops-channel-value">0 live</span>
+                <span class="ops-lane-sub" id="ops-channel-sub">Studio queue ready</span>
+              </button>
+              <button class="ops-lane" id="ops-trading-lane" type="button">
+                <span class="ops-lane-label">Trading bot</span>
+                <span class="ops-lane-value" id="ops-trading-value">No snapshot</span>
+                <span class="ops-lane-sub" id="ops-trading-sub">Log balance, P&amp;L, and positions</span>
+              </button>
+              <button class="ops-lane" id="ops-outreach-lane" type="button">
+                <span class="ops-lane-label">Email pipeline</span>
+                <span class="ops-lane-value" id="ops-outreach-value">0 to review</span>
+                <span class="ops-lane-sub" id="ops-outreach-sub">Review before sending</span>
+              </button>
+            </div>
+
+            <div class="tools-workbench">
+              <div class="card work-panel work-panel-tight">
+                <div class="work-section-head">
+                  <div>
+                    <h3 class="tool-title">Studio operations</h3>
+                    <p class="tool-desc">Run rendering, uploads, and publishing lanes from one place. Stewie is the first connected pipeline, not the only lane.</p>
+                  </div>
+                  <button class="chip" id="tile-stewie" type="button">Open studio</button>
+                </div>
+                <div class="work-mini-grid" id="work-studio-metrics"></div>
+                <div class="work-actions">
+                  <button class="btn primary" id="work-open-studio" type="button">Studio</button>
+                  <button class="btn" id="work-render" type="button">Render</button>
+                  <button class="btn" id="work-upload" type="button">Upload approved</button>
+                  <button class="btn" id="work-refresh-studio" type="button">Refresh</button>
+                </div>
+                <div class="work-stack compact" id="work-channel-brief"></div>
+              </div>
+
+              <div class="card work-panel">
+                <div class="work-section-head">
+                  <div>
+                    <h3 class="tool-title">Outreach autopilot</h3>
+                    <p class="tool-desc">AI prepares the target brief, opener, and reply suggestion. You review, edit if needed, then approve the send.</p>
+                  </div>
+                </div>
+                <div class="work-mini-grid" id="work-outreach-metrics"></div>
+                <div class="seg work-seg work-seg-compact" id="work-lead-filters">
+                  <button class="seg-btn active" data-work-filter="all" type="button">All</button>
+                  <button class="seg-btn" data-work-filter="active" type="button">Review</button>
+                  <button class="seg-btn" data-work-filter="followup" type="button">Follow up</button>
+                  <button class="seg-btn" data-work-filter="responded" type="button">Replied</button>
+                </div>
+                <form class="work-form work-form-2" id="work-lead-form">
+                  <input id="work-lead-business" class="tool-input" placeholder="Target business" required />
+                  <input id="work-lead-contact" class="tool-input" placeholder="Contact person" />
+                  <input id="work-lead-email" class="tool-input" type="email" placeholder="Email" required />
+                  <input id="work-lead-website" class="tool-input" placeholder="Website / handle" />
+                  <input id="work-lead-offer" class="tool-input work-span-2" placeholder="Offer angle, e.g. redesign, landing page, booking flow" required />
+                  <input id="work-lead-response" class="tool-input work-span-2" placeholder="Optional response summary if they already replied" />
+                  <button class="btn primary" type="submit">Prepare review</button>
+                </form>
+                <div class="work-stack" id="work-lead-list"></div>
+              </div>
+
+              <div class="card work-panel">
+                <div class="work-section-head">
+                  <div>
+                    <h3 class="tool-title">Channel portfolio</h3>
+                    <p class="tool-desc">Track how each channel is performing across platforms, then log fresh snapshots as the numbers move.</p>
+                  </div>
+                </div>
+                <div class="work-mini-grid" id="work-channel-metrics"></div>
+                <form class="work-form work-form-2" id="work-channel-form">
+                  <input id="work-channel-name" class="tool-input" placeholder="Channel name" required />
+                  <select id="work-channel-platform" class="tool-input">
+                    <option value="YouTube">YouTube</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="TikTok">TikTok</option>
+                  </select>
+                  <input id="work-channel-niche" class="tool-input" placeholder="Format / niche" required />
+                  <select id="work-channel-status" class="tool-input">
+                    <option value="Live">Live</option>
+                    <option value="Building">Building</option>
+                    <option value="Planned">Planned</option>
+                  </select>
+                  <input id="work-channel-cadence" class="tool-input" placeholder="Cadence / posting plan" />
+                  <input id="work-channel-revenue" class="tool-input" placeholder="Revenue model" />
+                  <button class="btn primary" type="submit">Add lane</button>
+                </form>
+                <form class="work-form work-form-2" id="work-channel-snapshot-form">
+                  <select id="work-channel-snapshot-id" class="tool-input" required></select>
+                  <input id="work-channel-followers" class="tool-input" type="number" step="1" min="0" placeholder="Subscribers / followers" required />
+                  <input id="work-channel-views" class="tool-input" type="number" step="1" min="0" placeholder="Total views" required />
+                  <input id="work-channel-posts" class="tool-input" type="number" step="1" min="0" placeholder="Published posts" required />
+                  <input id="work-channel-revenue-value" class="tool-input" type="number" step="0.01" min="0" placeholder="Revenue to date" required />
+                  <button class="btn" type="submit">Log snapshot</button>
+                </form>
+                <div class="work-stack" id="work-channel-list"></div>
+              </div>
+
+              <div class="card work-panel">
+                <div class="work-section-head">
+                  <div>
+                    <h3 class="tool-title">Trading bot analytics</h3>
+                    <p class="tool-desc">Keep the bot readable at a glance with balanced stats, the equity curve, live positions, and recent reports.</p>
+                  </div>
+                  <button class="chip" id="work-open-trading" type="button">Open report</button>
+                </div>
+                <div class="work-mini-grid" id="work-bot-metrics"></div>
+                <div class="work-chart" id="work-bot-chart"></div>
+                <div class="work-stack compact" id="work-report-list"></div>
+                <form class="work-form work-form-2" id="work-bot-snapshot-form">
+                  <input id="work-bot-date" class="tool-input" type="date" required />
+                  <input id="work-bot-balance" class="tool-input" type="number" step="0.01" placeholder="Balance" required />
+                  <input id="work-bot-pnl" class="tool-input" type="number" step="0.01" placeholder="P&amp;L %" required />
+                  <input id="work-bot-winrate" class="tool-input" type="number" step="0.1" placeholder="Win rate %" required />
+                  <input id="work-bot-open-trades" class="tool-input" type="number" step="1" min="0" placeholder="Open trades" required />
+                  <button class="btn primary" type="submit">Save snapshot</button>
+                </form>
+                <form class="work-form work-form-2 slim" id="work-position-form">
+                  <input id="work-position-pair" class="tool-input" placeholder="Pair, e.g. BTC/USDT" required />
+                  <select id="work-position-side" class="tool-input">
+                    <option value="Long">Long</option>
+                    <option value="Short">Short</option>
+                  </select>
+                  <input id="work-position-pnl" class="tool-input" type="number" step="0.01" placeholder="P&amp;L %" required />
+                  <button class="btn" type="submit">Add position</button>
+                </form>
+                <div class="work-stack" id="work-position-list"></div>
+              </div>
+            </div>
+
+            <div class="tools-support">
+              <div class="card tool-panel enter-scale">
+                <div class="tool-panel-h">Research an idea</div>
+                <p class="tool-desc">Send demand research straight into <code>Ideas/</code>, where ideas stay ideas.</p>
                 <div class="tool-hero-row">
-                  <input id="research-input" class="tool-input" placeholder="flashcards from ink notes…" />
+                  <input id="research-input" class="tool-input" placeholder="faceless ai travel channel…" />
                   <button class="btn primary" id="btn-research">Run</button>
                 </div>
               </div>
 
-              <div class="card tool-hero enter-scale">
-                <h3 class="tool-title">Find</h3>
-                <p class="tool-desc">Search your vault by meaning — "that proof trick from week 3".</p>
+              <div class="card tool-panel enter-scale">
+                <div class="tool-panel-h">Find</div>
+                <p class="tool-desc">Pull up old notes, tactics, and experiments without remembering the filename.</p>
                 <div class="tool-hero-row">
-                  <input id="find-input" class="tool-input" placeholder="that note where I worked out the tax deadlines" />
+                  <input id="find-input" class="tool-input" placeholder="that note about outbound offer ideas" />
                   <button class="btn primary" id="btn-find">Search</button>
                 </div>
                 <ul id="find-results" class="list find-results"></ul>
               </div>
-            </div><!-- /tools-hero-row -->
 
-            <div class="tool-grid">
-              <button class="tool-tile" id="btn-weekly" type="button">
-                <span class="tool-ico">◷</span>
-                <span class="tool-tname">Weekly review</span>
-                <span class="tool-tdesc">Summarize the week &amp; surface loose ends into a review note</span>
-              </button>
-              <button class="tool-tile" id="tile-tidy" type="button">
-                <span class="tool-ico">✦</span>
-                <span class="tool-tname">Tidy vault</span>
-                <span class="tool-tdesc">Auto-sort loose notes into their right folders — preview before applying</span>
-              </button>
-              <button class="tool-tile" id="tile-stewie" type="button">
-                <span class="tool-ico">🎬</span>
-                <span class="tool-tname">Stewie Studio</span>
-                <span class="tool-tdesc" id="tile-stewie-sub">Video pipeline — queue, uploads &amp; channel stats</span>
-              </button>
-            </div>
-
-            <div class="tools-extra">
-              <div class="card tool-panel">
-                <div class="tool-panel-h">Recent notes</div>
-                <ul class="tool-recent" id="tool-recent"></ul>
+              <div class="card tool-panel tool-panel-actions">
+                <div class="tool-panel-h">Quick actions</div>
+                <div class="tool-grid tool-grid-compact">
+                  <button class="tool-tile" id="btn-weekly" type="button">
+                    <span class="tool-ico">◷</span>
+                    <span class="tool-tname">Weekly review</span>
+                    <span class="tool-tdesc">Wrap the week into one clean review note.</span>
+                  </button>
+                  <button class="tool-tile" id="tile-tidy" type="button">
+                    <span class="tool-ico">✦</span>
+                    <span class="tool-tname">Tidy vault</span>
+                    <span class="tool-tdesc">Sort loose notes before the vault gets noisy.</span>
+                  </button>
+                  <button class="tool-tile" id="work-open-studio-tile" type="button">
+                    <span class="tool-ico">◫</span>
+                    <span class="tool-tname">Studio queue</span>
+                    <span class="tool-tdesc" id="tile-stewie-sub">Jump straight into rendering and uploads.</span>
+                  </button>
+                </div>
               </div>
+
               <div class="card tool-panel">
                 <div class="tool-panel-h">Vault at a glance</div>
-                <div class="tool-stats" id="tool-stats"></div>
+                <div class="tools-vault-grid">
+                  <ul class="tool-recent" id="tool-recent"></ul>
+                  <div class="tool-stats" id="tool-stats"></div>
+                </div>
               </div>
             </div>
           </div><!-- /tools-layout -->
@@ -535,22 +705,44 @@
         <h2>Stewie Studio</h2>
         <span class="stewie-live" id="stewie-live" hidden></span>
       </header>
-      <div class="seg sv-tabs" id="stewie-tabs">
+      <div class="seg sv-tabs sv-tabs-compact" id="stewie-tabs">
         <button class="seg-btn active" data-sv="queue" type="button">Queue</button>
         <button class="seg-btn" data-sv="stats" type="button">Stats</button>
       </div>
       <div class="reader-scroll">
         <div class="sv-pane" id="sv-queue">
-          <div class="tool-hero-row stewie-actions">
-            <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>
-            <button class="btn" id="btn-stewie-render">🎬 Render</button>
-            <button class="btn" id="btn-stewie-upload">⬆ Upload approved</button>
+          <div class="sv-shell">
+            <div class="sv-main">
+              <div class="card sv-card sv-toolbar">
+                <div class="sv-toolbar-copy">
+                  <h3 class="tool-title">Studio queue</h3>
+                  <p class="tool-desc">One production queue, multiple future publishing lanes. Stewie is the first connected renderer.</p>
+                </div>
+                <div class="tool-hero-row stewie-actions">
+                  <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>
+                  <button class="btn" id="btn-stewie-render">🎬 Render</button>
+                  <button class="btn" id="btn-stewie-upload">⬆ Upload approved</button>
+                </div>
+              </div>
+              <ul id="stewie-list" class="list stewie-list"></ul>
+              <div class="sv-listfoot muted-sm" id="stewie-listfoot" hidden></div>
+            </div>
+            <aside class="sv-side">
+              <div class="card sv-side-card">
+                <div class="tool-panel-h">Queue filters</div>
+                <div class="stewie-stats" id="stewie-stats" hidden></div>
+              </div>
+              <div class="card sv-side-card">
+                <div class="tool-panel-h">Publishing lanes</div>
+                <div class="work-stack compact" id="stewie-lanes"></div>
+              </div>
+              <div class="card sv-side-card">
+                <div class="tool-panel-h">Run log</div>
+                <button class="btn sm sv-logbtn" id="btn-stewie-log" type="button">Show run log</button>
+                <pre id="stewie-log" class="muted-sm stewie-log" hidden></pre>
+              </div>
+            </aside>
           </div>
-          <div class="stewie-stats" id="stewie-stats" hidden></div>
-          <ul id="stewie-list" class="list stewie-list"></ul>
-          <div class="sv-listfoot muted-sm" id="stewie-listfoot" hidden></div>
-          <button class="btn sm sv-logbtn" id="btn-stewie-log" type="button">Show run log</button>
-          <pre id="stewie-log" class="muted-sm stewie-log" hidden></pre>
         </div>
         <div class="sv-pane" id="sv-stats" hidden>
           <div id="stewie-analytics" class="sv-analytics"></div>
