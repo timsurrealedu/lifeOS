@@ -53,9 +53,9 @@
   --page-max: 1080px;   /* shared content width so every desktop page has identical L/R margins */
 
   /* Typography */
-  --font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-  --serif: "DM Serif Display", Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Hoefler Text", serif;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Animation Easing */
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -144,17 +144,17 @@
   --radius-sm: 0px;
   --graph-bg: #020305;
   --bg-tint: repeating-linear-gradient(180deg, rgba(0,229,255,.03) 0 1px, transparent 1px 3px);
-  --font: 'Chakra Petch', -apple-system, system-ui, sans-serif;
-  --serif: 'Chakra Petch', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --font: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
+  --serif: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
+  --mono: "Share Tech Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   color-scheme: dark;
 }
 
 /* Logo renders identically in every theme (font + casing fixed); only the accent colour themes it.
-   Netrunner's --serif is an unloaded font, so pin the brand font explicitly rather than via --serif.
+   Netrunner swaps --serif, so pin the brand font explicitly rather than via --serif.
    :root prefix keeps this winning over the later base .brand / .sidenav-brand rules. */
 :root .brand, :root .brand-name, :root .sidenav-brand, :root .sidenav-brand .brand-name, :root .loading-logo, :root .loading-text {
-  font-family: "DM Serif Display", Georgia, serif; text-transform: none; letter-spacing: 0; font-weight: 600;
+  font-family: "Fraunces", Georgia, serif; text-transform: none; letter-spacing: 0; font-weight: 600;
 }
 
 /* ---- Netrunner typography ---- */
@@ -1710,10 +1710,11 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
 
 @media (max-width: 759px) {
   .view[data-view="code"]:not([hidden]) { flex-direction: column; padding-top: max(env(safe-area-inset-top), 6px); }
-  .code-top { padding-inline: 10px; }
+  .code-top { gap: 6px; padding-inline: 8px; overflow: hidden; }
   .code-top .icon-btn { flex: 0 0 auto; }
-  .code-mode .seg-btn { padding-inline: 10px; }
-  .code-run { margin-left: auto; padding-inline: 12px; }
+  .code-mode .seg-btn { padding-inline: 9px; }
+  .code-run { margin-left: auto; width: 44px; min-width: 44px; height: 34px; justify-content: center; padding: 0; }
+  .code-run span:not(.code-run-ico) { display: none; }
   .code-subbar { padding-inline: 10px; }
   .code-scratch-note { max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .code-editor { max-width: none; border-radius: 0; border-inline: 0; }

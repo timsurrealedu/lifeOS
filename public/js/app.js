@@ -3645,6 +3645,11 @@ const CODE_EXT_LANG = {
   py: 'python', js: 'javascript', mjs: 'javascript', cjs: 'javascript', c: 'c', h: 'c',
   cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', java: 'java', go: 'go', rs: 'rust', sh: 'bash', bash: 'bash',
 };
+const CODE_FALLBACK_LANGS = [
+  { id: 'python', name: 'Python' }, { id: 'javascript', name: 'JavaScript' }, { id: 'c', name: 'C' },
+  { id: 'cpp', name: 'C++' }, { id: 'java', name: 'Java' }, { id: 'go', name: 'Go' },
+  { id: 'rust', name: 'Rust' }, { id: 'bash', name: 'Bash' },
+];
 const codeLangOf = (name) => CODE_EXT_LANG[(name || '').split('.').pop().toLowerCase()] || null;
 const CODE_STARTER = 'print("hello")\n';
 const CODE_PAIRS = { '(': ')', '{': '}', '[': ']', '"': '"', "'": "'", '`': '`' };
@@ -3906,15 +3911,17 @@ function codeSetScratchLang(lang) {
 }
 async function codeLoadLangs() {
   const sel = $('#code-lang'); sel.innerHTML = '';
-  const fill = (langs) => {
-    const list = langs.length ? langs : [{ id: 'python', name: 'Python' }];
+  const fill = (langs, { preserve = true } = {}) => {
+    const seen = new Set();
+    const list = [...(langs.length ? langs : CODE_FALLBACK_LANGS), ...CODE_FALLBACK_LANGS]
+      .filter((l) => l && l.id && !seen.has(l.id) && seen.add(l.id));
     sel.innerHTML = '';
     for (const l of list) { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); }
-    if (!list.find((l) => l.id === codeState.scratchLang)) codeState.scratchLang = list[0].id;
+    if (!preserve && !list.find((l) => l.id === codeState.scratchLang)) codeState.scratchLang = list[0].id;
     sel.value = codeState.scratchLang;
   };
   fill([]);
-  try { const j = await api('/api/run/langs'); codeState.langs = (j.langs || []).filter((l) => l.found); }
+  try { const j = await api('/api/run/langs'); codeState.langs = j.langs || []; }
   catch { codeState.langs = []; }
   fill(codeState.langs);
 }
