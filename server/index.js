@@ -20,6 +20,8 @@ import { runCode, availableLangs } from './runner.js';
 import { listCodeFiles, readCodeFile, saveCodeFile } from './codefiles.js';
 import { getPublicKey, subscribe, unsubscribe, startScheduler } from './notify.js';
 import { listVideos, videoStats, channelAnalytics, approve as stewieApprove, reject as stewieReject, deleteLocal as stewieDelete, uploadApproved, renderNow, tailLog, streamVideo, syncAiProvider } from './stewie.js';
+import { listItems as listPegilagiItems, lifeosExport as pegilagiLifeosExport, renderNext as renderPegilagiNext, tailLog as tailPegilagiLog, streamVideo as streamPegilagiVideo, storyboardHtml as pegilagiStoryboardHtml } from './pegilagi.js';
+import { tradingSummary } from './trading.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cfg = loadConfig();
@@ -577,6 +579,28 @@ app.get('/api/stewie/log', async (_req, res) => {
   try { ok(res, { log: await tailLog() }); } catch (e) { fail(res, e, 502); }
 });
 app.get('/api/stewie/video/:stamp', (req, res) => streamVideo(req.params.stamp, res));
+
+// ---- Pegilagi Studio (marketing video pipeline on the Oracle box) ----
+app.get('/api/pegilagi/videos', async (_req, res) => {
+  try { ok(res, await listPegilagiItems()); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/pegilagi/export', async (_req, res) => {
+  try { ok(res, { export: await pegilagiLifeosExport() }); } catch (e) { fail(res, e, 502); }
+});
+app.post('/api/pegilagi/render', async (_req, res) => {
+  try { ok(res, { out: await renderPegilagiNext() }); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/pegilagi/log', async (_req, res) => {
+  try { ok(res, { log: await tailPegilagiLog() }); } catch (e) { fail(res, e, 502); }
+});
+app.get('/api/pegilagi/video/:id', (req, res) => streamPegilagiVideo(req.params.id, res));
+app.get('/api/pegilagi/storyboard/:id', async (req, res) => {
+  try { res.type('html').send(await pegilagiStoryboardHtml(req.params.id)); } catch (e) { fail(res, e, 404); }
+});
+
+app.get('/api/trading/summary', async (_req, res) => {
+  try { ok(res, { summary: await tradingSummary() }); } catch (e) { fail(res, e, 502); }
+});
 
 // ---- Config ----
 app.get('/api/config', (_req, res) => {

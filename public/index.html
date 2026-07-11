@@ -249,13 +249,12 @@
               </div>
             </div>
 
-            <!-- Trading bot prototype. The live backend can replace these local snapshots later. -->
             <div class="analytics-card" id="trading-bot">
               <div class="an-head">
-                <h3>Trading bot <span class="an-tag">prototype</span></h3>
-                <span class="trading-status" id="home-bot-status">Tracking</span>
+                <h3>Trading bot <span class="an-tag">Freqtrade</span></h3>
+                <span class="trading-status" id="home-bot-status">Syncing</span>
               </div>
-              <p class="an-sub">Snapshot log, open positions, and latest reports.</p>
+              <p class="an-sub">Read-only Freqtrade balance, P&amp;L, positions, and reports.</p>
               <div class="trading-stats">
                 <div class="trading-stat"><span class="trading-stat-label">Balance</span><span class="trading-stat-value tabular" id="home-bot-balance">—</span></div>
                 <div class="trading-stat"><span class="trading-stat-label">Total P&amp;L</span><span class="trading-stat-value tabular" id="home-bot-pnl">—</span></div>
@@ -296,7 +295,7 @@
                 <div class="work-item"><div class="work-note">No leads queued yet. Add targets from Tools.</div></div>
               </div>
               <div class="an-actions">
-                <button class="btn primary sm" data-action="open-tools" type="button">Manage pipeline</button>
+                <button class="btn primary sm" data-action="open-email-manager" type="button">Manage pipeline</button>
               </div>
             </div>
           </div><!-- /home-analytics -->
@@ -312,17 +311,17 @@
           <div class="tools-layout">
             <div class="ops-lanes" id="ops-lanes">
               <button class="ops-lane" id="ops-channel-lane" type="button">
-                <span class="ops-lane-label">AI channels</span>
+                <span class="ops-lane-label">AI Channels</span>
                 <span class="ops-lane-value" id="ops-channel-value">0 live</span>
-                <span class="ops-lane-sub" id="ops-channel-sub">Studio queue ready</span>
+                <span class="ops-lane-sub" id="ops-channel-sub">Studio Queue Ready</span>
               </button>
               <button class="ops-lane" id="ops-trading-lane" type="button">
-                <span class="ops-lane-label">Trading bot</span>
+                <span class="ops-lane-label">Trading Bot</span>
                 <span class="ops-lane-value" id="ops-trading-value">No snapshot</span>
-                <span class="ops-lane-sub" id="ops-trading-sub">Log balance, P&amp;L, and positions</span>
+                <span class="ops-lane-sub" id="ops-trading-sub">Syncing Freqtrade</span>
               </button>
               <button class="ops-lane" id="ops-outreach-lane" type="button">
-                <span class="ops-lane-label">Email pipeline</span>
+                <span class="ops-lane-label">Email Pipeline</span>
                 <span class="ops-lane-value" id="ops-outreach-value">0 to review</span>
                 <span class="ops-lane-sub" id="ops-outreach-sub">Review before sending</span>
               </button>
@@ -332,118 +331,43 @@
               <div class="card work-panel work-panel-tight">
                 <div class="work-section-head">
                   <div>
-                    <h3 class="tool-title">Studio operations</h3>
-                    <p class="tool-desc">Run rendering, uploads, and publishing lanes from one place. Stewie is the first connected pipeline, not the only lane.</p>
+                    <h3 class="tool-title">Studio Operations</h3>
                   </div>
-                  <button class="chip" id="tile-stewie" type="button">Open studio</button>
                 </div>
                 <div class="work-mini-grid" id="work-studio-metrics"></div>
+                <div class="work-stack compact" id="work-channel-brief"></div>
                 <div class="work-actions">
                   <button class="btn primary" id="work-open-studio" type="button">Studio</button>
-                  <button class="btn" id="work-render" type="button">Render</button>
-                  <button class="btn" id="work-upload" type="button">Upload approved</button>
-                  <button class="btn" id="work-refresh-studio" type="button">Refresh</button>
                 </div>
-                <div class="work-stack compact" id="work-channel-brief"></div>
               </div>
 
               <div class="card work-panel">
                 <div class="work-section-head">
                   <div>
-                    <h3 class="tool-title">Outreach autopilot</h3>
-                    <p class="tool-desc">AI prepares the target brief, opener, and reply suggestion. You review, edit if needed, then approve the send.</p>
+                    <h3 class="tool-title">Trading Bot Analytics</h3>
                   </div>
-                </div>
-                <div class="work-mini-grid" id="work-outreach-metrics"></div>
-                <div class="seg work-seg work-seg-compact" id="work-lead-filters">
-                  <button class="seg-btn active" data-work-filter="all" type="button">All</button>
-                  <button class="seg-btn" data-work-filter="active" type="button">Review</button>
-                  <button class="seg-btn" data-work-filter="followup" type="button">Follow up</button>
-                  <button class="seg-btn" data-work-filter="responded" type="button">Replied</button>
-                </div>
-                <form class="work-form work-form-2" id="work-lead-form">
-                  <input id="work-lead-business" class="tool-input" placeholder="Target business" required />
-                  <input id="work-lead-contact" class="tool-input" placeholder="Contact person" />
-                  <input id="work-lead-email" class="tool-input" type="email" placeholder="Email" required />
-                  <input id="work-lead-website" class="tool-input" placeholder="Website / handle" />
-                  <input id="work-lead-offer" class="tool-input work-span-2" placeholder="Offer angle, e.g. redesign, landing page, booking flow" required />
-                  <input id="work-lead-response" class="tool-input work-span-2" placeholder="Optional response summary if they already replied" />
-                  <button class="btn primary" type="submit">Prepare review</button>
-                </form>
-                <div class="work-stack" id="work-lead-list"></div>
-              </div>
-
-              <div class="card work-panel">
-                <div class="work-section-head">
-                  <div>
-                    <h3 class="tool-title">Channel portfolio</h3>
-                    <p class="tool-desc">Track how each channel is performing across platforms, then log fresh snapshots as the numbers move.</p>
-                  </div>
-                </div>
-                <div class="work-mini-grid" id="work-channel-metrics"></div>
-                <form class="work-form work-form-2" id="work-channel-form">
-                  <input id="work-channel-name" class="tool-input" placeholder="Channel name" required />
-                  <select id="work-channel-platform" class="tool-input">
-                    <option value="YouTube">YouTube</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="TikTok">TikTok</option>
-                  </select>
-                  <input id="work-channel-niche" class="tool-input" placeholder="Format / niche" required />
-                  <select id="work-channel-status" class="tool-input">
-                    <option value="Live">Live</option>
-                    <option value="Building">Building</option>
-                    <option value="Planned">Planned</option>
-                  </select>
-                  <input id="work-channel-cadence" class="tool-input" placeholder="Cadence / posting plan" />
-                  <input id="work-channel-revenue" class="tool-input" placeholder="Revenue model" />
-                  <button class="btn primary" type="submit">Add lane</button>
-                </form>
-                <form class="work-form work-form-2" id="work-channel-snapshot-form">
-                  <select id="work-channel-snapshot-id" class="tool-input" required></select>
-                  <input id="work-channel-followers" class="tool-input" type="number" step="1" min="0" placeholder="Subscribers / followers" required />
-                  <input id="work-channel-views" class="tool-input" type="number" step="1" min="0" placeholder="Total views" required />
-                  <input id="work-channel-posts" class="tool-input" type="number" step="1" min="0" placeholder="Published posts" required />
-                  <input id="work-channel-revenue-value" class="tool-input" type="number" step="0.01" min="0" placeholder="Revenue to date" required />
-                  <button class="btn" type="submit">Log snapshot</button>
-                </form>
-                <div class="work-stack" id="work-channel-list"></div>
-              </div>
-
-              <div class="card work-panel">
-                <div class="work-section-head">
-                  <div>
-                    <h3 class="tool-title">Trading bot analytics</h3>
-                    <p class="tool-desc">Keep the bot readable at a glance with balanced stats, the equity curve, live positions, and recent reports.</p>
-                  </div>
-                  <button class="chip" id="work-open-trading" type="button">Open report</button>
                 </div>
                 <div class="work-mini-grid" id="work-bot-metrics"></div>
                 <div class="work-chart" id="work-bot-chart"></div>
-                <div class="work-stack compact" id="work-report-list"></div>
-                <form class="work-form work-form-2" id="work-bot-snapshot-form">
-                  <input id="work-bot-date" class="tool-input" type="date" required />
-                  <input id="work-bot-balance" class="tool-input" type="number" step="0.01" placeholder="Balance" required />
-                  <input id="work-bot-pnl" class="tool-input" type="number" step="0.01" placeholder="P&amp;L %" required />
-                  <input id="work-bot-winrate" class="tool-input" type="number" step="0.1" placeholder="Win rate %" required />
-                  <input id="work-bot-open-trades" class="tool-input" type="number" step="1" min="0" placeholder="Open trades" required />
-                  <button class="btn primary" type="submit">Save snapshot</button>
-                </form>
-                <form class="work-form work-form-2 slim" id="work-position-form">
-                  <input id="work-position-pair" class="tool-input" placeholder="Pair, e.g. BTC/USDT" required />
-                  <select id="work-position-side" class="tool-input">
-                    <option value="Long">Long</option>
-                    <option value="Short">Short</option>
-                  </select>
-                  <input id="work-position-pnl" class="tool-input" type="number" step="0.01" placeholder="P&amp;L %" required />
-                  <button class="btn" type="submit">Add position</button>
-                </form>
                 <div class="work-stack" id="work-position-list"></div>
+              </div>
+
+              <div class="card work-panel work-panel-tight">
+                <div class="work-section-head">
+                  <div>
+                    <h3 class="tool-title">Email Pipeline</h3>
+                  </div>
+                </div>
+                <div class="work-mini-grid" id="work-outreach-metrics"></div>
+                <div class="work-actions">
+                  <button class="btn primary" data-action="open-email-manager" type="button">Email Manager</button>
+                </div>
               </div>
             </div>
 
             <div class="tools-support">
               <div class="card tool-panel enter-scale">
-                <div class="tool-panel-h">Research an idea</div>
+                <div class="tool-panel-h">Research An Idea</div>
                 <p class="tool-desc">Send demand research straight into <code>Ideas/</code>, where ideas stay ideas.</p>
                 <div class="tool-hero-row">
                   <input id="research-input" class="tool-input" placeholder="faceless ai travel channel…" />
@@ -462,28 +386,28 @@
               </div>
 
               <div class="card tool-panel tool-panel-actions">
-                <div class="tool-panel-h">Quick actions</div>
+                <div class="tool-panel-h">Quick Actions</div>
                 <div class="tool-grid tool-grid-compact">
                   <button class="tool-tile" id="btn-weekly" type="button">
                     <span class="tool-ico">◷</span>
-                    <span class="tool-tname">Weekly review</span>
+                    <span class="tool-tname">Weekly Review</span>
                     <span class="tool-tdesc">Wrap the week into one clean review note.</span>
                   </button>
                   <button class="tool-tile" id="tile-tidy" type="button">
                     <span class="tool-ico">✦</span>
-                    <span class="tool-tname">Tidy vault</span>
+                    <span class="tool-tname">Tidy Vault</span>
                     <span class="tool-tdesc">Sort loose notes before the vault gets noisy.</span>
                   </button>
                   <button class="tool-tile" id="work-open-studio-tile" type="button">
                     <span class="tool-ico">◫</span>
-                    <span class="tool-tname">Studio queue</span>
+                    <span class="tool-tname">Studio Queue</span>
                     <span class="tool-tdesc" id="tile-stewie-sub">Jump straight into rendering and uploads.</span>
                   </button>
                 </div>
               </div>
 
               <div class="card tool-panel">
-                <div class="tool-panel-h">Vault at a glance</div>
+                <div class="tool-panel-h">Vault At A Glance</div>
                 <div class="tools-vault-grid">
                   <ul class="tool-recent" id="tool-recent"></ul>
                   <div class="tool-stats" id="tool-stats"></div>
@@ -491,6 +415,38 @@
               </div>
             </div>
           </div><!-- /tools-layout -->
+        </section>
+        <section class="view enter-slide-up" data-view="email" hidden>
+          <div class="view-head vhead">
+            <div class="crumb-row"><button class="crumb crumb-button" data-action="open-tools" type="button">Tools</button></div>
+            <div class="title-row"><h2>Email Manager</h2></div>
+          </div>
+
+          <div class="email-manager-layout">
+            <div class="card work-panel">
+              <div class="work-section-head">
+                <div>
+                  <h3 class="tool-title">Email Pipeline</h3>
+                </div>
+              </div>
+              <div class="seg work-seg work-seg-compact" id="work-lead-filters">
+                <button class="seg-btn active" data-work-filter="all" type="button">All</button>
+                <button class="seg-btn" data-work-filter="active" type="button">Review</button>
+                <button class="seg-btn" data-work-filter="followup" type="button">Follow Up</button>
+                <button class="seg-btn" data-work-filter="responded" type="button">Replied</button>
+              </div>
+              <form class="work-form work-form-2" id="work-lead-form">
+                <input id="work-lead-business" class="tool-input" placeholder="Target business" required />
+                <input id="work-lead-contact" class="tool-input" placeholder="Contact person" />
+                <input id="work-lead-email" class="tool-input" type="email" placeholder="Email" required />
+                <input id="work-lead-website" class="tool-input" placeholder="Website / handle" />
+                <input id="work-lead-offer" class="tool-input work-span-2" placeholder="Offer angle, e.g. redesign, landing page, booking flow" required />
+                <input id="work-lead-response" class="tool-input work-span-2" placeholder="Optional response summary if they already replied" />
+                <button class="btn primary" type="submit">Prepare Review</button>
+              </form>
+              <div class="work-stack" id="work-lead-list"></div>
+            </div>
+          </div>
         </section>
         <!-- VAULT (notes + graph, toggled) -->
         <section class="view enter-slide-up" data-view="vault" hidden>
@@ -702,9 +658,13 @@
     <div class="reader-main">
       <header class="reader-head">
         <button class="icon-btn" id="stewie-back" aria-label="Back">←</button>
-        <h2>Stewie Studio</h2>
+        <h2 id="stewie-title">Studio</h2>
         <span class="stewie-live" id="stewie-live" hidden></span>
       </header>
+      <div class="seg sv-tabs sv-tabs-compact" id="studio-pipeline-tabs">
+        <button class="seg-btn active" data-pipeline="stewie" type="button">Stewie</button>
+        <button class="seg-btn" data-pipeline="pegilagi" type="button">Pegilagi</button>
+      </div>
       <div class="seg sv-tabs sv-tabs-compact" id="stewie-tabs">
         <button class="seg-btn active" data-sv="queue" type="button">Queue</button>
         <button class="seg-btn" data-sv="stats" type="button">Stats</button>
@@ -716,7 +676,7 @@
               <div class="card sv-card sv-toolbar">
                 <div class="sv-toolbar-copy">
                   <h3 class="tool-title">Studio queue</h3>
-                  <p class="tool-desc">One production queue, multiple future publishing lanes. Stewie is the first connected renderer.</p>
+                  <p class="tool-desc" id="studio-desc">One production queue, multiple future publishing lanes. Stewie is the first connected renderer.</p>
                 </div>
                 <div class="tool-hero-row stewie-actions">
                   <button class="btn primary" id="btn-stewie-refresh">↻ Refresh</button>

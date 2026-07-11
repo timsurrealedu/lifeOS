@@ -105,6 +105,7 @@ function initGlassHeader() {
 const state = { inbox: [], notes: [], folders: null, systemFolders: [], stagingFolders: [], showStaging: false, view: 'home', pendingPhoto: null, pendingPhotoKind: null, pendingStrokes: null, pendingDoc: null, graph: null, expandedFolders: new Set(), readerPath: null, readerContent: '', chat: [], chatBusy: false, noteChat: [], noteChatBusy: false, planView: 'list', calMonth: null };
 state._firstRender = { home: true, vault: true, plan: true, calendar: true, tools: true, code: true, stewie: true };
 state._shownViews = new Set();
+let stewieVideos = [], pegilagiVideos = [], stewieVideoStats = null, stewieOpen = false, studioPipeline = 'stewie';
 
 /* ---------- Preferences (theme + editor) — persisted locally ---------- */
 const THEMES = ['dark', 'light', 'netrunner'];
@@ -162,7 +163,7 @@ function show(tab) {
     if (isFirstTime) { fadeIn(next, 300); }
   }
   if (view === 'home') { renderInbox(); renderHomeAnalytics(); }
-  if (view === 'tools') loadDiscover();
+  if (view === 'tools' || view === 'email') loadDiscover();
   if (view === 'vault') loadNotes();
   if (view === 'plan') loadPlan();
   if (view === 'code') loadCode();
@@ -255,6 +256,7 @@ document.addEventListener('click', (e) => {
   if (act === 'open-settings') openSettings();
   if (act === 'cycle-theme') cycleTheme();
   if (act === 'open-tools') show('tools');
+  if (act === 'open-email-manager') openEmailManager();
   if (act === 'open-home') show('home');
 });
 
@@ -576,6 +578,7 @@ const WORK_CHANNEL_FOLDER = 'Work/Channels';
 const WORK_OUTREACH_FOLDER = 'Work/Outreach';
 state.workFilter = 'all';
 state.work = normalizeWorkState(null);
+state.trading = null;
 let workLoaded = false;
 let workLiveAnalytics = null;
 
@@ -627,6 +630,45 @@ async function loadWorkState(force) {
   state.work = normalizeWorkState(saved);
   workLoaded = true;
   return state.work;
+}
+function fallbackTrading() {
+  return { status: 'saved', snapshots: state.work.bot.snapshots || [], positions: state.work.bot.positions || [] };
+}
+function currentTrading() {
+  return state.trading || fallbackTrading();
+}
+async function refreshTradingSummary(silent = true) {
+  try {
+    const { summary } = await api('/api/trading/summary');
+    state.trading = {
+      ...summary,
+      snapshots: Array.isArray(summary?.snapshots) ? summary.snapshots : [],
+      positions: Array.isArray(summary?.positions) ? summary.positions : [],
+    };
+    renderWorkDashboard();
+    return state.trading;
+  } catch (e) {
+    state.trading = null;
+    renderWorkDashboard();
+    if (!silent) toast(e.message);
+    return null;
+  }
+}
+async function refreshStudioSummary() {
+  try {
+    const [stewie, pegilagi] = await Promise.allSettled([
+      Promise.all([api('/api/stewie/analytics'), api('/api/stewie/videos')]),
+      api('/api/pegilagi/videos'),
+    ]);
+    if (stewie.status === 'fulfilled') {
+      const [{ analytics }, { videos }] = stewie.value;
+      workLiveAnalytics = (analytics && analytics.now) || workLiveAnalytics;
+      stewieVideos = Array.isArray(videos) ? videos : stewieVideos;
+    }
+    if (pegilagi.status === 'fulfilled') {
+      pegilagiVideos = Array.isArray(pegilagi.value.items) ? pegilagi.value.items : pegilagiVideos;
+    }
+  } catch {}
 }
 async function saveWorkState() {
   const { state: saved } = await api('/api/work', {
@@ -701,9 +743,6 @@ function remapWorkPath(path) {
   if (p.startsWith('Personal/Outreach/')) return WORK_OUTREACH_FOLDER + '/' + p.slice('Personal/Outreach/'.length);
   return p;
 }
-function latestTradingReports(limit = 4) {
-  return [...state.notes].filter((n) => /^Trading\//.test(n.path)).sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, limit);
-}
 async function migrateWorkFolders() {
   let changed = false;
   const noteSet = new Set(state.notes.map((n) => n.path));
@@ -734,6 +773,8 @@ async function refreshWorkDependencies() {
   await Promise.all([
     loadWorkState(),
     state.notes.length ? Promise.resolve() : loadNotes(true),
+    refreshTradingSummary(),
+    refreshStudioSummary(),
   ]);
   await migrateWorkFolders();
 }
@@ -780,22 +821,26 @@ function renderWorkDashboard() {
 }
 function renderOpsLanes() {
   const channels = state.work.channels;
-  const live = channels.filter((c) => c.status === 'Live').length;
-  const queue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
-  const latest = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+  const live = Math.max(channels.filter((c) => c.status === 'Live').length, workLiveAnalytics?.title ? 1 : 0);
+  const stewieQueue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
+  const pegilagiQueue = pegilagiVideos.filter((v) => v.status === 'needs_approval' || v.status === 'render_pending').length;
+  const queue = stewieQueue + pegilagiQueue;
+  const trading = currentTrading();
+  const latest = [...(trading.snapshots || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))).at(-1);
   const active = state.work.outreach.leads.filter((l) => l.status !== 'Archived');
   const review = active.filter((l) => l.status === 'Review').length;
   const due = active.filter((l) => l.followUp && l.followUp <= todayStr() && l.status !== 'Responded').length;
   if ($('#ops-channel-value')) $('#ops-channel-value').textContent = `${live} live`;
   if ($('#ops-channel-sub')) $('#ops-channel-sub').textContent = `${channels.length} lanes tracked · ${queue} in studio queue`;
   if ($('#ops-trading-value')) $('#ops-trading-value').textContent = latest ? fmtMoney(latest.balance) : 'No snapshot';
-  if ($('#ops-trading-sub')) $('#ops-trading-sub').textContent = latest ? `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}% · ${state.work.bot.positions.length} positions` : 'Log balance, P&L, and positions';
+  if ($('#ops-trading-sub')) $('#ops-trading-sub').textContent = latest ? `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}% · ${(trading.positions || []).length} positions · ${trading.status || 'saved'}` : 'Freqtrade waiting for data';
   if ($('#ops-outreach-value')) $('#ops-outreach-value').textContent = `${review} to review`;
   if ($('#ops-outreach-sub')) $('#ops-outreach-sub').textContent = `${active.length} active leads · ${due} due today`;
 }
 function renderWorkStudio() {
   const liveChannels = state.work.channels.filter((c) => c.status === 'Live');
-  const queue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length;
+  const queue = stewieVideos.filter((v) => v.status === 'pending' || v.status === 'approved').length
+    + pegilagiVideos.filter((v) => v.status === 'needs_approval' || v.status === 'render_pending').length;
   const approved = stewieVideos.filter((v) => v.status === 'approved').length;
   const laneList = state.work.channels.length
     ? [...state.work.channels].sort((a, b) => WORK_CHANNEL_STATUSES.indexOf(a.status) - WORK_CHANNEL_STATUSES.indexOf(b.status))
@@ -818,21 +863,22 @@ function renderWorkStudio() {
     }] : []);
   $('#work-studio-metrics').innerHTML = [
     ['Live lanes', Math.max(liveChannels.length, workLiveAnalytics?.title ? 1 : 0), 'channels publishing now'],
-    ['Render queue', queue, stewieVideos.length ? 'connected renderer' : 'refresh to sync'],
-    ['Approved', approved, 'ready to upload'],
-    ['Platforms', new Set(state.work.channels.map((c) => c.platform)).size, 'distribution surfaces'],
+    ['Render queue', queue, stewieVideos.length || pegilagiVideos.length ? 'connected renderers' : 'refresh to sync'],
+    ['Approved', approved, 'Stewie ready to upload'],
+    ['Platforms', new Set([...state.work.channels.map((c) => c.platform), ...(pegilagiVideos.length ? ['TikTok', 'Instagram', 'YouTube'] : [])]).size, 'distribution surfaces'],
   ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(sub)}</span></div>`).join('');
   $('#work-channel-brief').innerHTML = laneList.length
     ? laneList.map((c) => {
       const snap = latestChannelSnapshot(c);
       return `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(c.name)}</span><span class="work-pill ${slug(c.status)}">${esc(c.status)}</span><span class="work-pill">${esc(c.platform)}</span></div><div class="work-item-meta"><span>${esc(c.niche || 'Format pending')}</span><span>•</span><span>${esc(c.cadence || 'Cadence TBD')}</span><span>•</span><span>${snap ? `${(Number(snap.followers) || 0).toLocaleString()} ${platformAudienceLabel(c.platform).toLowerCase()}` : 'No analytics logged yet'}</span></div></div>`;
     }).join('')
-    : '<div class="work-item"><div class="work-note">No publishing lanes yet. Add one in Channel portfolio.</div></div>';
+    : '<div class="work-item"><div class="work-note">Open Studio to review publishing lanes and queue stats.</div></div>';
 }
 function renderWorkChannels() {
   const metricWrap = $('#work-channel-metrics');
   const list = $('#work-channel-list');
   const select = $('#work-channel-snapshot-id');
+  if (!metricWrap || !list) return;
   list.innerHTML = '';
   if (select) {
     select.innerHTML = state.work.channels.length
@@ -870,30 +916,27 @@ function renderWorkChannels() {
   });
 }
 function renderWorkBot() {
-  const snaps = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const trading = currentTrading();
+  const snaps = [...(trading.snapshots || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const positions = trading.positions || [];
   const latest = snaps.at(-1);
-  if ($('#work-bot-date') && !$('#work-bot-date').value) $('#work-bot-date').value = todayStr();
   $('#work-bot-metrics').innerHTML = latest ? [
     ['Balance', fmtMoney(latest.balance), latest.date],
     ['Total P&L', `${latest.pnl > 0 ? '+' : ''}${Number(latest.pnl).toFixed(2)}%`, 'overall'],
-    ['Win rate', `${Number(latest.winRate).toFixed(1)}%`, 'latest snapshot'],
-    ['Open trades', latest.openTrades, `${state.work.bot.positions.length} tracked positions`],
+    ['Win rate', `${Number(latest.winRate).toFixed(1)}%`, trading.status === 'live' ? 'Freqtrade live' : 'saved snapshot'],
+    ['Open trades', latest.openTrades, `${positions.length} open positions`],
   ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(String(sub))}</span></div>`).join('')
   : [
-    ['Balance', '—', 'log the first checkpoint'],
-    ['Total P&L', '—', 'waiting for data'],
-    ['Win rate', '—', 'waiting for data'],
-    ['Open trades', 0, 'no positions tracked'],
+    ['Balance', '—', 'Freqtrade unavailable'],
+    ['Total P&L', '—', 'waiting for bot'],
+    ['Win rate', '—', 'waiting for bot'],
+    ['Open trades', 0, 'no open positions'],
   ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(String(sub))}</span></div>`).join('');
   $('#work-bot-chart').innerHTML = workSpark(snaps.map((s) => Number(s.balance) || 0), '#3B82F6');
-  const reports = latestTradingReports();
-  $('#work-report-list').innerHTML = reports.length
-    ? reports.map((r) => `<button class="work-item" type="button" data-work-report="${esc(r.path)}"><div class="work-item-head"><span class="work-item-title">${esc(r.name)}</span><span class="work-pill">Report</span></div><div class="work-item-meta"><span>${timeAgo(r.mtime)}</span><span>•</span><span>${esc(r.path.split('/').slice(0, -1).join(' / '))}</span></div></button>`).join('')
-    : '<div class="work-item"><div class="work-note">No Trading reports found yet. The latest report button will open them once they land in the vault.</div></div>';
   const posWrap = $('#work-position-list');
-  posWrap.innerHTML = state.work.bot.positions.length
-    ? state.work.bot.positions.map((p) => `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(p.pair)}</span><span class="work-pill ${slug(p.side)}">${esc(p.side)}</span><span class="tabular ${Number(p.pnl) >= 0 ? 'up' : 'down'}">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div><div class="work-item-actions"><button class="chip" data-work-position-delete="${esc(p.id)}">Remove</button></div></div>`).join('')
-    : '<div class="work-item"><div class="work-note">No active positions tracked.</div></div>';
+  posWrap.innerHTML = positions.length
+    ? positions.map((p) => `<div class="work-item"><div class="work-item-head"><span class="work-item-title">${esc(p.pair)}</span><span class="work-pill ${slug(p.side)}">${esc(p.side)}</span><span class="tabular ${Number(p.pnl) >= 0 ? 'up' : 'down'}">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div><div class="work-item-meta"><span>${esc(p.openDate ? fmtDate(String(p.openDate).slice(0, 10)) : 'Open position')}</span><span>·</span><span>${p.openRate ? esc('Open ' + Number(p.openRate).toLocaleString()) : 'Freqtrade'}</span></div></div>`).join('')
+    : '<div class="work-item"><div class="work-note">No open Freqtrade positions.</div></div>';
 }
 function renderWorkOutreach() {
   const leads = state.work.outreach.leads;
@@ -901,7 +944,8 @@ function renderWorkOutreach() {
   const due = active.filter((l) => l.followUp && l.followUp <= todayStr() && l.status !== 'Responded');
   const responded = active.filter((l) => l.status === 'Responded').length;
   const waiting = active.filter((l) => l.status === 'Waiting').length;
-  $('#work-outreach-metrics').innerHTML = [
+  const metrics = $('#work-outreach-metrics');
+  if (metrics) metrics.innerHTML = [
     ['Queued', active.filter((l) => l.status === 'Review').length, 'ready for review'],
     ['Waiting', waiting, 'awaiting reply'],
     ['Replied', responded, 'reply draft available'],
@@ -909,6 +953,7 @@ function renderWorkOutreach() {
   ].map(([label, value, sub]) => `<div class="work-mini-card"><span class="work-mini-label">${esc(label)}</span><span class="work-mini-value tabular">${esc(String(value))}</span><span class="work-mini-sub">${esc(sub)}</span></div>`).join('');
   $$('#work-lead-filters .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.workFilter === state.workFilter));
   const list = $('#work-lead-list');
+  if (!list) return;
   const filtered = active.filter((lead) => {
     if (state.workFilter === 'all') return true;
     if (state.workFilter === 'active') return lead.status === 'Review' || lead.status === 'Waiting';
@@ -1008,35 +1053,6 @@ $('#work-channel-list')?.addEventListener('click', async (e) => {
   } else return;
   try { await saveWorkState(); renderWorkDashboard(); } catch (err) { toast(err.message); }
 });
-$('#work-bot-snapshot-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  state.work.bot.snapshots.push({
-    id: uid('snap'),
-    date: $('#work-bot-date').value,
-    balance: Number($('#work-bot-balance').value),
-    pnl: Number($('#work-bot-pnl').value),
-    winRate: Number($('#work-bot-winrate').value),
-    openTrades: Number($('#work-bot-open-trades').value),
-  });
-  state.work.bot.snapshots.sort((a, b) => a.date.localeCompare(b.date));
-  try { await saveWorkState(); e.target.reset(); $('#work-bot-date').value = todayStr(); renderWorkDashboard(); toast('Snapshot saved'); } catch (err) { toast(err.message); }
-});
-$('#work-position-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  state.work.bot.positions.unshift({
-    id: uid('pos'),
-    pair: $('#work-position-pair').value.trim(),
-    side: $('#work-position-side').value,
-    pnl: Number($('#work-position-pnl').value),
-  });
-  try { await saveWorkState(); e.target.reset(); renderWorkDashboard(); } catch (err) { toast(err.message); }
-});
-$('#work-position-list')?.addEventListener('click', async (e) => {
-  const del = e.target.closest('[data-work-position-delete]');
-  if (!del) return;
-  state.work.bot.positions = state.work.bot.positions.filter((p) => p.id !== del.dataset.workPositionDelete);
-  try { await saveWorkState(); renderWorkDashboard(); } catch (err) { toast(err.message); }
-});
 $('#work-lead-filters')?.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-work-filter]');
   if (!btn) return;
@@ -1121,18 +1137,12 @@ $('#work-lead-list')?.addEventListener('click', async (e) => {
 $('#work-open-studio')?.addEventListener('click', openStewie);
 $('#work-open-studio-tile')?.addEventListener('click', openStewie);
 $('#ops-channel-lane')?.addEventListener('click', openStewie);
-$('#ops-trading-lane')?.addEventListener('click', () => $('#work-bot-snapshot-form')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth', block: 'center' }));
-$('#ops-outreach-lane')?.addEventListener('click', () => $('#work-lead-form')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth', block: 'center' }));
-$('#work-render')?.addEventListener('click', () => $('#btn-stewie-render')?.click());
-$('#work-upload')?.addEventListener('click', () => $('#btn-stewie-upload')?.click());
-$('#work-refresh-studio')?.addEventListener('click', () => { loadStewie(); renderHomeAnalytics(true); renderWorkDashboard(); });
-$('#work-open-trading')?.addEventListener('click', () => $('#btn-trading-report')?.click());
-$('#work-report-list')?.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-work-report]');
-  if (!btn) return;
-  const note = state.notes.find((n) => n.path === btn.dataset.workReport);
-  if (note) openNote(note.path, note.name);
-});
+$('#ops-trading-lane')?.addEventListener('click', () => $('#work-bot-metrics')?.scrollIntoView({ behavior: prefersReduced() ? 'auto' : 'smooth', block: 'center' }));
+$('#ops-outreach-lane')?.addEventListener('click', openEmailManager);
+
+function openEmailManager() {
+  show('email');
+}
 
 async function loadDiscover() {
   const toolsView = $('.view[data-view="tools"]');
@@ -1189,8 +1199,20 @@ $('#tile-stewie')?.addEventListener('click', openStewie);
    clutters Discover. Queue tab = filterable/capped list; Stats tab = channel graph. */
 const STATUS_ICON = { pending: '🕓', approved: '✅', uploaded: '🚀', rejected: '🚫' };
 const STEWIE_CAP = 40;   // list never renders more than this — filter to find the rest
-let stewieVideos = [], stewieVideoStats = null, stewieOpen = false;
-
+const STUDIO_PIPELINES = {
+  stewie: {
+    title: 'Stewie Studio',
+    desc: 'One production queue, multiple future publishing lanes. Stewie is the first connected renderer.',
+    live: 'box online',
+    renderToast: 'Render started on the box (~3 min) — hit ↻ later',
+  },
+  pegilagi: {
+    title: 'Pegilagi Studio',
+    desc: 'Marketing shorts for Pegilagi across TikTok, Reels, and YouTube Shorts.',
+    live: 'marketing box online',
+    renderToast: 'Pegilagi render started on the box — hit ↻ later',
+  },
+};
 function setStewieLive(on, label) {
   const el = $('#stewie-live');
   el.hidden = false; el.textContent = label; el.classList.toggle('off', !on);
@@ -1200,8 +1222,9 @@ function openStewie() {
   if (!stewieOpen) { history.pushState({ stewie: true }, ''); stewieOpen = true; }
   state.stewieFilter = 'all';
   $('#stewie-view').hidden = false;
+  setStudioPipeline(studioPipeline || 'stewie', false);
   stewieTab('queue');
-  loadStewie();
+  loadStudio();
 }
 function closeStewie() {
   if (!stewieOpen) return;
@@ -1215,8 +1238,27 @@ function stewieTab(which) {
   $('#sv-stats').hidden = which !== 'stats';
   if (which === 'stats') loadStewieStats();
 }
+function setStudioPipeline(which, refresh = true) {
+  studioPipeline = STUDIO_PIPELINES[which] ? which : 'stewie';
+  const cfg = STUDIO_PIPELINES[studioPipeline];
+  $('#stewie-title').textContent = cfg.title;
+  $('#studio-desc').textContent = cfg.desc;
+  $$('#studio-pipeline-tabs [data-pipeline]').forEach((b) => b.classList.toggle('active', b.dataset.pipeline === studioPipeline));
+  $('#btn-stewie-upload').hidden = studioPipeline !== 'stewie';
+  $('#stewie-tabs [data-sv="stats"]').hidden = studioPipeline !== 'stewie';
+  if (studioPipeline !== 'stewie') stewieTab('queue');
+  if (refresh) loadStudio();
+}
 $('#stewie-back').addEventListener('click', closeStewie);
 $('#stewie-tabs').addEventListener('click', (e) => { const b = e.target.closest('.seg-btn'); if (b) stewieTab(b.dataset.sv); });
+$('#studio-pipeline-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pipeline]');
+  if (b) setStudioPipeline(b.dataset.pipeline);
+});
+
+function loadStudio() {
+  return studioPipeline === 'pegilagi' ? loadPegilagi() : loadStewie();
+}
 
 async function loadStewie() {
   const stats = $('#stewie-stats');
@@ -1243,9 +1285,41 @@ async function loadStewie() {
     toast('Stewie: ' + e.message);
   }
 }
+async function loadPegilagi() {
+  const stats = $('#stewie-stats');
+  try {
+    const data = await api('/api/pegilagi/videos');
+    pegilagiVideos = Array.isArray(data.items) ? data.items : [];
+    stewieVideoStats = null;
+    setStewieLive(true, STUDIO_PIPELINES.pegilagi.live);
+    const counts = pegilagiVideos.reduce((m, v) => ((m[v.status] = (m[v.status] || 0) + 1), m), {});
+    const rendered = pegilagiVideos.filter((v) => v.hasVideo).length;
+    const pillDefs = [['all', pegilagiVideos.length], ['needs_approval', counts.needs_approval || 0], ['rendered', rendered]];
+    if (counts.rendered_needs_approval) pillDefs.push(['rendered_needs_approval', counts.rendered_needs_approval]);
+    stats.hidden = false;
+    stats.innerHTML = pillDefs.map(([k, n]) =>
+      `<button class="stewie-pill st-${k}" data-filter="${k}"><b>${n}</b> ${k === 'all' ? 'all' : k.replaceAll('_', ' ')}</button>`).join('');
+    renderStewieQueue();
+    renderStewieLanes();
+    renderWorkDashboard();
+  } catch (e) {
+    setStewieLive(false, 'marketing box unreachable');
+    stats.hidden = true; $('#stewie-list').innerHTML = ''; $('#stewie-listfoot').hidden = true;
+    renderStewieLanes();
+    renderWorkDashboard();
+    toast('Pegilagi: ' + e.message);
+  }
+}
 function renderStewieLanes() {
   const wrap = $('#stewie-lanes');
   if (!wrap) return;
+  if (studioPipeline === 'pegilagi') {
+    const pending = pegilagiVideos.filter((v) => v.status === 'needs_approval' || v.status === 'render_pending').length;
+    const rendered = pegilagiVideos.filter((v) => v.hasVideo).length;
+    const platforms = ['TikTok', 'Instagram Reels', 'YouTube Shorts'];
+    wrap.innerHTML = `<div class="work-item"><div class="work-item-head"><span class="work-item-title">Pegilagi marketing</span><span class="work-pill">Shorts</span></div><div class="work-item-meta"><span>${pending} queued</span><span>•</span><span>${rendered} rendered</span></div><div class="work-card-note">${platforms.join(' · ')}</div></div>`;
+    return;
+  }
   const channels = state.work.channels.length ? [...state.work.channels] : (workLiveAnalytics?.title ? [{
     id: 'stewie-live',
     name: workLiveAnalytics.title,
@@ -1273,6 +1347,7 @@ function renderStewieLanes() {
 function stewieVideoLi(v) {
   const li = document.createElement('li');
   li.className = 'list-item';
+  if (studioPipeline === 'pegilagi') return pegilagiVideoLi(v, li);
   const s = esc(v.stamp), notFinal = v.status === 'pending' || v.status === 'approved';
   const yt = v.youtube_id
     ? ` · <a href="https://youtu.be/${esc(v.youtube_id)}" target="_blank">youtube</a><span data-yt="${esc(v.youtube_id)}"></span>` : '';
@@ -1288,10 +1363,25 @@ function stewieVideoLi(v) {
     <span class="crumb-r">${actions}</span>`;
   return li;
 }
+function pegilagiVideoLi(v, li = document.createElement('li')) {
+  li.className = 'list-item';
+  const id = esc(v.id || v.stamp);
+  const platforms = Array.isArray(v.channels) ? v.channels.map((c) => c.replace(/_/g, ' ')).join(' · ') : '';
+  const actions = [
+    v.hasStoryboard ? `<button class="crumb-btn" data-storyboard="${id}">Storyboard</button>` : '',
+    v.hasVideo ? `<button class="crumb-btn" data-pegi-watch="${id}">▶</button>` : '',
+  ].join(' ');
+  li.innerHTML = `<span class="li-emoji">${v.hasVideo ? '✅' : '🎬'}</span>
+    <div class="li-main"><div class="li-title">${esc(v.title || v.id)}</div>
+    <div class="li-sub">${id} · ${esc((v.status || '').replaceAll('_', ' '))}${platforms ? ' · ' + esc(platforms) : ''}${v.renderedAt ? ' · rendered' : ''}</div></div>
+    <span class="crumb-r">${actions}</span>`;
+  return li;
+}
 function renderStewieQueue() {
   const ul = $('#stewie-list'), foot = $('#stewie-listfoot'), f = state.stewieFilter || 'all';
   $$('#stewie-stats [data-filter]').forEach((p) => p.classList.toggle('active', p.dataset.filter === f));
-  const list = f === 'all' ? stewieVideos : stewieVideos.filter((v) => v.status === f);
+  const source = studioPipeline === 'pegilagi' ? pegilagiVideos : stewieVideos;
+  const list = f === 'all' ? source : source.filter((v) => f === 'rendered' ? v.hasVideo : v.status === f);
   ul.innerHTML = '';
   for (const v of list.slice(0, STEWIE_CAP)) ul.appendChild(stewieVideoLi(v));
   foot.hidden = list.length <= STEWIE_CAP;
@@ -1322,8 +1412,11 @@ async function stewieAct(btn, url, stamp, okMsg) {
 }
 $('#stewie-list').addEventListener('click', async (e) => {
   const w = e.target.closest('[data-watch]'), a = e.target.closest('[data-approve]'),
-        r = e.target.closest('[data-reject]'), d = e.target.closest('[data-del]');
+        r = e.target.closest('[data-reject]'), d = e.target.closest('[data-del]'),
+        pw = e.target.closest('[data-pegi-watch]'), ps = e.target.closest('[data-storyboard]');
   if (w) window.open('/api/stewie/video/' + w.dataset.watch, '_blank');
+  else if (pw) window.open('/api/pegilagi/video/' + pw.dataset.pegiWatch, '_blank');
+  else if (ps) window.open('/api/pegilagi/storyboard/' + ps.dataset.storyboard, '_blank');
   else if (a) stewieAct(a, '/api/stewie/approve', a.dataset.approve, 'Approved');
   else if (r) stewieAct(r, '/api/stewie/reject', r.dataset.reject, 'Rejected — won’t upload');
   else if (d) {
@@ -1331,10 +1424,13 @@ $('#stewie-list').addEventListener('click', async (e) => {
     stewieAct(d, '/api/stewie/delete', d.dataset.del, 'Local file deleted');
   }
 });
-$('#btn-stewie-refresh').addEventListener('click', () => { loadStewie(); showStewieLog(); });
+$('#btn-stewie-refresh').addEventListener('click', () => { loadStudio(); showStewieLog(); });
 $('#btn-stewie-render').addEventListener('click', async (e) => {
   e.target.disabled = true;
-  try { await api('/api/stewie/render', { method: 'POST' }); toast('Render started on the box (~3 min) — hit ↻ later'); }
+  try {
+    await api(studioPipeline === 'pegilagi' ? '/api/pegilagi/render' : '/api/stewie/render', { method: 'POST' });
+    toast(STUDIO_PIPELINES[studioPipeline].renderToast);
+  }
   catch (err) { toast(err.message); }
   finally { e.target.disabled = false; }
 });
@@ -1347,7 +1443,7 @@ $('#btn-stewie-upload').addEventListener('click', async (e) => {
 $('#btn-stewie-log').addEventListener('click', showStewieLog);
 async function showStewieLog() {
   try {
-    const { log } = await api('/api/stewie/log');
+    const { log } = await api(studioPipeline === 'pegilagi' ? '/api/pegilagi/log' : '/api/stewie/log');
     const pre = $('#stewie-log'); pre.textContent = log; pre.hidden = false;
   } catch {}
 }
@@ -1497,7 +1593,9 @@ $('#glance-ask').addEventListener('click', () => setCaptureMode(true));
 // Home eagle-eye analytics (desktop only): pulls live YouTube numbers from the Stewie box.
 // Instagram/TikTok are placeholders until wired. Crypto card stays a static placeholder.
 function renderHomeAutomation() {
-  const snaps = [...state.work.bot.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const trading = currentTrading();
+  const snaps = [...(trading.snapshots || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const positions = trading.positions || [];
   const latest = snaps.at(-1);
   if ($('#home-bot-balance')) $('#home-bot-balance').textContent = latest ? fmtMoney(latest.balance) : '—';
   if ($('#home-bot-pnl')) {
@@ -1505,13 +1603,17 @@ function renderHomeAutomation() {
     $('#home-bot-pnl').classList.toggle('up', !!latest && Number(latest.pnl) >= 0);
     $('#home-bot-pnl').classList.toggle('down', !!latest && Number(latest.pnl) < 0);
   }
-  if ($('#home-bot-trades')) $('#home-bot-trades').textContent = latest ? latest.openTrades : state.work.bot.positions.length;
+  if ($('#home-bot-trades')) $('#home-bot-trades').textContent = latest ? latest.openTrades : positions.length;
   if ($('#home-bot-winrate')) $('#home-bot-winrate').textContent = latest ? `${Number(latest.winRate).toFixed(1)}%` : '—';
   if ($('#home-bot-chart')) $('#home-bot-chart').innerHTML = workSpark(snaps.map((s) => Number(s.balance) || 0), 'var(--accent)');
   if ($('#home-bot-positions')) {
-    $('#home-bot-positions').innerHTML = state.work.bot.positions.length
-      ? state.work.bot.positions.slice(0, 3).map((p) => `<div class="trading-position"><span class="sym">${esc(p.pair)}</span><span class="side ${slug(p.side)}">${esc(p.side)}</span><span class="pnl ${Number(p.pnl) >= 0 ? 'up' : 'down'} tabular">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div>`).join('')
-      : '<div class="trading-position"><span class="sym">No active positions tracked.</span></div>';
+    $('#home-bot-positions').innerHTML = positions.length
+      ? positions.slice(0, 3).map((p) => `<div class="trading-position"><span class="sym">${esc(p.pair)}</span><span class="side ${slug(p.side)}">${esc(p.side)}</span><span class="pnl ${Number(p.pnl) >= 0 ? 'up' : 'down'} tabular">${Number(p.pnl) >= 0 ? '+' : ''}${Number(p.pnl).toFixed(2)}%</span></div>`).join('')
+      : '<div class="trading-position"><span class="sym">No open Freqtrade positions.</span></div>';
+  }
+  if ($('#home-bot-status')) {
+    $('#home-bot-status').textContent = trading.status === 'live' ? 'Live' : latest ? 'Saved' : 'Offline';
+    $('#home-bot-status').className = 'trading-status' + (trading.status === 'live' ? '' : ' paused');
   }
 
   const active = state.work.outreach.leads.filter((l) => l.status !== 'Archived');
@@ -1536,7 +1638,7 @@ let _homeAnalyticsLoaded = false;
 async function renderHomeAnalytics(force) {
   if (!$('#home-analytics')) return;
   if (!window.matchMedia('(min-width:960px)').matches) return;   // desktop-only, don't hit the box on phones
-  try { await loadWorkState(); renderHomeAutomation(); } catch (e) {}
+  try { await Promise.all([loadWorkState(), refreshTradingSummary()]); renderHomeAutomation(); } catch (e) {}
   if (_homeAnalyticsLoaded && !force) return;
   _homeAnalyticsLoaded = true;
   const status = $('#home-stewie-status');
@@ -2848,9 +2950,6 @@ function closeEditor() {
   else { editorOpen = false; $('#editor').hidden = true; }
 }
 $('#btn-new-note').addEventListener('click', openEditor);
-// Trading bot placeholder — figures shown are static until wired to the Freqtrade bot.
-// "Open latest report" jumps to the newest note under the vault's Trading/ folder (where the
-// bot drops its weekly reports); Refresh is a stub until the live feed lands.
 $('#btn-trading-report')?.addEventListener('click', async () => {
   try { if (!state.notes.length) { const { notes } = await api('/api/notes'); state.notes = notes; } } catch (e) {}
   const reports = state.notes.filter((n) => /^Trading\//.test(n.path));
@@ -2858,7 +2957,10 @@ $('#btn-trading-report')?.addEventListener('click', async () => {
   const latest = reports.sort((a, b) => (b.mtime || 0) - (a.mtime || 0))[0];
   openNote(latest.path, latest.name);
 });
-$('#btn-trading-refresh')?.addEventListener('click', () => toast('Placeholder — live data comes from the Freqtrade bot'));
+$('#btn-trading-refresh')?.addEventListener('click', async () => {
+  await refreshTradingSummary(false);
+  toast(state.trading ? 'Trading data refreshed' : 'Trading bot unavailable');
+});
 $('#editor-cancel').addEventListener('click', closeEditor);
 
 $('#editor-save').addEventListener('click', async () => {
