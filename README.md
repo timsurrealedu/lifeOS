@@ -31,11 +31,14 @@ the whole loop that used to be a skill + vault + cron glue:
   server-side — **Python, JavaScript, C, C++, Java, Go, Rust, Bash** — and shows stdout/stderr. Toggle
   **Scratch** (throwaway, per-language) or **Saved** (real files in a Syncthing-synced folder, with a
   swipe-in project tree). See **Code** below.
-- **Discover** — a deck of tools over the vault: **Research an idea** (`claude -p` web-searches
-  demand/competition/feasibility and writes a full note to `Ideas/`), **Find** (instant plain-text
-  search across your notes — no AI, no tokens), the **Idea bank** (`Ideas/`), a **Needs filing** list
-  (`#needs-filing`), **Weekly review**, **Refresh Home note**, plus a **Playground** (JupyterLab —
-  notebooks + Python/Java/C, opens in a tab) and an **Editor** (real LazyVim/Neovim in the browser).
+- **Tools** — the operations workbench over the vault: research ideas, plain-text Find, Idea bank,
+  Needs filing, Weekly review, Refresh Home, Studio Queue, Email Manager, Trading Bot snapshots,
+  Playground (JupyterLab) and Editor (LazyVim/Neovim in the browser).
+- **Studio** — a full-screen queue for video pipelines: Stewie renders/uploads the AI channel, and
+  Pegilagi tracks marketing shorts for TikTok/Reels/Shorts. Queue filters, run logs, upload/reject,
+  delete-local-file, and YouTube stats live in one mobile-friendly view.
+- **Outreach + Trading** — Email Manager keeps website-build leads in review/follow-up states, while
+  the Trading Bot panel tracks Freqtrade balance, P&L, positions, win rate, and vault reports.
 
 It is a thin, friendly front-end over your Obsidian vault. The **vault stays the source of
 truth** (still opens in Obsidian, still syncs); lifeOS is a second way in. The processing brain —
@@ -212,9 +215,27 @@ folder; tap a file to open it. Files are served/written via `GET /api/code/files
 > only guards. It's meant for a **single-user, Tailscale-only** box (same posture as the tools below).
 > Never expose it publicly. Tune `run.timeoutMs` / `run.maxOutputBytes` / `run.dir` in `config.json`.
 
-### Playground & Editor (Discover tiles)
+## Tools, Studio, outreach, and trading
 
-For heavier work the **Discover** tab links to two services on the box (installed by
+The old Discover deck is now a denser **Tools** workbench with three ops lanes:
+
+- **Studio Operations** — opens the Stewie/Pegilagi Studio. Stewie can refresh the queue, trigger a
+  render on the box, upload approved videos, reject pending items, delete local mp4s after upload, and
+  show the pipeline log. The Stats tab reads the YouTube analytics feed when configured.
+- **Email Pipeline** — review-first website outreach. Leads have statuses, follow-up dates, notes,
+  generated drafts, and a dedicated **Email Manager** screen with its own back button.
+- **Trading Bot Analytics** — read-only Freqtrade snapshots for balance, P&L, open positions, win
+  rate, and generated reports in `Trading/`.
+
+Tools also includes the vault utilities that used to be separate Discover cards: Research an idea,
+Find, Idea bank, Needs filing, Weekly review, Refresh Home, Auto-sort, Playground, and Editor.
+
+The desktop Home page shows an eagle-eye dashboard for AI Channels, Trading Bot, and Email Pipeline;
+mobile keeps those workflows inside Tools so capture stays fast.
+
+### Playground & Editor (Tools tiles)
+
+For heavier work the **Tools** tab links to two services on the box (installed by
 `deploy/playground-setup.sh`, run under pm2 via `deploy/playground.config.cjs`, reachable only over
 Tailscale):
 
@@ -247,7 +268,8 @@ Tailscale or a reverse proxy — don't expose port 7777 directly.
 | `models` | per-task model so cheap runs don't burn a premium one: `{ "process": "sonnet", "research": "sonnet", "review": "haiku", "home": "haiku" }`. Omit a key → CLI default. |
 | `maxTurns` | cap on agent turns per run (runaway-loop guard, default `40`; `0` = no cap) |
 | `run` | the **Code** tab's runner: `{ "timeoutMs": 10000, "maxOutputBytes": 262144, "dir": "" }` — per-run wall-clock timeout, captured-output cap, and the folder it reads/writes files in (empty → file open/save disabled; set it to a synced folder like `/home/you/mycode`). |
-| `qwen` / `gemini` / `fallback` | the fallback chain (in order) used **only** when the primary run hits a usage/rate limit. Empty `apiKey` = that link disabled. See **Fallback chain** below. |
+| `kimi` / `openai` / `qwen` / `gemini` / `fallback` | AI provider settings shown in Settings. Gemini is the tutor primary; Kimi/OpenAI/Qwen/DeepSeek/GLM can act as defaults or fallbacks depending on job type. Empty `apiKey` = disabled. See **AI provider chain** below. |
+| `stewie` / `pegilagi` | optional video-pipeline integration settings for the Studio Queue. On the Oracle box, Stewie is local at `~/stewie`. |
 
 ### Token efficiency
 
@@ -261,12 +283,22 @@ The app keeps `claude -p` token spend down several ways:
 - **`maxTurns`** caps worst-case loops; the `process-inbox` skill is told to grep before reading,
   avoid re-reads, and keep summaries short.
 
-### Fallback chain (Qwen → Gemini → DeepSeek)
+### AI provider chain
 
-When a primary `claude` run dies with a usage/rate-limit error, lifeOS automatically retries the
-same prompt down a chain of fallback providers, in priority order, and notes which one answered in
-the run log. Configure them in **⚙ Settings → Fallback AI** (or in `config.json`). Leave any link's
-`apiKey` empty to skip it.
+Configure providers in **Settings → AI providers** (or `config.json`). The app can force manual
+lifeOS runs through a selected default provider; tutors try Gemini first, then fall through the
+configured chain. Leave any link's `apiKey` empty to skip it.
+
+The practical order today:
+
+1. **Claude** — default local `claude` CLI path; full tool access, including claude.ai connectors.
+2. **Kimi** — Anthropic-compatible endpoint, usable for write jobs and Stewie sync.
+3. **ChatGPT/OpenAI** — REST-only fallback for read-only tutor/chat/add-to-note paths.
+4. **Qwen** (Alibaba DashScope) — Anthropic-compatible; useful when the proxy is healthy.
+5. **Gemini** (Google AI Studio) — tutor primary/read-only fallback.
+6. **DeepSeek / GLM** — Anthropic-compatible final fallback for write jobs.
+
+Older fallback notes:
 
 1. **Qwen** (Alibaba DashScope) — Anthropic-compatible, drives the same `claude` CLI + skills, so it
    covers **every** AI feature including write jobs (capture / Process inbox, Research, etc.).
@@ -315,12 +347,14 @@ is a Claude Code platform constraint, not something lifeOS can work around.
 - Phone capture uses the PWA Web Share Target so screenshots and voice can go straight to inbox
   without Tasker. This needs Tailscale HTTPS.
 - Code Playground is JupyterLab on `:8888`.
-- Stewie Studio is a Discover panel that drives the video pipeline on the box at `~/stewie`; box
-  `config.json` needs `stewie.host: "local"`.
+- Stewie Studio is a full-screen Tools view that drives the video pipeline on the box at `~/stewie`;
+  box `config.json` needs `stewie.host: "local"`. Pegilagi Studio shares the same shell for marketing
+  shorts.
 - `aiTrading` is a separate Freqtrade dry-run bot on the same Oracle box. Weekly reports write into
   the vault's `Trading/` folder.
-- Recent work includes the desktop redesign, unified margins, dashboards, PWA cache bump, Stewie
-  Studio view, share-from-reader, and reject/delete-local-file actions.
+- Recent work includes the desktop redesign, unified margins, dashboards, PWA cache bump, Stewie and
+  Pegilagi Studio, Email Manager, Trading Bot analytics, share-from-reader, reject/delete-local-file
+  actions, the Vault Graph first-open fix, and mobile margin/nav polish.
 
 ## Layout
 

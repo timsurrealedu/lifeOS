@@ -1413,6 +1413,7 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
   font-size: 12px; font-weight: 600; position: relative; transition: color 200ms var(--ease-smooth);
 }
 .tab .ti { font-size: 19px; line-height: 1; transition: transform 300ms var(--ease-smooth); }
+.tab[data-tab="plan"] .ti { font-size: 22px; line-height: .9; }
 .tab:hover .ti { transform: scale(1.1); }
 .tab.active { color: var(--accent); }
 .tab.active::before { content: ""; position: absolute; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: check-pop 400ms var(--ease-bounce); }
@@ -2376,12 +2377,25 @@ body.dragging-tree .tree-row { touch-action: none; }
     background: var(--bg);
   }
   .dashboard-layout.chat .chat-input { min-width: 0; }
+  .stewie-view .reader-head { padding-inline: 10px; }
+  .stewie-view .sv-tabs { margin-inline: 10px; }
+  .stewie-view .reader-scroll .sv-pane {
+    width: 100%;
+    max-width: none;
+    padding: 12px 10px calc(env(safe-area-inset-bottom) + 40px);
+  }
+  .stewie-view .sv-shell,
+  .stewie-view .sv-main,
+  .stewie-view .sv-side {
+    gap: 12px;
+  }
 }
 
 @media (max-width: 520px) {
   #views { padding-inline: 12px; }
   .tab { gap: 4px; font-size: 11.5px; }
   .tab .ti { font-size: 19px; }
+  .tab[data-tab="plan"] .ti { font-size: 22px; }
   .hero-title { font-size: 22px; }
   .view-head h2 { font-size: 20px; }
   .btn { padding: 9px 14px; font-size: 14px; }

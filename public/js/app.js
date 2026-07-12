@@ -3361,8 +3361,8 @@ async function loadGraph() {
     $('#graph-stats').textContent = `${data.nodes.length} notes · ${data.links.length} links`;
     $('#browse-nodes').textContent = data.nodes.length + ' nodes';
     state.graph = data;
-    const canvas = $('#graph-canvas'); fadeIn(canvas, 500);
-    window.LifeGraph.render(canvas, data, {
+    const canvas = $('#graph-canvas');
+    const render = () => window.LifeGraph.render(canvas, data, {
       onSelect: (name, exists) => {
         const lbl = $('#graph-label');
         lbl.textContent = name + (exists ? '' : '  (no note yet)');
@@ -3373,6 +3373,12 @@ async function loadGraph() {
           || { path: findNotePath(name), name };
         if (note.path) openNote(note.path, name); else toast('No note for "' + name + '" yet');
       },
+    });
+    fadeIn(canvas, 500);
+    requestAnimationFrame(() => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width && rect.height) render();
+      else setTimeout(render, 80);
     });
   } catch (e) { toast(e.message); }
 }

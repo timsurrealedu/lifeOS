@@ -71,6 +71,7 @@ window.LifeGraph = (function () {
     // freezes after a second or two and dragged nodes stop dragging their links (the old bug where
     // small balls stuck in place after moving a hub back and forth).
     let alpha = 1, alphaTarget = 0;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     function tick() {
       alpha = alphaTarget + (alpha - alphaTarget) * 0.985;
       const k = alpha;
@@ -79,8 +80,8 @@ window.LifeGraph = (function () {
         for (let j = i + 1; j < nodes.length; j++) {
           const b = nodes[j];
           let dx = a.x - b.x, dy = a.y - b.y;
-          let d2 = dx * dx + dy * dy || 0.01;
-          const f = ((2900 + (a.r + b.r) * 34) * k) / d2;
+          let d2 = Math.max(dx * dx + dy * dy, 64);
+          const f = Math.min(18, ((2900 + (a.r + b.r) * 34) * k) / d2);
           const d = Math.sqrt(d2);
           const fx = (dx / d) * f, fy = (dy / d) * f;
           a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
@@ -90,13 +91,14 @@ window.LifeGraph = (function () {
         let dx = l.t.x - l.s.x, dy = l.t.y - l.s.y;
         const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
         const rest = 124 + l.s.r + l.t.r;
-        const f = ((d - rest) * 0.032) * k;
+        const f = clamp(((d - rest) * 0.032) * k, -12, 12);
         const fx = (dx / d) * f, fy = (dy / d) * f;
         l.s.vx += fx; l.s.vy += fy; l.t.vx -= fx; l.t.vy -= fy;
       }
       for (const nd of nodes) {
         nd.vx -= nd.x * 0.0013 * k; nd.vy -= nd.y * 0.0013 * k; // weak centering
         nd.vx *= 0.86; nd.vy *= 0.86;
+        nd.vx = clamp(nd.vx, -48, 48); nd.vy = clamp(nd.vy, -48, 48);
         if (nd !== dragNode) { nd.x += nd.vx; nd.y += nd.vy; }
       }
     }
