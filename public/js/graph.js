@@ -54,8 +54,10 @@ window.LifeGraph = (function () {
 
     function resize() {
       const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
       view.ox = canvas.width / 2; view.oy = canvas.height / 2;
+      fit();
     }
     resize();
     const ro = new ResizeObserver(resize); ro.observe(canvas);

@@ -411,6 +411,7 @@ body {
 .sidenav-item:active, .sidenav-foot:active { transform: scale(0.96); }
 .sidenav-item.active { background: var(--accent-soft); color: var(--accent); }
 .sidenav-ico, .sidenav-item .ti { font-size: 19px; flex: none; width: 24px; text-align: center; }
+.nav-home-icon { width: 20px; height: 20px; display: block; margin: 0 auto; fill: currentColor; }
 .sidenav-item > span:not(.sidenav-ico):not(.ti), .sidenav-flabel { font-size: 14px; font-weight: 500; display: none; }
 .sidenav:hover .sidenav-item, .sidenav.expanded .sidenav-item,
 .sidenav:hover .sidenav-foot, .sidenav.expanded .sidenav-foot { justify-content: flex-start; gap: 12px; padding: 0 12px; }
@@ -2257,6 +2258,11 @@ body.dragging-tree .tree-row { touch-action: none; }
     width: 100%;
     max-width: none;
     min-width: 0;
+  }
+  #browse-graph .graph-wrap {
+    height: min(calc(100vw - 28px), calc(100dvh - var(--tab-h) - 176px));
+    min-height: 300px;
+    max-height: 520px;
   }
   .dashboard-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .dashboard-main,

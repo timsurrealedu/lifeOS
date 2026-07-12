@@ -150,6 +150,9 @@ const TAB_VIEW = { home: 'home', vault: 'vault', plan: 'plan' };
 function show(tab) {
   if (tab !== 'code') state.prevTab = tab;                   // Code is full-screen; Back returns here
   const view = TAB_VIEW[tab] || tab;                         // fallback for tabs not in TAB_VIEW
+  const views = $('#views');
+  if (views) views.scrollTop = 0;
+  document.scrollingElement?.scrollTo?.(0, 0);
   const isFirstTime = !state._shownViews.has(view);
   state._shownViews.add(view);
   if (isFirstTime) state._firstRender[view] = true;
