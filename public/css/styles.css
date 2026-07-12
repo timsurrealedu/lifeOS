@@ -883,7 +883,7 @@ body {
 
 .trading-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .trading-stat {
@@ -1566,8 +1566,8 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
 .reader.sidebar-hidden #reader-sidebar-toggle { display: grid; }
 
 @media (max-width: 759px) {
-  .reader-sidebar { position: absolute; top: 0; left: 0; bottom: 0; z-index: 60; width: min(82vw, 320px); transform: translateX(-100%); transition: transform .24s cubic-bezier(.2,.9,.25,1); box-shadow: 10px 0 34px rgba(0,0,0,.42); }
-  .reader.sidebar-open .reader-sidebar { transform: none; }
+  .reader-sidebar { position: absolute; top: 0; left: 0; bottom: 0; z-index: 60; width: min(82vw, 320px); transform: translateX(-100%); transition: transform .24s cubic-bezier(.2,.9,.25,1); box-shadow: none; }
+  .reader.sidebar-open .reader-sidebar { transform: none; box-shadow: 10px 0 34px rgba(0,0,0,.42); }
   .reader.sidebar-hidden .reader-sidebar { display: flex; }
   .reader-sidebar.dragging { transition: none; }
 }
@@ -2239,6 +2239,7 @@ body.dragging-tree .tree-row { touch-action: none; }
   .tabbar { display: none; }
   .topbar { display: none; }              /* brand + theme/log/settings all live in the sidenav */
   #views { padding-top: 20px; }
+  .view[data-view="tools"] .ops-lanes { display: none; }
 }
 
 @media (max-width: 959px) {
