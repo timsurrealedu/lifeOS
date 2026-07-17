@@ -2502,16 +2502,24 @@ $('#note-chat-clear').addEventListener('click', () => { state.noteChat = []; ren
 (function setupChatDocks() {
   const saved = parseInt(localStorage.getItem('noteChatW') || '', 10);
   if (saved) document.documentElement.style.setProperty('--note-chat-w', saved + 'px');
+  const savedH = parseInt(localStorage.getItem('noteChatH') || '', 10);
+  if (savedH) document.documentElement.style.setProperty('--note-chat-h', savedH + 'px');
   const clamp = (w) => Math.min(Math.max(w, 300), Math.min(window.innerWidth - 40, 900));
   const bind = (handle, dock) => {
     if (!handle || !dock) return;
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault(); handle.setPointerCapture(e.pointerId); dock.classList.add('resizing');
-      const move = (ev) => document.documentElement.style.setProperty('--note-chat-w', clamp(window.innerWidth - ev.clientX) + 'px');
+      const mobile = window.innerWidth < 760;
+      const startH = dock.getBoundingClientRect().height, startY = e.clientY;
+      const clampH = (h) => Math.min(Math.max(h, 220), Math.max(220, window.innerHeight - 96));
+      const move = mobile
+        ? (ev) => document.documentElement.style.setProperty('--note-chat-h', clampH(startH + startY - ev.clientY) + 'px')
+        : (ev) => document.documentElement.style.setProperty('--note-chat-w', clamp(window.innerWidth - ev.clientX) + 'px');
       const up = (ev) => {
         handle.releasePointerCapture(ev.pointerId); dock.classList.remove('resizing');
         handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up);
-        localStorage.setItem('noteChatW', String(clamp(window.innerWidth - ev.clientX)));
+        if (mobile) localStorage.setItem('noteChatH', String(clampH(startH + startY - ev.clientY)));
+        else localStorage.setItem('noteChatW', String(clamp(window.innerWidth - ev.clientX)));
       };
       handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
     });

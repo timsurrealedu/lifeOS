@@ -1605,8 +1605,9 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
 .note-chat .chat-bar { margin-top: auto; }
 @media (min-width: 760px) { .reader.chat-open { padding-right: min(var(--note-chat-w, 420px), 60vw); } }
 @media (max-width: 759px) {
-  .note-chat { top: auto; left: 0; width: auto; height: min(78dvh, 680px); border-top: 1px solid var(--border); border-left: 0; box-shadow: 0 -12px 30px rgba(0,0,0,.28); padding-top: 12px; animation: tutor-up .22s cubic-bezier(.2,.9,.25,1); }
-  .note-chat-resize { display: none; }
+  .note-chat { top: auto; left: 0; width: auto; height: var(--note-chat-h, min(58dvh, 560px)); border-top: 1px solid var(--border); border-left: 0; box-shadow: 0 -12px 30px rgba(0,0,0,.28); padding-top: 12px; animation: tutor-up .22s cubic-bezier(.2,.9,.25,1); }
+  .note-chat-resize { top: -9px; right: 0; bottom: auto; left: 0; width: auto; height: 18px; cursor: ns-resize; }
+  .note-chat-resize::before { top: 7px; left: 50%; right: auto; width: 42px; height: 4px; margin: 0 0 0 -21px; }
 }
 @keyframes tutor-up { from { transform: translateY(100%); } to { transform: none; } }
 
