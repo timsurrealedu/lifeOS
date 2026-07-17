@@ -2571,7 +2571,7 @@ async function sendNoteChat(text) {
   const ai = { role: 'ai', text: '' };
   state.noteChat.push(ai);
   state.noteChatBusy = true;
-  $('#note-chat-input').value = '';
+  $('#note-chat-input').textContent = '';
   $('#note-chat-send').disabled = true;
   renderNoteChat();
   try {
@@ -2601,7 +2601,11 @@ async function sendNoteChat(text) {
     $('#note-chat-input').focus();
   }
 }
-$('#note-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendNoteChat($('#note-chat-input').value); });
+$('#note-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendNoteChat($('#note-chat-input').textContent); });
+$('#note-chat-input').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault(); sendNoteChat(e.currentTarget.textContent);
+});
 
 // Ask the AI to write an overview of `topic` into the open note, then reload it in place.
 // POSTs (not EventSource) because the tutor `context` is dense LaTeX that overruns a GET URL; the
@@ -4293,7 +4297,7 @@ async function sendCodeChat(text) {
   codeChat.msgs.push({ role: 'user', text: q });
   const ai = { role: 'ai', text: '' }; codeChat.msgs.push(ai);
   codeChat.busy = true;
-  $('#code-chat-input').value = ''; $('#code-chat-send').disabled = true;
+  $('#code-chat-input').textContent = ''; $('#code-chat-send').disabled = true;
   renderCodeChat();
   try {
     const name = codeState.mode === 'saved' ? codeState.file.name : (codeState.scratchLang + ' · scratch');
@@ -4325,7 +4329,11 @@ function codeInitOnce() {
   $('#code-chat-toggle').addEventListener('click', () => { $('#code-chat').hidden ? openCodeChat() : closeCodeChat(); });
   $('#code-chat-close').addEventListener('click', closeCodeChat);
   $('#code-chat-clear').addEventListener('click', () => { codeChat.msgs = []; renderCodeChat(); });
-  $('#code-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendCodeChat($('#code-chat-input').value); });
+  $('#code-chat-bar').addEventListener('submit', (e) => { e.preventDefault(); sendCodeChat($('#code-chat-input').textContent); });
+  $('#code-chat-input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault(); sendCodeChat(e.currentTarget.textContent);
+  });
   const ta = codeTA();
   ta.addEventListener('input', codeOnInput);
   ta.addEventListener('scroll', codeSyncScroll);

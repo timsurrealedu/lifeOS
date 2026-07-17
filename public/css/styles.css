@@ -1884,6 +1884,8 @@ body.dragging-tree .tree-row { touch-action: none; }
 .chat-bar { display: flex; gap: 8px; padding: 10px 0 4px; border-top: 1px solid var(--border-soft); }
 .chat-bar .btn { flex: 0 0 auto; white-space: nowrap; }
 .chat-input { flex: 1 1 auto; min-width: 0; padding: 12px 15px; border-radius: 13px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; outline: none; transition: border-color 200ms, box-shadow 200ms, background 200ms; }
+.chat-input[contenteditable] { overflow-y: auto; max-height: 48px; line-height: 20px; white-space: pre-wrap; }
+.chat-input[contenteditable]:empty::before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; }
 .chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 20px var(--accent-glow); background: var(--surface-3); }
 
 /* ============================================================================
