@@ -1604,6 +1604,11 @@ a.doc-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--acce
 .note-chat .chat-thread { flex: 1; height: auto; }
 .note-chat .chat-bar { margin-top: auto; }
 @media (min-width: 760px) { .reader.chat-open { padding-right: min(var(--note-chat-w, 420px), 60vw); } }
+@media (max-width: 759px) {
+  .note-chat { top: auto; left: 0; width: auto; height: min(78dvh, 680px); border-top: 1px solid var(--border); border-left: 0; box-shadow: 0 -12px 30px rgba(0,0,0,.28); padding-top: 12px; animation: tutor-up .22s cubic-bezier(.2,.9,.25,1); }
+  .note-chat-resize { display: none; }
+}
+@keyframes tutor-up { from { transform: translateY(100%); } to { transform: none; } }
 
 .bubble-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; max-width: 86%; align-self: flex-start; }
 .bubble-wrap .bubble { max-width: 100%; }

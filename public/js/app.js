@@ -2251,7 +2251,7 @@ $('#reader-new-folder').addEventListener('click', async () => {
   }
 
   reader.addEventListener('touchstart', (e) => {
-    if (!isMobile() || e.touches.length !== 1) { live = false; return; }
+    if (!isMobile() || !$('#note-chat').hidden || e.touches.length !== 1) { live = false; return; }
     sx = e.touches[0].clientX; sy = e.touches[0].clientY; live = true; mode = null;
   }, { passive: true });
   reader.addEventListener('touchmove', (e) => {
@@ -4144,7 +4144,7 @@ function codeSetupSwipe() {
   }
 
   view.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { live = false; return; }
+    if (!$('#code-chat').hidden || e.touches.length !== 1) { live = false; return; }
     sx = e.touches[0].clientX; sy = e.touches[0].clientY; live = true; mode = null;
   }, { passive: true });
   view.addEventListener('touchmove', (e) => {
