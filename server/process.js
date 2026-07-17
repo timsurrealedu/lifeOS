@@ -442,7 +442,13 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
     const onFallback = step >= 0;
     const model = onFallback ? provider.model : (cfg.models && cfg.models[kind]);
     // Bound MCP startup + tool-call time on every run so a stuck MCP server can't hang us.
+    // The app's primary Claude path uses the user's Claude Code login. Do not inherit an
+    // ambient Anthropic proxy/key (common in dev shells): it overrides that login and leaves
+    // tutors with an empty response. Fallback providers set their credentials explicitly below.
     const baseEnv = { ...process.env, MCP_TIMEOUT: MCP_TIMEOUT_MS, MCP_TOOL_TIMEOUT: MCP_TOOL_TIMEOUT_MS };
+    delete baseEnv.ANTHROPIC_API_KEY;
+    delete baseEnv.ANTHROPIC_AUTH_TOKEN;
+    delete baseEnv.ANTHROPIC_BASE_URL;
     const env = onFallback
       ? { ...baseEnv, ANTHROPIC_BASE_URL: provider.baseUrl, ANTHROPIC_AUTH_TOKEN: provider.apiKey, ANTHROPIC_API_KEY: provider.apiKey }
       : baseEnv;
@@ -457,7 +463,7 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
 
     // `error` (e.g. ENOENT when claude is missing) and `close` can both fire — settle exactly once.
     let settled = false;
-    let child, output = '';
+    let child, output = '', stdout = '';
     try {
       // stdin: 'ignore' so claude doesn't wait ~3s for piped stdin that never comes
       // (the prompt is passed via args, not stdin). stdout/stderr stay piped for pump().
@@ -489,6 +495,7 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
       stream.on('data', (chunk) => {
         buf += chunk;
         output += chunk;
+        if (channel === 'out') stdout += chunk;
         const lines = buf.split('\n');
         buf = lines.pop();
         for (const line of lines) emitLine(channel, line);
@@ -509,6 +516,16 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
       if (settled) return; settled = true;
       const limited = code !== 0 && !killed && LIMIT_RE.test(output);
       if (limited && advance(onFallback ? `${provider.name} hit a limit` : 'Claude hit a usage limit')) return;
+      if (code !== 0) {
+        release();
+        onEvent('error', { message: `${onFallback ? provider.name : 'Claude'} exited with code ${code}. Check its sign-in or provider settings.` });
+        return;
+      }
+      if (!stdout.trim()) {
+        release();
+        onEvent('error', { message: `${onFallback ? provider.name : 'Claude'} returned no response. Check its sign-in or provider settings.` });
+        return;
+      }
       release();
       onEvent('done', { code, usedFallback: onFallback ? provider.name : false });
     });
