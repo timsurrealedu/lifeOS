@@ -201,6 +201,7 @@ const PROMPTS = {
 // crash) don't waste a fallback run.
 const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|spend limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
 const FAILOVER_RE = new RegExp(`${LIMIT_RE.source}|subscription access|organization has disabled`, 'i');
+const SUBSCRIPTION_ACCESS_RE = /organization.*disabled.*subscription access|subscription access.*disabled/i;
 
 // Agentic "console" runs stream their progress to the app's process sheet. We launch these with
 // --output-format stream-json so the server can turn each event into a readable progress line
@@ -484,6 +485,9 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
     // Everything else (chats' plain text, and all stderr) passes through verbatim.
     const streamJson = STREAM_JSON.has(kind);
     const emitLine = (channel, line) => {
+      // Claude can print its subscription denial as normal stdout before we switch providers.
+      // Keep it for failover detection in `output`, but never show it above the fallback answer.
+      if (channel === 'out' && SUBSCRIPTION_ACCESS_RE.test(line)) return;
       if (channel !== 'out' || !streamJson) { onEvent('log', { channel, line }); return; }
       const s = line.trim();
       if (!s) return;
