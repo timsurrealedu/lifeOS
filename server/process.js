@@ -197,9 +197,10 @@ const PROMPTS = {
     + 'line `NONE`.',
 };
 
-// Output that means "the primary account is out of capacity" — the only failure we retry on the
-// fallback provider. Kept narrow so ordinary errors (bad tool, crash) don't waste a fallback run.
+// Output that means a provider cannot serve the request. Kept narrow so ordinary errors (bad tool,
+// crash) don't waste a fallback run.
 const LIMIT_RE = /usage limit|rate.?limit|limit reached|session limit|spend limit|quota|exhausted|overloaded|too many requests|\b429\b|insufficient|out of credit/i;
+const FAILOVER_RE = new RegExp(`${LIMIT_RE.source}|subscription access|organization has disabled`, 'i');
 
 // Agentic "console" runs stream their progress to the app's process sheet. We launch these with
 // --output-format stream-json so the server can turn each event into a readable progress line
@@ -514,8 +515,8 @@ function spawnClaude({ kind, prompt, forceProvider }, onEvent) {
     });
     child.on('close', (code) => {
       if (settled) return; settled = true;
-      const limited = code !== 0 && !killed && LIMIT_RE.test(output);
-      if (limited && advance(onFallback ? `${provider.name} hit a limit` : 'Claude hit a usage limit')) return;
+      const retryable = !killed && FAILOVER_RE.test(output);
+      if (retryable && advance(onFallback ? `${provider.name} was unavailable` : 'Claude subscription access was unavailable')) return;
       if (code !== 0) {
         release();
         onEvent('error', { message: `${onFallback ? provider.name : 'Claude'} exited with code ${code}. Check its sign-in or provider settings.` });
