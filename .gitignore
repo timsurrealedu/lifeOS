@@ -5,6 +5,10 @@ config.json
 .DS_Store
 .claude/
 
+# Private keys
+*.key
+*.pem
+
 # Cloud deploy: filled-in secrets/state never get committed (only the .example does)
 deploy/oracle-a1.env
 deploy/a1-success.json
