@@ -136,8 +136,9 @@ Endpoints behind this: `POST /api/notes` (create), `POST /api/note/save` (edit),
 `POST /api/upload/handwriting` (embed a drawing, no inbox item) / `POST /api/handwriting/update`
 (re-edit a saved ink page in place). Chat: `POST /api/chat` (streams a
 read-only answer). Plan: `GET /api/tasks` / `POST /api/tasks` (add, incl. repeat) /
-`POST /api/tasks/edit` — local-only, no Google Calendar involved; reminders are server-scheduled Web
-Push (`server/notify.js`, `POST /api/push/subscribe`).
+`POST /api/tasks/edit` — local-only, no Google Calendar involved; every timed task gets Web Push
+reminders 30 minutes before, 15 minutes before, and at its event time (`server/notify.js`,
+`POST /api/push/subscribe`). Completed tasks do not notify.
 
 ## Recordings & transcription
 

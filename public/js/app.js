@@ -3111,7 +3111,6 @@ function openTaskEdit(t) {
   $('#task-edit-desc').value = t.desc;
   $('#task-edit-date').value = t.date || '';
   $('#task-edit-time').value = t.time || '';
-  $('#task-edit-remind').value = t.reminderMinutes != null ? String(t.reminderMinutes) : '';
   openSheet('sheet-task-edit');
   $('#task-edit-desc').focus();
 }
@@ -3126,7 +3125,6 @@ async function saveTaskEdit(date) {
         file: editingTask.file, line: editingTask.line, desc,
         date: date ?? $('#task-edit-date').value,
         time: $('#task-edit-time').value,
-        reminderMinutes: $('#task-edit-remind').value || null,
       }),
     });
     closeSheets();
@@ -3142,7 +3140,6 @@ function openTaskNew(date) {
   $('#task-new-desc').value = '';
   $('#task-new-date').value = date || todayStr();
   $('#task-new-time').value = '';
-  $('#task-new-remind').value = '';
   $('#task-new-repeat').value = 'none';
   $('#task-new-until').value = '';
   $('#task-new-until-row').hidden = true;
@@ -3167,7 +3164,7 @@ $('#task-new-save').addEventListener('click', async () => {
     await api('/api/tasks', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        desc, date, time: $('#task-new-time').value, reminderMinutes: $('#task-new-remind').value || null,
+        desc, date, time: $('#task-new-time').value,
         repeat: $('#task-new-repeat').value, until: $('#task-new-until').value,
       }),
     });

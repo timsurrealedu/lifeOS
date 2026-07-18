@@ -61,7 +61,7 @@ Go line by line. An item is one of:
   → Add a checkbox to the user's TODO file (format defined in `CLAUDE.md`) — include the stated time right after the date if one was given (e.g. `- [ ] 14 Jul 09:00 Description`), so it shows at the right time in the Plan tab's calendar. **Find the existing `TODO/` folder wherever it lives** (it may have been moved under a domain, e.g. `Personal/TODO/`) and write into that one — **never create a second `TODO/` at the root.** If the period/month file doesn't exist, create it inside the existing `TODO/`, add `→ [[TODO]]` at the bottom, and list it under the `[[TODO]]` hub.
   → **If the event names a known area** (per `CLAUDE.md`), also associate it with that area — see "Area keywords always win" in §3: a brief note in the area's folder **plus** a `[[link]]` under that area's hub.
   → Resolve relative dates against today's date from context.
-  → This only files the item — it does **not** set a reminder or repeat it. The user can add either from the Plan tab (✎ edit → reminder; ＋ add → repeat) if they want one.
+  → Timed tasks automatically receive local reminders 30 minutes before, 15 minutes before, and at the stated time. Completion suppresses any remaining reminders. Repeating tasks are still added from the Plan tab.
 
 **B) Media embed** — a line with `![[…]]` (photo, handwriting, audio, or document).
   *Photo* (`.jpg/.png/…`): Resolve and **read the image** (whiteboard/slide/screenshot). Summarize into clean notes following the vault's writing style from `CLAUDE.md`. If it's a screenshot of a chat mentioning a date, treat that date like case A instead.

@@ -522,20 +522,20 @@ app.post('/api/work', (req, res) => {
 // Manually add a task/event (Plan tab "+"), optionally repeating — see addTask()'s doc comment.
 app.post('/api/tasks', (req, res) => {
   try {
-    const { desc, date, time, reminderMinutes, repeat, until } = req.body || {};
-    ok(res, { tasks: addTask({ desc, date, time, reminderMinutes, repeat, until }) });
+    const { desc, date, time, repeat, until } = req.body || {};
+    ok(res, { tasks: addTask({ desc, date, time, repeat, until }) });
   } catch (e) { fail(res, e); }
 });
 app.post('/api/tasks/toggle', (req, res) => {
   try { ok(res, { tasks: toggleTask(String(req.body.file), Number(req.body.line)) }); }
   catch (e) { fail(res, e); }
 });
-// Edit a task's description/date/time/reminder (Plan tab). May move the line to a different
+// Edit a task's description/date/time (Plan tab). May move the line to a different
 // TODO/{year}/{month}.md file if the date crosses a year boundary — see editTask()'s doc comment.
 app.post('/api/tasks/edit', (req, res) => {
   try {
-    const { file, line, desc, date, time, reminderMinutes } = req.body || {};
-    ok(res, { tasks: editTask(String(file), Number(line), { desc, date, time, reminderMinutes }) });
+    const { file, line, desc, date, time } = req.body || {};
+    ok(res, { tasks: editTask(String(file), Number(line), { desc, date, time }) });
   } catch (e) { fail(res, e); }
 });
 app.get('/api/log', (_req, res) => ok(res, { log: readLog() }));

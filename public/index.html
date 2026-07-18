@@ -823,25 +823,15 @@
     </div>
   </div>
 
-  <!-- Edit task sheet (Plan tab) — desc + date/time + reminder; native inputs for the pickers -->
+  <!-- Edit task sheet (Plan tab) — native date/time inputs -->
   <div class="sheet" id="sheet-task-edit" hidden>
     <div class="sheet-grab"></div>
     <div class="sheet-head"><h3>Edit task</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <div class="settings">
       <label>Description<input id="task-edit-desc" autocomplete="off" /></label>
       <label>Date<input id="task-edit-date" type="date" /></label>
-      <label>Time <small>(optional — needed for a reminder)</small><input id="task-edit-time" type="time" /></label>
-      <label>Remind me
-        <select id="task-edit-remind">
-          <option value="">No reminder</option>
-          <option value="0">At the time</option>
-          <option value="5">5 minutes before</option>
-          <option value="15">15 minutes before</option>
-          <option value="30">30 minutes before</option>
-          <option value="60">1 hour before</option>
-          <option value="1440">1 day before</option>
-        </select>
-      </label>
+      <label>Time <small>(optional)</small><input id="task-edit-time" type="time" /></label>
+      <p class="hint">Timed tasks automatically remind you 30 minutes before, 15 minutes before, and at the event time.</p>
       <p class="hint">Changing the date keeps this task in sync with how lifeOS &amp; the AI file tasks — it can move to a different month/year file if needed.</p>
       <div class="settings-actions">
         <button class="btn primary" id="task-edit-save">Save</button>
@@ -850,25 +840,15 @@
     </div>
   </div>
 
-  <!-- Add task sheet (Plan tab "+ Add") — desc + date/time + reminder + optional repeat -->
+  <!-- Add task sheet (Plan tab "+ Add") — desc + date/time + optional repeat -->
   <div class="sheet" id="sheet-task-new" hidden>
     <div class="sheet-grab"></div>
     <div class="sheet-head"><h3>Add to Plan</h3><button class="icon-btn" data-action="close-sheet" aria-label="Close">✕</button></div>
     <div class="settings">
       <label>Description<input id="task-new-desc" autocomplete="off" placeholder="What's happening?" /></label>
       <label>Date<input id="task-new-date" type="date" /></label>
-      <label>Time <small>(optional — needed for a reminder)</small><input id="task-new-time" type="time" /></label>
-      <label>Remind me
-        <select id="task-new-remind">
-          <option value="">No reminder</option>
-          <option value="0">At the time</option>
-          <option value="5">5 minutes before</option>
-          <option value="15">15 minutes before</option>
-          <option value="30">30 minutes before</option>
-          <option value="60">1 hour before</option>
-          <option value="1440">1 day before</option>
-        </select>
-      </label>
+      <label>Time <small>(optional)</small><input id="task-new-time" type="time" /></label>
+      <p class="hint">Timed tasks automatically remind you 30 minutes before, 15 minutes before, and at the event time.</p>
       <label>Repeat
         <select id="task-new-repeat">
           <option value="none">Doesn't repeat</option>

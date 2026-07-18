@@ -816,6 +816,7 @@ export function buildGraph() {
 // ---------- Calendar / TODOs ----------
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const DEFAULT_REMINDER_MINUTES = [30, 15, 0];
 const FULL_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -850,11 +851,9 @@ export function listTasks() {
           if (tm) { time = `${tm[1].padStart(2, '0')}:${tm[2]}`; desc = desc.slice(tm[0].length).trim(); }
         }
       }
-      // an optional trailing "#remindN" reminder tag (N = minutes before) — reminders only fire for
-      // timed tasks (see notify.js), so this is written/read but ignored for an all-day task.
-      let reminderMinutes = null;
-      const rm = desc.match(/\s*#remind(\d+)\s*$/);
-      if (rm) { reminderMinutes = Number(rm[1]); desc = desc.slice(0, rm.index).trim(); }
+      // Legacy #remindN tags are hidden; every timed task now gets the fixed three reminders.
+      desc = desc.replace(/(?:\s+#remind\d+)+\s*$/, '').trim();
+      const reminderMinutes = time ? DEFAULT_REMINDER_MINUTES : [];
       // `line` lets the UI toggle/edit the exact checkbox in its source file.
       out.push({ done, desc, date, time, reminderMinutes, file: f.path, line: i });
     }
@@ -931,31 +930,22 @@ function appendTaskLine(destFull, lineText) {
   writeFileSync(destFull, destText);
 }
 
-/** Build a `- [ ] DD Mon HH:MM DESC #remindN` checkbox line from its parts (any part optional). */
-function buildTaskLine(mark, dayMonthPrefix, time, desc, reminderMinutes) {
+/** Build a `- [ ] DD Mon HH:MM DESC` checkbox line from its parts (any part optional). */
+function buildTaskLine(mark, dayMonthPrefix, time, desc) {
   const timePart = (dayMonthPrefix && time) ? `${time} ` : '';
-  const remindPart = reminderMinutes != null ? ` #remind${reminderMinutes}` : '';
-  return `- [${mark}] ${dayMonthPrefix}${timePart}${desc}${remindPart}`;
-}
-
-/** `''`/null/undefined → no reminder; otherwise a minutes-before integer ≥ 0 (0 = "at the time" —
- *  falsy in JS, so this can't just be `reminderMinutes ? … : null`). Invalid input → no reminder. */
-function normalizeReminder(reminderMinutes) {
-  if (reminderMinutes === null || reminderMinutes === undefined || reminderMinutes === '') return null;
-  const n = Number(reminderMinutes);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  return `- [${mark}] ${dayMonthPrefix}${timePart}${desc}`;
 }
 
 /**
- * Edit a task's description/date/time/reminder in place, writing back in the exact
- * `- [ ] DD Mon HH:MM DESC #remindN` format process-inbox and addTask() read/write, so the next AI
+ * Edit a task's description/date/time in place, writing back in the exact
+ * `- [ ] DD Mon HH:MM DESC` format process-inbox and addTask() read/write, so the next AI
  * run parses it the same as ever. The line never stores a year (only day + 3-letter month) — its
  * year is inferred from the file's own `TODO/{year}/{month}.md` path — so an edit that crosses into
  * a different year moves the line to that year's month file instead of silently mislabeling it.
  * `date`/`time` are `'YYYY-MM-DD'`/`'HH:MM'`, or `''` to clear (time only meaningful with a date).
  * Returns the refreshed task list.
  */
-export function editTask(relPath, line, { desc, date, time, reminderMinutes } = {}) {
+export function editTask(relPath, line, { desc, date, time } = {}) {
   const root = vaultDir();
   const full = join(root, relPath);
   if (!full.startsWith(root) || extname(full) !== '.md' || !existsSync(full)) throw new Error('not found');
@@ -981,8 +971,7 @@ export function editTask(relPath, line, { desc, date, time, reminderMinutes } = 
   }
   const timeStr = String(time || '').trim();
   if (timeStr && !/^\d{1,2}:\d{2}$/.test(timeStr)) throw new Error('bad time');
-  const remind = normalizeReminder(reminderMinutes);
-  const newLine = buildTaskLine(m[2], prefix, timeStr, cleanDesc, remind);
+  const newLine = buildTaskLine(m[2], prefix, timeStr, cleanDesc);
 
   if (targetPath === relPath) {
     lines[line] = newLine;
@@ -1022,18 +1011,17 @@ function expandDates(startDate, repeat, until) {
  * occurrence up front — ponytail: no ongoing "series" link, each occurrence is an independent line
  * editable/deletable on its own, same as any manually-added task. Returns the refreshed task list.
  */
-export function addTask({ desc, date, time, reminderMinutes, repeat, until } = {}) {
+export function addTask({ desc, date, time, repeat, until } = {}) {
   const cleanDesc = String(desc || '').trim();
   if (!cleanDesc) throw new Error('description required');
   const dateStr = String(date || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('date required');
   const timeStr = String(time || '').trim();
   if (timeStr && !/^\d{1,2}:\d{2}$/.test(timeStr)) throw new Error('bad time');
-  const remind = normalizeReminder(reminderMinutes);
   for (const d of expandDates(dateStr, repeat, until)) {
     const [y, mo, day] = d.split('-');
     const monIdx = Number(mo) - 1;
-    const line = buildTaskLine(' ', `${Number(day)} ${MONTHS[monIdx]} `, timeStr, cleanDesc, remind);
+    const line = buildTaskLine(' ', `${Number(day)} ${MONTHS[monIdx]} `, timeStr, cleanDesc);
     appendTaskLine(ensureMonthFile(y, monIdx), line);
   }
   return listTasks();

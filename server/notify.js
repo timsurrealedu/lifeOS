@@ -1,5 +1,5 @@
-// Plan tab reminders — local push notifications for tasks with a time + reminder set (see
-// vault.js's `#remindN` tag). Independent of Google Calendar: it notifies for the vault's own TODO
+// Plan tab reminders — local push notifications for every timed task. Independent of Google
+// Calendar: it notifies for the vault's own TODO
 // checklist, not the read-only synced calendar. Runs a once-a-minute scan on the server (already
 // live 24/7), so it fires even when no device has the app open — the same feel as Google Calendar's
 // reminders, without needing a real Google Calendar write scope.
@@ -47,22 +47,30 @@ async function sendToAllSubs(payload) {
   }
 }
 
-/** Scan open, timed, reminder-bearing tasks and push a notification the minute each one is due. */
+export function dueReminders(t, nowMs, notified = new Set()) {
+  if (t.done || !t.date || !t.time) return [];
+  const [y, mo, d] = t.date.split('-').map(Number);
+  const [h, mi] = t.time.split(':').map(Number);
+  const eventMs = Date.UTC(y, mo - 1, d, h, mi);
+  return t.reminderMinutes.flatMap((minutes) => {
+    const key = `${t.file}#${t.line}#${t.date}#${t.time}#${minutes}`;
+    const age = nowMs - (eventMs - minutes * 60000);
+    return !notified.has(key) && age >= 0 && age <= STALE_MS ? [{ key, minutes }] : [];
+  });
+}
+
+/** Scan open, timed tasks and push at 30 minutes, 15 minutes, and the event time. */
 async function checkReminders() {
   const cfg = loadConfig();
   const nowMs = nowInZoneMs(cfg.timezone);
   const notified = readNotifiedKeys();
   const fired = [];
   for (const t of listTasks()) {
-    if (t.done || !t.date || !t.time || t.reminderMinutes == null) continue;   // 0 = "at the time", a valid reminder
-    const key = `${t.file}#${t.line}#${t.date}#${t.time}`;
-    if (notified.has(key)) continue;
-    const [y, mo, d] = t.date.split('-').map(Number);
-    const [h, mi] = t.time.split(':').map(Number);
-    const triggerMs = Date.UTC(y, mo - 1, d, h, mi) - t.reminderMinutes * 60000;
-    if (nowMs < triggerMs || nowMs - triggerMs > STALE_MS) continue;
-    fired.push(key);
-    await sendToAllSubs({ title: t.desc, body: `${t.date} at ${t.time}`, tag: key });
+    for (const { key, minutes } of dueReminders(t, nowMs, notified)) {
+      fired.push(key);
+      const when = minutes ? `${minutes} minutes` : 'Now';
+      await sendToAllSubs({ title: t.desc, body: `${when} · ${t.date} at ${t.time}`, tag: key });
+    }
   }
   if (fired.length) markNotified(fired);
 }
